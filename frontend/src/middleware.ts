@@ -15,9 +15,6 @@ import type { NextRequest } from 'next/server';
 // Routes that require authentication
 const PROTECTED_ROUTES = ['/chat', '/dashboard', '/journal', '/settings', '/voice'];
 
-// Routes that are always public
-const PUBLIC_ROUTES = ['/', '/login', '/signup', '/forgot-password', '/auth'];
-
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   

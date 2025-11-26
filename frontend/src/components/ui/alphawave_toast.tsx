@@ -156,18 +156,19 @@ function ToastItem({
 
 /**
  * Convenience functions for direct toast calls
+ * Note: These are placeholder functions - use useToast() hook instead
  */
 export const toast = {
-  success: (message: string, _duration?: number) => {
+  success: (message: string) => {
     console.log('Toast success:', message);
   },
-  error: (message: string, _duration?: number) => {
+  error: (message: string) => {
     console.log('Toast error:', message);
   },
-  warning: (message: string, _duration?: number) => {
+  warning: (message: string) => {
     console.log('Toast warning:', message);
   },
-  info: (message: string, _duration?: number) => {
+  info: (message: string) => {
     console.log('Toast info:', message);
   },
 };
