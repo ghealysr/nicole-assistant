@@ -43,7 +43,7 @@ function EmptyState() {
         just type a message below to get started.
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-2">
-        {['What's on my calendar today?', 'Help me plan my week', 'Tell me a fun fact'].map((suggestion) => (
+        {["What's on my calendar today?", "Help me plan my week", "Tell me a fun fact"].map((suggestion) => (
           <button
             key={suggestion}
             className="px-4 py-2 text-sm border border-border-light rounded-full text-text-secondary hover:bg-lavender/10 hover:text-lavender-text hover:border-lavender transition-colors"
