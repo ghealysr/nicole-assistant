@@ -1,6 +1,4 @@
 import type { Metadata } from 'next';
-import { AlphawaveSidebar } from '@/components/navigation/AlphawaveSidebar';
-import { AlphawaveHeader } from '@/components/navigation/AlphawaveHeader';
 import { ToastProvider } from '@/components/ui/alphawave_toast';
 import './globals.css';
 
@@ -20,29 +18,15 @@ export const metadata: Metadata = {
  * 
  * QA NOTES:
  * - Includes ToastProvider for app-wide notifications
- * - Sidebar: 60px collapsed, 240px expanded
- * - Header: 80px height
- * - Main content area fills remaining space
+ * - Layout structure handled by individual pages/route groups
+ * - Login page has its own full-screen layout
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-cream text-text-primary font-sans">
+      <body className="bg-cream text-text-primary font-sans antialiased">
         <ToastProvider>
-          <div className="flex h-screen">
-            {/* Sidebar: 60px collapsed, 240px expanded */}
-            <AlphawaveSidebar />
-
-            <div className="flex-1 flex flex-col">
-              {/* Header: 80px height */}
-              <AlphawaveHeader />
-
-              {/* Main content area */}
-              <main className="flex-1 overflow-auto">
-                {children}
-              </main>
-            </div>
-          </div>
+          {children}
         </ToastProvider>
       </body>
     </html>
