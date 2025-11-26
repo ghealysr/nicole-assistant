@@ -1,0 +1,29 @@
+# Environment files
+.env
+*.env
+.env.*
+!.env.template
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+
+# OS
+.DS_Store
+*.swp
+
+# SSH Keys
+SSH-Nicole
+SSH-Nicole-new
+*.pem
+
+# Credentials
+*credentials*.env
+tiger-*.env

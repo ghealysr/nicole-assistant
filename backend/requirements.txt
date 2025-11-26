@@ -1,0 +1,306 @@
+# ============================================================================
+# Nicole V7 - Production Dependencies (Complete & Verified)
+# Last Updated: October 22, 2025
+# Python Version: 3.11+
+# ============================================================================
+#
+# This requirements.txt contains ALL dependencies needed for Nicole V7
+# to run in production with full functionality including:
+# - FastAPI web framework
+# - AI/LLM clients (Anthropic Claude, OpenAI)
+# - Database & caching (Supabase, Redis, Qdrant)
+# - Authentication & security
+# - Safety filtering system
+# - Background job scheduling
+# - Monitoring & logging
+#
+# Installation:
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+#
+# ============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────
+# CORE WEB FRAMEWORK
+# ─────────────────────────────────────────────────────────────────────────
+
+fastapi==0.115.4
+# Latest stable FastAPI with performance improvements and security patches
+# Used for: Main API framework, routing, request/response handling
+# Includes: Automatic OpenAPI docs, dependency injection, type validation
+
+uvicorn[standard]==0.32.0
+# ASGI server with [standard] extras for production performance
+# Includes: websockets, httptools, uvloop, watchfiles, colorama
+# Used for: Production server, SSE streaming support, hot reload (dev)
+# The [standard] extra provides significant performance improvements
+
+# ─────────────────────────────────────────────────────────────────────────
+# HTTP CLIENT (CRITICAL FIX)
+# ─────────────────────────────────────────────────────────────────────────
+
+httpx>=0.27.2
+# CRITICAL: Must be >=0.27.0 for proxy kwarg support in Anthropic SDK
+# Versions <0.27.0 cause: AttributeError: 'Anthropic' object has no attribute 'proxy'
+# Used for: All HTTP requests in AI SDK clients, async HTTP operations
+# Latest version: 0.27.2 includes HTTP/2 support and connection pooling
+
+# ─────────────────────────────────────────────────────────────────────────
+# DATA VALIDATION & SETTINGS
+# ─────────────────────────────────────────────────────────────────────────
+
+pydantic==2.9.2
+# Latest 2.x with significant performance improvements over 2.8.x
+# Used for: Request/response models, data validation, type safety
+# Provides: Type coercion, validation, serialization/deserialization
+
+pydantic-settings==2.6.0
+# Matches pydantic 2.9.x - environment variable management
+# Used for: AlphawaveSettings class, .env file loading, config management
+# Provides: Automatic .env parsing, type validation for settings
+
+# ─────────────────────────────────────────────────────────────────────────
+# AUTHENTICATION & SECURITY
+# ─────────────────────────────────────────────────────────────────────────
+
+PyJWT==2.9.0
+# JWT token encoding/decoding for authentication
+# Used for: JWT verification in auth middleware, Supabase token validation
+# Includes: HS256, RS256 algorithms, expiration checking
+
+python-jose[cryptography]==3.3.0
+# Alternative JWT library with enhanced cryptographic functions
+# [cryptography] extra includes cryptography library for RSA/ECDSA
+# Used for: Enhanced JWT operations, certificate validation (optional)
+# Note: Provides additional algorithms beyond PyJWT
+
+passlib[bcrypt]==1.7.4
+# Password hashing with bcrypt algorithm
+# [bcrypt] extra includes bcrypt C library for secure password hashing
+# Used for: Secure password hashing (if implementing local auth)
+# Provides: bcrypt, scrypt, argon2 support
+
+# ─────────────────────────────────────────────────────────────────────────
+# AI & LLM CLIENTS
+# ─────────────────────────────────────────────────────────────────────────
+
+anthropic==0.39.0
+# Latest Anthropic SDK with Claude Sonnet 4.5 & Haiku 4.5 support
+# REQUIRES: httpx>=0.27.0 for proxy kwarg support
+# Used for: Primary LLM (chat, agent routing, reasoning, content generation)
+# Models: claude-sonnet-4-5-20250929, claude-haiku-4-5-20250514
+# Features: Streaming responses, function calling, vision support
+
+openai==1.54.3
+# Latest OpenAI SDK with new models and embedding improvements
+# Used for: Embeddings (text-embedding-3-small), O1-mini research, Moderation API
+# Features: Async client, streaming, function calling, vision
+# Critical for: Content safety (Moderation API), semantic search (embeddings)
+
+# ─────────────────────────────────────────────────────────────────────────
+# DATABASE & CACHING
+# ─────────────────────────────────────────────────────────────────────────
+
+supabase==2.9.1
+# Latest Supabase client with connection pooling improvements
+# Used for: PostgreSQL database, authentication, storage, RLS
+# Features: Auth, database (PostgREST), storage, realtime subscriptions
+# Includes: postgrest-py, storage3, gotrue, realtime clients
+
+asyncpg==0.29.0
+# High-performance async PostgreSQL driver (10x faster than psycopg2)
+# Used for: Direct database connections, raw SQL queries, high-performance ops
+# Features: Prepared statements, binary protocol, connection pooling
+# Note: Faster than Supabase client for bulk operations
+
+redis==5.2.0
+# Latest Redis client with performance improvements and async support
+# Used for: Hot cache (tier 1 memory), rate limiting, session storage
+# Features: Async operations, connection pooling, cluster support
+# Patterns: Cache aside, rate limiting, pub/sub
+
+qdrant-client==1.12.0
+# Latest Qdrant client with vector search improvements
+# Used for: Vector database (tier 3 memory), semantic search, embeddings
+# Features: Similarity search, filtering, collections, snapshots
+# Performance: Optimized for high-dimensional vectors
+
+# ─────────────────────────────────────────────────────────────────────────
+# BACKGROUND JOBS & SCHEDULING
+# ─────────────────────────────────────────────────────────────────────────
+
+APScheduler==3.10.4
+# Production-ready job scheduling with async support
+# Used for: Background worker (8 scheduled jobs), cron tasks, periodic jobs
+# Jobs: Sports data collection, memory decay, weekly reflection, backups
+# Features: Cron triggers, interval triggers, job stores, executors
+
+# ─────────────────────────────────────────────────────────────────────────
+# UTILITIES
+# ─────────────────────────────────────────────────────────────────────────
+
+python-dotenv==1.0.1
+# Environment variable loading from .env files
+# Used for: Local development configuration, environment management
+# Features: .env parsing, variable expansion, override support
+# Note: Pydantic-settings uses this under the hood
+
+python-multipart==0.0.12
+# Required for FastAPI file upload handling
+# Used for: File upload endpoints (multipart/form-data), form data parsing
+# Features: Streaming uploads, file validation, form field parsing
+# Critical for: Voice uploads, image uploads, document uploads
+
+# ─────────────────────────────────────────────────────────────────────────
+# MONITORING & LOGGING (Production Recommended)
+# ─────────────────────────────────────────────────────────────────────────
+
+sentry-sdk[fastapi]==2.17.0
+# Production error tracking and performance monitoring
+# [fastapi] extra includes FastAPI-specific integration and middleware
+# Used for: Error tracking, performance monitoring, alerting, breadcrumbs
+# Features: Automatic error capture, release tracking, source maps
+# Dashboard: https://sentry.io
+# Note: Uncomment for production, requires SENTRY_DSN environment variable
+
+# ─────────────────────────────────────────────────────────────────────────
+# DEVELOPMENT & TESTING (Install separately)
+# ─────────────────────────────────────────────────────────────────────────
+
+# Install these in a development environment only:
+# pip install pytest pytest-asyncio pytest-cov black ruff mypy ipython ipdb
+
+# pytest==8.3.3
+# # Testing framework with fixtures and async support
+# # Used for: Unit tests, integration tests, functional tests
+
+# pytest-asyncio==0.24.0
+# # Async test support for pytest
+# # Used for: Testing async functions, FastAPI endpoints, database operations
+
+# pytest-cov==5.0.0
+# # Code coverage plugin for pytest
+# # Used for: Test coverage reports, coverage enforcement
+
+# black==24.8.0
+# # Code formatter for consistent style
+# # Used for: Automatic code formatting, pre-commit hooks
+
+# ruff==0.6.8
+# # Extremely fast Python linter (replaces flake8, isort, etc.)
+# # Used for: Linting, import sorting, code quality checks
+
+# mypy==1.11.2
+# # Static type checker for Python
+# # Used for: Type checking, catching type errors before runtime
+
+# ipython==8.18.1
+# # Enhanced Python shell with autocomplete and history
+# # Used for: Interactive debugging, REPL development
+
+# ipdb==0.13.13
+# # IPython-enhanced debugger
+# # Used for: Debugging with IPython features
+
+# ============================================================================
+# INSTALLATION INSTRUCTIONS
+# ============================================================================
+#
+# 1. Create/activate virtual environment:
+#    python3.11 -m venv venv
+#    source venv/bin/activate  # Linux/Mac
+#    venv\Scripts\activate     # Windows
+#
+# 2. Upgrade pip:
+#    pip install --upgrade pip setuptools wheel
+#
+# 3. Install production dependencies:
+#    pip install -r requirements.txt
+#
+# 4. For development, also install:
+#    pip install pytest pytest-asyncio pytest-cov black ruff mypy
+#
+# 5. Freeze exact versions:
+#    pip freeze > requirements.lock
+#
+# 6. Verify critical packages:
+#    python -c "import httpx; print(f'httpx: {httpx.__version__}')"
+#    python -c "import anthropic; print(f'anthropic: {anthropic.__version__}')"
+#    python -c "import openai; print(f'openai: {openai.__version__}')"
+#    python -c "import fastapi; print(f'fastapi: {fastapi.__version__}')"
+#
+# ============================================================================
+# TROUBLESHOOTING
+# ============================================================================
+#
+# If you see: AttributeError: 'Anthropic' object has no attribute 'proxy'
+# → Upgrade httpx: pip install --upgrade "httpx>=0.27.0"
+#
+# If you see dependency conflicts:
+# → Clear cache: pip cache purge
+# → Reinstall: pip install -r requirements.txt --force-reinstall
+#
+# If imports fail:
+# → Check Python version: python --version (requires 3.11+)
+# → Verify virtual environment: which python
+# → Check installed packages: pip list
+#
+# If Anthropic/OpenAI clients fail:
+# → Verify API keys in .env
+# → Check httpx version: python -c "import httpx; print(httpx.__version__)"
+# → Test import: python -c "from anthropic import Anthropic; print('OK')"
+#
+# ============================================================================
+# ENVIRONMENT VARIABLES REQUIRED
+# ============================================================================
+#
+# Create .env file with:
+#
+# # Core
+# ENVIRONMENT=production
+#
+# # Supabase
+# SUPABASE_URL=https://xxx.supabase.co
+# SUPABASE_ANON_KEY=xxx
+# SUPABASE_SERVICE_ROLE_KEY=xxx
+# SUPABASE_JWT_SECRET=xxx
+#
+# # Tiger Postgres (Agentic Postgres)
+# TIGER_PRODUCTION_URL=postgresql://...
+# TIGER_DEVELOPMENT_URL=postgresql://...
+# TIGER_SPORTS_ORACLE_URL=postgresql://...
+# DATABASE_URL=postgresql://...
+#
+# # AI
+# ANTHROPIC_API_KEY=sk-ant-xxx
+# OPENAI_API_KEY=sk-xxx
+#
+# # Caching
+# REDIS_URL=redis://localhost:6379
+# QDRANT_URL=http://localhost:6333
+#
+# # Optional
+# SENTRY_DSN=https://xxx@sentry.io/xxx
+#
+# ============================================================================
+# PACKAGE SUMMARY
+# ============================================================================
+#
+# Total packages (including dependencies): ~50-60
+#
+# Direct dependencies: 15
+#   - fastapi (1)
+#   - uvicorn[standard] (1)
+#   - httpx (1)
+#   - pydantic + pydantic-settings (2)
+#   - PyJWT + python-jose + passlib (3)
+#   - anthropic + openai (2)
+#   - supabase + asyncpg + redis + qdrant-client (4)
+#   - APScheduler (1)
+#   - python-dotenv + python-multipart (2)
+#   - sentry-sdk[fastapi] (1)
+#
+# Transitive dependencies: ~35-45
+#   (Automatically installed by pip)
+#
+# ============================================================================

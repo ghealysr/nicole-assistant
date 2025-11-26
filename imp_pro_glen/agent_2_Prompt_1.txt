@@ -1,0 +1,1246 @@
+🎯 NICOLE V7 - CTO IMPLEMENTATION DIRECTIVE
+FROM: CTO (Claude) TO: Director (Glen) RE: Phase 1 Implementation - Multi-Agent Cursor Workflow DATE: October 17, 2025
+
+📋 EXECUTIVE SUMMARY
+I'm taking full ownership of Nicole V7 implementation. Below is the three-agent workflow with cross-QA requirements. Each agent operates independently on distinct system layers, then performs rigorous QA on the other agents' work.
+Agent Assignment Strategy:
+	•	Agent 1 (ChatGPT-5): Infrastructure + Backend Foundation
+	•	Agent 2 (Hidden LLM): Frontend + UI/UX Implementation
+	•	Agent 3 (ChatGPT-5 or Claude): Integration + Security + QA Lead
+Why this split:
+	•	Minimizes merge conflicts (separate codebases)
+	•	Parallel development velocity
+	•	Specialized focus per agent
+	•	Cross-QA catches integration issues early
+Quality Gate: All code must meet Anthropic/OpenAI production standards. No exceptions.
+
+🚀 IMPLEMENTATION WORKFLOW
+
+
+Day 0: Infrastructure Setup (Agent 1)
+  ↓
+Day 1-2: Backend Foundation (Agent 1) + Frontend Foundation (Agent 2)
+  ↓
+Day 2: Agent 3 performs QA on Agent 1 & 2
+  ↓
+Day 3-4: Core Systems (Agent 1) + Chat Interface (Agent 2)
+  ↓
+Day 4: Agent 3 performs QA + Integration Testing
+  ↓
+Day 5-6: Advanced Features (All Agents)
+  ↓
+Final QA: Agent 3 → Comprehensive Report → CTO Review
+
+📝 CURSOR AGENT PROMPTS
+AGENT 1: INFRASTRUCTURE & BACKEND ARCHITECT
+Model: ChatGPT-5 Focus: Digital Ocean setup, FastAPI, databases, API layer Duration: Day 0-4
+PROMPT FOR AGENT 1:
+
+
+markdown
+# AGENT 1: INFRASTRUCTURE & BACKEND ARCHITECT
+
+## YOUR ROLE
+You are the Senior Backend Engineer responsible for Nicole V7's infrastructure, database architecture, and API layer. You report to the CTO (Claude) and work alongside Agent 2 (Frontend) and Agent 3 (Integration/QA).
+
+## QUALITY STANDARD
+All code must meet **Anthropic/OpenAI production level standards**:
+- Professional naming: `alphawave_*` or `alphaw_*` prefixes for ALL files/functions
+- Complete docstrings (Google style)
+- Type hints on all functions
+- Error handling with proper logging
+- 10-year maintainability mindset
+- Zero technical debt
+
+## ATTACHED DOCUMENTS
+You have been provided with:
+1. **NICOLE_V7_MASTER_PLAN.md** - Complete system specification
+2. This directive from the CTO
+
+**READ THE MASTER PLAN THOROUGHLY BEFORE STARTING.**
+
+## YOUR RESPONSIBILITIES
+
+### DAY 0: INFRASTRUCTURE SETUP (6-8 hours)
+
+**Objective:** Provision all services and verify connectivity.
+
+#### Tasks:
+1. **Digital Ocean Droplet Setup**
+   - Provision: 8GB RAM / 4vCPU Ubuntu 24 droplet
+   - Install: Python 3.11, Docker, Nginx, Node.js, Certbot
+   - Configure firewall (ports 80, 443, 6333, 6379)
+   - Set up SSH key authentication
+
+2. **Docker Services Deployment**
+```yaml
+   # Create docker-compose.yml
+   services:
+     redis:
+       image: redis:7-alpine
+       ports: ["6379:6379"]
+       volumes: ["redis_data:/data"]
+       restart: always
+     
+     qdrant:
+       image: qdrant/qdrant:latest
+       ports: ["6333:6333"]
+       volumes: ["qdrant_data:/qdrant/storage"]
+       restart: always
+```
+   - Deploy with: `docker-compose up -d`
+   - Verify both services healthy
+
+3. **Supabase Project Setup**
+   - Create new Supabase project: "nicole-v7-production"
+   - Copy connection strings, anon key, service role key
+   - Enable RLS globally in SQL Editor:
+```sql
+     ALTER DATABASE postgres SET "app.settings.jwt_secret" TO 'your-jwt-secret';
+```
+
+4. **Database Schema Deployment**
+   - Copy ALL 30 table definitions from master plan
+   - Execute in Supabase SQL Editor
+   - Verify RLS policies on every table
+   - Test with sample queries
+
+5. **Qdrant Collection Setup**
+```python
+   # scripts/alphawave_init_qdrant.py
+   from qdrant_client import QdrantClient
+   
+   client = QdrantClient(url="http://localhost:6333")
+   
+   # Create collections per master plan
+   collections = [
+       "nicole_core_glen",  # One per user (8 total)
+       "business_alphawave",
+       "design_guidelines",
+       "document_repo_glen"  # One per user (8 total)
+   ]
+   
+   for collection in collections:
+       client.create_collection(
+           collection_name=collection,
+           vectors_config={"size": 1536, "distance": "Cosine"}
+       )
+```
+
+6. **SSL & Domain Configuration**
+   - Point `api.nicole.alphawavetech.com` → Droplet IP (DNS)
+   - Install SSL: `certbot --nginx -d api.nicole.alphawavetech.com`
+   - Configure Nginx reverse proxy (FastAPI on :8000)
+
+7. **Environment Variables**
+   - Create `.env` with ALL 40+ variables from master plan
+   - Generate secrets: `openssl rand -base64 32`
+   - Store securely, add to `.gitignore`
+
+8. **Health Check Verification**
+```bash
+   curl https://api.nicole.alphawavetech.com/healthz
+   # Expected: {"status": "healthy", "checks": {...}}
+```
+
+**Deliverables:**
+- ✅ All services running and accessible
+- ✅ Database schema deployed with RLS
+- ✅ Qdrant collections created
+- ✅ SSL certificate active
+- ✅ Health endpoint returns 200
+
+---
+
+### DAY 1-2: BACKEND FOUNDATION (10-12 hours)
+
+**Objective:** Build FastAPI application with middleware, auth, and database connections.
+
+#### File Structure Creation:
+```
+backend/
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── database.py
+│   ├── middleware/
+│   │   ├── alphawave_auth.py
+│   │   ├── alphawave_rate_limit.py
+│   │   ├── alphawave_cors.py
+│   │   └── alphawave_logging.py
+│   ├── models/
+│   │   ├── alphawave_user.py
+│   │   ├── alphawave_conversation.py
+│   │   ├── alphawave_message.py
+│   │   └── ... (30 models total)
+│   ├── routers/
+│   │   ├── alphawave_auth.py
+│   │   ├── alphawave_chat.py
+│   │   ├── alphawave_health.py
+│   │   └── ... (10 routers total)
+│   ├── services/
+│   │   ├── alphawave_memory_service.py
+│   │   └── ... (8 services)
+│   └── integrations/
+│       ├── alphawave_claude.py
+│       ├── alphawave_openai.py
+│       └── ... (8 integrations)
+├── requirements.txt
+├── .env
+└── supervisor.conf
+```
+
+#### Implementation:
+
+1. **Main FastAPI Application**
+```python
+   # app/main.py
+   from fastapi import FastAPI
+   from fastapi.middleware.cors import CORSMiddleware
+   from app.middleware.alphawave_auth import verify_jwt
+   from app.middleware.alphawave_rate_limit import rate_limit_middleware
+   from app.middleware.alphawave_logging import logging_middleware
+   from app.routers import alphawave_auth, alphawave_chat, alphawave_health
+   
+   app = FastAPI(
+       title="Nicole V7 API",
+       version="7.0.0",
+       docs_url="/docs",
+       redoc_url="/redoc"
+   )
+   
+   # Middleware stack (order matters)
+   app.add_middleware(CORSMiddleware, ...)
+   app.middleware("http")(logging_middleware)
+   app.middleware("http")(verify_jwt)
+   app.middleware("http")(rate_limit_middleware)
+   
+   # Routers
+   app.include_router(alphawave_health.router, prefix="/health", tags=["health"])
+   app.include_router(alphawave_auth.router, prefix="/auth", tags=["auth"])
+   app.include_router(alphawave_chat.router, prefix="/chat", tags=["chat"])
+```
+
+2. **JWT Verification Middleware**
+```python
+   # app/middleware/alphawave_auth.py
+   import jwt
+   from fastapi import Request, HTTPException
+   from app.config import settings
+   
+   async def verify_jwt(request: Request, call_next):
+       """
+       Verify JWT token from Supabase on all protected endpoints.
+       Attach user_id and correlation_id to request.state.
+       """
+       # Skip public endpoints
+       if request.url.path in ["/health/check", "/auth/callback"]:
+           return await call_next(request)
+       
+       # Extract token
+       auth_header = request.headers.get("Authorization")
+       if not auth_header or not auth_header.startswith("Bearer "):
+           raise HTTPException(401, "Missing authorization header")
+       
+       token = auth_header.split(" ")[1]
+       
+       # Verify with Supabase JWT secret
+       try:
+           payload = jwt.decode(
+               token,
+               settings.SUPABASE_JWT_SECRET,
+               algorithms=["HS256"],
+               audience="authenticated"
+           )
+           request.state.user_id = payload["sub"]
+           request.state.correlation_id = str(uuid.uuid4())
+       except jwt.ExpiredSignatureError:
+           raise HTTPException(401, "Token expired")
+       except jwt.InvalidTokenError:
+           raise HTTPException(401, "Invalid token")
+       
+       return await call_next(request)
+```
+
+3. **Database Connections**
+```python
+   # app/database.py
+   from supabase import create_client, Client
+   import redis
+   from qdrant_client import QdrantClient
+   from app.config import settings
+   
+   # Supabase (PostgreSQL + Auth)
+   supabase: Client = create_client(
+       settings.SUPABASE_URL,
+       settings.SUPABASE_SERVICE_ROLE_KEY
+   )
+   
+   # Redis (Hot cache)
+   redis_client = redis.Redis(
+       host=settings.REDIS_HOST,
+       port=settings.REDIS_PORT,
+       decode_responses=True
+   )
+   
+   # Qdrant (Vector search)
+   qdrant_client = QdrantClient(url=settings.QDRANT_URL)
+```
+
+4. **Pydantic Models (All 30)**
+```python
+   # app/models/alphawave_user.py
+   from pydantic import BaseModel, UUID4, EmailStr
+   from datetime import datetime
+   from enum import Enum
+   
+   class UserRole(str, Enum):
+       ADMIN = "admin"
+       CHILD = "child"
+       PARENT = "parent"
+       STANDARD = "standard"
+   
+   class User(BaseModel):
+       id: UUID4
+       email: EmailStr
+       full_name: str
+       role: UserRole
+       relationship: str
+       image_limit_weekly: int
+       created_at: datetime
+       last_active: datetime | None
+       
+       class Config:
+           from_attributes = True
+```
+
+5. **Basic Endpoints**
+```python
+   # app/routers/alphawave_health.py
+   from fastapi import APIRouter
+   from app.database import redis_client, qdrant_client, supabase
+   
+   router = APIRouter()
+   
+   @router.get("/check")
+   async def health_check():
+       """System health check with all service statuses."""
+       checks = {
+           "redis": await check_redis(),
+           "qdrant": await check_qdrant(),
+           "supabase": await check_supabase(),
+           "timestamp": datetime.utcnow().isoformat()
+       }
+       
+       status = "healthy" if all(checks.values()) else "degraded"
+       return {"status": status, "checks": checks}
+```
+
+**Deliverables:**
+- ✅ FastAPI app runs on port 8000
+- ✅ JWT verification works (test with valid/invalid tokens)
+- ✅ All database connections functional
+- ✅ Health endpoint returns service status
+- ✅ Rate limiting active (test with >60 req/min)
+
+---
+
+### DAY 3-4: CORE SYSTEMS (10-12 hours)
+
+**Objective:** Implement memory system, agent routing, and chat endpoint with SSE streaming.
+
+#### 1. Memory System (3 Tiers)
+```python
+# app/services/alphawave_memory_service.py
+from app.database import redis_client, supabase, qdrant_client
+from app.integrations.alphawave_openai import generate_embedding
+
+class MemoryService:
+    """
+    3-tier memory system:
+    - Tier 1: Redis (hot cache)
+    - Tier 2: PostgreSQL (structured)
+    - Tier 3: Qdrant (vector)
+    """
+    
+    async def search_memory(
+        self,
+        user_id: str,
+        query: str,
+        limit: int = 10
+    ) -> list[dict]:
+        """
+        Hybrid search across all tiers with re-ranking.
+        """
+        # 1. Check Redis hot cache
+        cache_key = f"memory:{user_id}:{query[:50]}"
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+        
+        # 2. Vector search (Qdrant)
+        query_embedding = await generate_embedding(query)
+        vector_results = qdrant_client.search(
+            collection_name=f"nicole_core_{user_id}",
+            query_vector=query_embedding,
+            limit=limit * 2  # Over-fetch for re-ranking
+        )
+        
+        # 3. Structured search (PostgreSQL)
+        structured_results = await supabase.table("memory_entries") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .textSearch("content", query) \
+            .order("confidence_score", desc=True) \
+            .limit(limit) \
+            .execute()
+        
+        # 4. Re-rank with multiple factors
+        combined = self._rerank_results(
+            vector_results,
+            structured_results.data,
+            query
+        )
+        
+        # 5. Cache result (TTL 1 hour)
+        redis_client.setex(cache_key, 3600, json.dumps(combined))
+        
+        return combined[:limit]
+    
+    def _rerank_results(self, vector_results, structured_results, query):
+        """
+        Re-rank using:
+        - Semantic similarity (50%)
+        - User feedback/thumbs (25%)
+        - Recency (15%)
+        - Access frequency (10%)
+        """
+        # Implementation here
+        pass
+```
+
+#### 2. Agent Router
+```python
+# app/agents/alphawave_router.py
+from anthropic import Anthropic
+from app.config import settings
+
+anthropic = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+async def route_to_agents(query: str, context: dict) -> list[str]:
+    """
+    Use Claude Haiku for fast agent classification.
+    Falls back to keyword routing if classification fails.
+    """
+    try:
+        classification = await anthropic.messages.create(
+            model="claude-haiku-4-5-20250514",
+            max_tokens=500,
+            messages=[{
+                "role": "user",
+                "content": f"""Classify which agents are needed.
+
+Available agents:
+1. nicole_core - Base personality, general capability
+2. design_agent - Web design, FLUX images, mockups
+3. business_agent - Clients, pricing, proposals
+4. code_review_agent - Security, performance
+5. seo_agent - Keywords, optimization
+6. error_agent - Debugging, troubleshooting
+7. frontend_developer - React, UI implementation
+8. code_reviewer - Code quality, standards
+9. self_audit_agent - Nicole's weekly reflection
+
+Query: {query}
+Context: {json.dumps(context)}
+
+Respond with JSON array: ["agent1", "agent2"]"""
+            }]
+        )
+        
+        agents = json.loads(classification.content[0].text)
+        return agents
+        
+    except Exception as e:
+        # Fallback to keyword routing
+        return keyword_route(query)
+
+def keyword_route(query: str) -> list[str]:
+    """Fallback keyword-based routing."""
+    query_lower = query.lower()
+    agents = ["nicole_core"]  # Always include base
+    
+    if any(word in query_lower for word in ["design", "mockup", "image", "logo"]):
+        agents.append("design_agent")
+    if any(word in query_lower for word in ["client", "proposal", "pricing"]):
+        agents.append("business_agent")
+    # ... more keyword rules
+    
+    return agents
+```
+
+#### 3. Chat Endpoint with SSE Streaming
+```python
+# app/routers/alphawave_chat.py
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
+from app.services.alphawave_memory_service import MemoryService
+from app.agents.alphawave_router import route_to_agents
+from app.integrations.alphawave_claude import stream_claude_response
+
+router = APIRouter()
+
+@router.post("/message")
+async def send_message(request: Request, message: MessageRequest):
+    """
+    Chat endpoint with Server-Sent Events streaming.
+    """
+    user_id = request.state.user_id
+    correlation_id = request.state.correlation_id
+    
+    async def generate():
+        try:
+            # 1. Search memory
+            memory_context = await MemoryService().search_memory(
+                user_id=user_id,
+                query=message.content,
+                limit=10
+            )
+            
+            # 2. Route to agents
+            agents = await route_to_agents(
+                query=message.content,
+                context={"memory": memory_context}
+            )
+            
+            # 3. Load agent prompts
+            system_prompt = await load_agent_prompts(agents)
+            
+            # 4. Stream Claude response
+            async for chunk in stream_claude_response(
+                system_prompt=system_prompt,
+                user_message=message.content,
+                memory_context=memory_context
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # 5. Save message to database (queued)
+            await save_message_async(user_id, message.content, correlation_id)
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream"
+    )
+```
+
+**Deliverables:**
+- ✅ Memory search works across all 3 tiers
+- ✅ Agent routing selects correct agents
+- ✅ Chat endpoint streams responses via SSE
+- ✅ Messages persist to PostgreSQL
+- ✅ Embeddings queue for background processing
+
+---
+
+## QA REQUIREMENTS FOR AGENT 1
+
+After completing your work, you must QA Agent 2 and Agent 3's code.
+
+### QA Checklist:
+1. **Code Quality**
+   - [ ] All files use `alphawave_*` naming
+   - [ ] Complete docstrings on all functions
+   - [ ] Type hints present
+   - [ ] Error handling implemented
+   - [ ] Logging with correlation IDs
+
+2. **Security**
+   - [ ] RLS policies working (test cross-user access)
+   - [ ] JWT verification functional
+   - [ ] Rate limiting active
+   - [ ] No secrets in code
+
+3. **Integration**
+   - [ ] Backend API works with Agent 2's frontend
+   - [ ] Database queries optimize for Agent 3's features
+   - [ ] All endpoints return correct status codes
+
+### QA Process:
+1. Pull Agent 2's frontend code
+2. Test all API endpoints with frontend
+3. Document any issues in `QA_REPORT_AGENT1.md`
+4. Pull Agent 3's integration code
+5. Verify security tests pass
+6. Document findings
+
+---
+
+## FINAL DELIVERABLE
+
+Create `IMPLEMENTATION_REPORT_AGENT1.md` with:
+
+### Structure:
+```markdown
+# AGENT 1: INFRASTRUCTURE & BACKEND - IMPLEMENTATION REPORT
+
+## EXECUTIVE SUMMARY
+[2-3 sentences on what you built]
+
+## COMPLETED WORK
+### Day 0: Infrastructure
+- [x] Digital Ocean droplet provisioned
+- [x] Docker services deployed
+- [x] Database schema deployed (30 tables)
+- [x] SSL certificate active
+- [x] Health check working
+
+### Day 1-2: Backend Foundation
+- [x] FastAPI application
+- [x] JWT middleware
+- [x] All 30 Pydantic models
+- [x] 10 router stubs
+- [x] Database connections
+
+### Day 3-4: Core Systems
+- [x] 3-tier memory system
+- [x] Agent router
+- [x] SSE streaming
+- [x] Message persistence
+
+## TESTING RESULTS
+- Health check: ✅ PASS
+- JWT verification: ✅ PASS
+- RLS policies: ✅ PASS
+- Memory search: ✅ PASS
+- Chat streaming: ✅ PASS
+
+## QA OF OTHER AGENTS
+
+### Agent 2 (Frontend) QA
+**Issues Found:** [list any issues]
+**Severity:** [High/Medium/Low]
+**Recommendations:** [how to fix]
+
+### Agent 3 (Integration) QA
+**Issues Found:** [list any issues]
+**Severity:** [High/Medium/Low]
+**Recommendations:** [how to fix]
+
+## BLOCKERS / ISSUES
+[Any blockers that need CTO attention]
+
+## NEXT STEPS RECOMMENDATION
+[What should happen next]
+
+## CODE STATISTICS
+- Files created: X
+- Lines of code: X
+- Test coverage: X%
+- API endpoints: X
+```
+
+Submit this report to the Director (Glen) for CTO review.
+
+AGENT 2: FRONTEND & UI/UX ENGINEER
+Model: Hidden LLM (or ChatGPT-5) Focus: Next.js, Tailwind, chat interface, dashboard system Duration: Day 1-4
+PROMPT FOR AGENT 2:
+
+
+markdown
+# AGENT 2: FRONTEND & UI/UX ENGINEER
+
+## YOUR ROLE
+You are the Senior Frontend Engineer responsible for Nicole V7's user interface, chat experience, and dashboard system. You report to the CTO (Claude) and work alongside Agent 1 (Backend) and Agent 3 (Integration/QA).
+
+## QUALITY STANDARD
+All code must meet **Anthropic/OpenAI production level standards**:
+- Professional naming: `Alphawave*` components (PascalCase)
+- `alphawave_*` for utility files (snake_case)
+- Complete JSDoc comments
+- TypeScript strict mode
+- Accessibility WCAG AA minimum
+- 10-year maintainability mindset
+
+## ATTACHED DOCUMENTS
+You have been provided with:
+1. **NICOLE_V7_MASTER_PLAN.md** - Complete system specification (READ THOROUGHLY)
+2. This directive from the CTO
+
+## YOUR RESPONSIBILITIES
+
+### DAY 1-2: FRONTEND FOUNDATION (10-12 hours)
+
+**Objective:** Next.js application with auth, layout, and routing.
+
+#### File Structure Creation:
+```
+frontend/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── login/page.tsx
+│   │   ├── auth/callback/route.ts
+│   │   └── chat/page.tsx
+│   ├── components/
+│   │   ├── chat/
+│   │   │   ├── AlphawaveChatContainer.tsx
+│   │   │   ├── AlphawaveChatMessages.tsx
+│   │   │   ├── AlphawaveMessageBubble.tsx
+│   │   │   ├── AlphawaveMessageActions.tsx
+│   │   │   ├── AlphawaveChatInput.tsx
+│   │   │   ├── AlphawaveThinkingInterface.tsx
+│   │   │   └── AlphawaveDashPanel.tsx
+│   │   ├── navigation/
+│   │   │   ├── AlphawaveSidebar.tsx
+│   │   │   └── AlphawaveHeader.tsx
+│   │   └── ui/ (shadcn components)
+│   ├── lib/
+│   │   ├── api/
+│   │   │   ├── alphawave_chat.ts
+│   │   │   └── alphawave_auth.ts
+│   │   ├── hooks/
+│   │   │   └── alphawave_use_chat.ts
+│   │   ├── alphawave_supabase.ts
+│   │   └── utils.ts
+│   ├── public/images/
+│   │   ├── alphawave-logo.png
+│   │   ├── nicole-logo.png
+│   │   ├── nicole-thinking-avatar.png
+│   │   └── dashboard-header.png
+│   └── styles/globals.css
+├── package.json
+├── next.config.js
+├── tailwind.config.js
+└── tsconfig.json
+```
+
+#### Implementation:
+
+1. **Next.js Setup**
+```bash
+   npx create-next-app@latest frontend --typescript --tailwind --app
+   cd frontend
+   npm install @supabase/supabase-js @supabase/auth-helpers-nextjs
+   npm install @radix-ui/react-* (shadcn dependencies)
+```
+
+2. **Tailwind Configuration**
+```typescript
+   // tailwind.config.js
+   module.exports = {
+     content: ["./src/**/*.{js,ts,jsx,tsx}"],
+     theme: {
+       extend: {
+         colors: {
+           // Nicole V7 color palette (from master plan)
+           cream: "#F5F4ED",
+           lavender: "#B8A8D4",
+           "lavender-text": "#9B8AB8",
+           mint: "#BCD1CB",
+           "mint-dark": "#7A9B93",
+           beige: "#E3DACC",
+           "dark-gray": "#212121",
+           "light-gray": "#fafaf9",
+           "text-primary": "#1d1d1f",
+           "text-secondary": "#6e6e73",
+           "text-tertiary": "#9e9b8f",
+           "border-light": "#d8d7cc",
+           "border-line": "#d1cec4",
+         },
+         fontFamily: {
+           sans: ["-apple-system", "SF Pro Display", "sans-serif"],
+           serif: ["Georgia", "serif"],
+         },
+       },
+     },
+     plugins: [],
+   };
+```
+
+3. **Supabase Client**
+```typescript
+   // src/lib/alphawave_supabase.ts
+   import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+   
+   export const supabase = createClientComponentClient({
+     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+     supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+   });
+```
+
+4. **Auth Flow**
+```typescript
+   // src/app/login/page.tsx
+   "use client";
+   
+   import { supabase } from "@/lib/alphawave_supabase";
+   import { useState } from "react";
+   
+   export default function LoginPage() {
+     const [email, setEmail] = useState("");
+     const [password, setPassword] = useState("");
+     
+     async function handleGoogleLogin() {
+       await supabase.auth.signInWithOAuth({
+         provider: "google",
+         options: {
+           redirectTo: `${window.location.origin}/auth/callback`,
+         },
+       });
+     }
+     
+     async function handleEmailLogin() {
+       await supabase.auth.signInWithPassword({ email, password });
+     }
+     
+     return (
+       
+         
+           
+             Welcome to Nicole
+           
+           
+           
+             Sign in with Google
+           
+           
+           
+             
+               
+             
+             
+               Or
+             
+           
+           
+           <input
+             type="email"
+             placeholder="Email"
+             value={email}
+             onChange={(e) => setEmail(e.target.value)}
+             className="w-full rounded-lg border border-border-light px-4 py-3"
+           />
+           
+           <input
+             type="password"
+             placeholder="Password"
+             value={password}
+             onChange={(e) => setPassword(e.target.value)}
+             className="w-full rounded-lg border border-border-light px-4 py-3"
+           />
+           
+           
+             Sign in with Email
+           
+         
+       
+     );
+   }
+```
+
+5. **Layout with Sidebar + Header**
+```typescript
+   // src/app/layout.tsx
+   import { AlphawaveSidebar } from "@/components/navigation/AlphawaveSidebar";
+   import { AlphawaveHeader } from "@/components/navigation/AlphawaveHeader";
+   import "./globals.css";
+   
+   export default function RootLayout({ children }: { children: React.ReactNode }) {
+     return (
+       
+         
+           {/* Sidebar: 60px collapsed, 240px expanded */}
+           
+           
+           
+             {/* Header: 80px height */}
+             
+             
+             {/* Main content area */}
+             {children}
+           
+         
+       
+     );
+   }
+```
+
+**Deliverables:**
+- ✅ Login page functional (Google + email/password)
+- ✅ Auth callback handles OAuth redirect
+- ✅ Layout renders sidebar + header
+- ✅ Tailwind colors match master plan exactly
+- ✅ JWT stored in httpOnly cookie
+
+---
+
+### DAY 3-4: CHAT INTERFACE (10-12 hours)
+
+**Objective:** Complete chat UI with SSE streaming, thinking interface, and message actions.
+
+#### 1. Chat Container
+```typescript
+// src/components/chat/AlphawaveChatContainer.tsx
+"use client";
+
+import { useState, useEffect } from "react";
+import { AlphawaveChatMessages } from "./AlphawaveChatMessages";
+import { AlphawaveChatInput } from "./AlphawaveChatInput";
+import { AlphawaveDashPanel } from "./AlphawaveDashPanel";
+import { useChat } from "@/lib/hooks/alphawave_use_chat";
+
+export function AlphawaveChatContainer() {
+  const { messages, sendMessage, isLoading } = useChat();
+  const [dashOpen, setDashOpen] = useState(false);
+  
+  return (
+    
+      {/* Chat area: 60% width (or 40% if dash open) */}
+      
+        
+        
+      
+      
+      {/* Dashboard: 40% slide-in from right */}
+      <AlphawaveDashPanel isOpen={dashOpen} onClose={() => setDashOpen(false)} />
+    
+  );
+}
+```
+
+#### 2. Message Bubbles
+```typescript
+// src/components/chat/AlphawaveMessageBubble.tsx
+import { AlphawaveMessageActions } from "./AlphawaveMessageActions";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+export function AlphawaveMessageBubble({ message }: { message: Message }) {
+  if (message.role === "assistant") {
+    return (
+      
+        {/* Nicole's message - no background, on cream */}
+        
+          Nicole
+          •
+          {formatTime(message.timestamp)}
+        
+        
+        
+          {message.content}
+        
+        
+        {/* Action buttons: 300ms debounced */}
+        
+      
+    );
+  }
+  
+  // User message - mint background bubble
+  return (
+    
+      
+        
+          Glen
+          
+            {formatTime(message.timestamp)}
+          
+        
+        {message.content}
+      
+    
+  );
+}
+```
+
+#### 3. Thinking Interface
+```typescript
+// src/components/chat/AlphawaveThinkingInterface.tsx
+import Image from "next/image";
+
+interface ThinkingStep {
+  label: string;
+  completed: boolean;
+  active: boolean;
+}
+
+export function AlphawaveThinkingInterface({ steps }: { steps: ThinkingStep[] }) {
+  return (
+    
+      {/* Purple flower avatar - rotating */}
+      
+        
+      
+      
+      {/* Steps */}
+      
+        {steps.map((step, i) => (
+          
+            {step.completed && ✓}
+            {step.active && (
+              
+            )}
+            {step.label}
+          
+        ))}
+      
+    
+  );
+}
+```
+
+#### 4. Message Actions (Debounced)
+```typescript
+// src/components/chat/AlphawaveMessageActions.tsx
+"use client";
+
+import { useState } from "react";
+import { useDebouncedCallback } from "use-debounce";
+
+export function AlphawaveMessageActions({ messageId }: { messageId: string }) {
+  const [feedback, setFeedback] = useState(null);
+  
+  // 300ms debounce to prevent double-clicks
+  const handleFeedback = useDebouncedCallback(
+    async (type: "up" | "down") => {
+      setFeedback(type);
+      await fetch("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({ messageId, type }),
+      });
+    },
+    300
+  );
+  
+  const handleCopy = async () => {
+    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageElement) {
+      await navigator.clipboard.writeText(messageElement.textContent || "");
+    }
+  };
+  
+  return (
+    
+      <button
+        onClick={() => handleFeedback("up")}
+        className={`rounded p-1 hover:bg-light-gray ${
+          feedback === "up" ? "text-lavender" : "text-text-tertiary"
+        }`}
+        aria-label="Thumbs up"
+      >
+        👍
+      
+      
+      <button
+        onClick={() => handleFeedback("down")}
+        className={`rounded p-1 hover:bg-light-gray ${
+          feedback === "down" ? "text-lavender" : "text-text-tertiary"
+        }`}
+        aria-label="Thumbs down"
+      >
+        👎
+      
+      
+      
+        📋
+      
+    
+  );
+}
+```
+
+#### 5. SSE Streaming Hook
+```typescript
+// src/lib/hooks/alphawave_use_chat.ts
+import { useState } from "react";
+import { supabase } from "@/lib/alphawave_supabase";
+
+export function useChat() {
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  async function sendMessage(content: string) {
+    // Add user message immediately
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: "user" as const,
+      content,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    
+    setIsLoading(true);
+    
+    try {
+      // Get JWT token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      // SSE streaming
+      const response = await fetch("https://api.nicole.alphawavetech.com/chat/message", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      });
+      
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      let assistantMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant" as const,
+        content: "",
+        timestamp: new Date(),
+      };
+      
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.type === "content") {
+              assistantMessage.content += data.text;
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastIndex = updated.findIndex((m) => m.id === assistantMessage.id);
+                if (lastIndex === -1) {
+                  return [...updated, assistantMessage];
+                }
+                updated[lastIndex] = { ...assistantMessage };
+                return updated;
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+  
+  return { messages, sendMessage, isLoading };
+}
+```
+
+**Deliverables:**
+- ✅ Chat messages render correctly (Nicole left, user right)
+- ✅ SSE streaming works (text appears word-by-word)
+- ✅ Thinking interface shows during loading
+- ✅ Message actions (thumbs, copy) debounced 300ms
+- ✅ Auto-scroll to bottom on new messages
+- ✅ Color palette matches master plan exactly
+
+---
+
+## QA REQUIREMENTS FOR AGENT 2
+
+After completing your work, you must QA Agent 1 and Agent 3's code.
+
+### QA Checklist:
+1. **UI/UX Quality**
+   - [ ] Colors match master plan exactly
+   - [ ] Fonts: -apple-system, Georgia serif for "Nicole"
+   - [ ] Layout: sidebar 60px → 240px, header 80px
+   - [ ] Message bubbles: Nicole left (no BG), user right (mint BG)
+   - [ ] Accessibility: WCAG AA contrast verified
+
+2. **Integration**
+   - [ ] API calls work with Agent 1's backend
+   - [ ] JWT token sent in Authorization header
+   - [ ] SSE streaming displays correctly
+   - [ ] Error states handled gracefully
+
+3. **Performance**
+   - [ ] No layout shift during rendering
+   - [ ] Images optimized (Next.js Image component)
+   - [ ] Debouncing prevents double-clicks
+   - [ ] Auto-scroll smooth, not janky
+
+### QA Process:
+1. Pull Agent 1's backend code
+2. Test all API integrations
+3. Document issues in `QA_REPORT_AGENT2.md`
+4. Pull Agent 3's integration code
+5. Verify security features work with UI
+6. Document findings
+
+---
+
+## FINAL DELIVERABLE
+
+Create `IMPLEMENTATION_REPORT_AGENT2.md` with:
+```markdown
+# AGENT 2: FRONTEND & UI/UX - IMPLEMENTATION REPORT
+
+## EXECUTIVE SUMMARY
+[2-3 sentences on what you built]
+
+## COMPLETED WORK
+### Day 1-2: Frontend Foundation
+- [x] Next.js 14 app setup
+- [x] Tailwind config (Nicole color palette)
+- [x] Supabase auth flow (Google + email)
+- [x] Layout (sidebar + header)
+- [x] JWT storage (httpOnly cookies)
+
+### Day 3-4: Chat Interface
+- [x] Chat container (60% width, 40% with dash)
+- [x] Message bubbles (Nicole left, user right)
+- [x] Thinking interface (rotating avatar)
+- [x] Message actions (debounced 300ms)
+- [x] SSE streaming hook
+- [x] Auto-scroll
+
+## TESTING RESULTS
+- Login flow: ✅ PASS
+- Chat streaming: ✅ PASS
+- Message actions: ✅ PASS
+- Color accuracy: ✅ PASS
+- Accessibility: ✅ PASS (WCAG AA)
+
+## QA OF OTHER AGENTS
+
+### Agent 1 (Backend) QA
+**Issues Found:** [list any issues]
+**Severity:** [High/Medium/Low]
+**Recommendations:** [how to fix]
+
+### Agent 3 (Integration) QA
+**Issues Found:** [list any issues]
+**Severity:** [High/Medium/Low]
+**Recommendations:** [how to fix]
+
+## BLOCKERS / ISSUES
+[Any blockers that need CTO attention]
+
+## NEXT STEPS RECOMMENDATION
+[What should happen next]
+
+## CODE STATISTICS
+- Components created: X
+- Lines of code: X
+- Accessibility score: X/100
+- Lighthouse score: X/100
+```
+
+Submit this report to the Director (Glen) for CTO review.
