@@ -24,6 +24,7 @@ def get_cors_origins() -> list[str]:
     return [
         "https://nicole.alphawavetech.com",
         "https://nicole-v7.vercel.app",
+        "https://ghealysr-nicole-assistant-yyr5.vercel.app",
     ]
 
 
