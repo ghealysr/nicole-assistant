@@ -17,6 +17,22 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# CORS origins for error responses
+CORS_ORIGINS = [
+    "https://nicole.alphawavetech.com",
+    "https://nicole-v7.vercel.app",
+    "https://ghealysr-nicole-assistant-yyr5.vercel.app",
+]
+
+
+def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+    """Add CORS headers to error responses."""
+    origin = request.headers.get("origin", "")
+    if origin in CORS_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
 
 # Public paths that don't require authentication
 PUBLIC_PATHS = {
@@ -90,23 +106,23 @@ async def verify_jwt(request: Request, call_next: Callable):
         auth_header = request.headers.get("Authorization")
         if not auth_header:
             logger.warning(f"[{correlation_id}] Missing authorization header for: {request.method} {request.url.path}")
-            return JSONResponse(
+            return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
                     "error": "Authorization header required",
                     "correlation_id": correlation_id
                 }
-            )
+            ), request)
 
         if not auth_header.startswith("Bearer "):
             logger.warning(f"[{correlation_id}] Invalid auth header format for: {request.method} {request.url.path}")
-            return JSONResponse(
+            return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
                     "error": "Invalid authorization header format",
                     "correlation_id": correlation_id
                 }
-            )
+            ), request)
 
         token = auth_header.split(" ")[1]
 
@@ -129,39 +145,39 @@ async def verify_jwt(request: Request, call_next: Callable):
             user_id = payload.get("sub")
             if not user_id:
                 logger.error(f"[{correlation_id}] JWT missing subject claim")
-                return JSONResponse(
+                return add_cors_headers(JSONResponse(
                     status_code=401,
                     content={
                         "error": "Invalid token payload",
                         "correlation_id": correlation_id
                     }
-                )
+                ), request)
 
             # Optional issuer check if configured
             token_issuer = payload.get("iss")
             expected_issuer = getattr(settings, "SUPABASE_ISSUER", "")
             if expected_issuer and token_issuer != expected_issuer:
                 logger.warning(f"[{correlation_id}] Token issuer mismatch")
-                return JSONResponse(
+                return add_cors_headers(JSONResponse(
                     status_code=401,
                     content={
                         "error": "Invalid authentication token",
                         "correlation_id": correlation_id
                     }
-                )
+                ), request)
 
             # Validate user_id format as UUID
             try:
                 uuid.UUID(str(user_id))
             except Exception:
                 logger.warning(f"[{correlation_id}] Token subject is not a valid UUID")
-                return JSONResponse(
+                return add_cors_headers(JSONResponse(
                     status_code=401,
                     content={
                         "error": "Invalid authentication token",
                         "correlation_id": correlation_id
                     }
-                )
+                ), request)
 
             # Get user metadata from JWT
             user_metadata = payload.get("user_metadata", {})
@@ -185,31 +201,31 @@ async def verify_jwt(request: Request, call_next: Callable):
 
         except jwt.ExpiredSignatureError:
             logger.warning(f"[{correlation_id}] Token expired for path: {request.method} {request.url.path}")
-            return JSONResponse(
+            return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
                     "error": "Token has expired",
                     "correlation_id": correlation_id
                 }
-            )
+            ), request)
         except jwt.InvalidTokenError:
             logger.warning(f"[{correlation_id}] Invalid token for path: {request.method} {request.url.path}")
-            return JSONResponse(
+            return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
                     "error": "Invalid or expired token",
                     "correlation_id": correlation_id
                 }
-            )
+            ), request)
         except Exception as e:
             logger.error(f"[{correlation_id}] JWT verification error: {str(e)}")
-            return JSONResponse(
+            return add_cors_headers(JSONResponse(
                 status_code=500,
                 content={
                     "error": "Authentication service error",
                     "correlation_id": correlation_id
                 }
-            )
+            ), request)
 
         # Execute the request
         response = await call_next(request)
@@ -229,13 +245,13 @@ async def verify_jwt(request: Request, call_next: Callable):
             f"[{correlation_id}] Middleware error: {str(e)} - Duration: {duration:.3f}s",
             exc_info=True
         )
-        return JSONResponse(
+        return add_cors_headers(JSONResponse(
             status_code=500,
             content={
                 "error": "Internal server error",
                 "correlation_id": correlation_id
             }
-        )
+        ), request)
 
 
 async def require_admin(request: Request) -> None:
