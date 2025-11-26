@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/alphawave_supabase';
 
 interface User {
@@ -70,10 +71,12 @@ export function AlphawaveHeader() {
         {/* User profile */}
         <div className="flex items-center space-x-3">
           {user?.user_metadata?.avatar_url ? (
-            <img 
+            <Image 
               src={user.user_metadata.avatar_url} 
               alt={displayName}
-              className="w-8 h-8 rounded-full"
+              width={32}
+              height={32}
+              className="rounded-full"
             />
           ) : (
             <div className="w-8 h-8 rounded-full bg-mint flex items-center justify-center">

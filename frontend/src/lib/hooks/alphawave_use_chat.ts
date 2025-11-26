@@ -41,13 +41,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load conversation history on mount if conversationId provided
-  useEffect(() => {
-    if (conversationId) {
-      loadConversationHistory(conversationId);
-    }
-  }, [conversationId]);
-
   /**
    * Load existing conversation history
    */
@@ -65,7 +58,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       if (response.ok) {
         const data = await response.json();
         if (data.messages) {
-          setMessages(data.messages.map((m: any) => ({
+          setMessages(data.messages.map((m: { id: string; role: string; content: string; created_at: string }) => ({
             id: m.id,
             role: m.role,
             content: m.content,
@@ -79,6 +72,13 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       // Don't set error state - this is a non-critical failure
     }
   }, []);
+
+  // Load conversation history on mount if conversationId provided
+  useEffect(() => {
+    if (conversationId) {
+      loadConversationHistory(conversationId);
+    }
+  }, [conversationId, loadConversationHistory]);
 
   /**
    * Clear error state
@@ -206,7 +206,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               }
-            } catch (parseError) {
+            } catch {
               // Skip invalid JSON lines (could be keep-alive or empty lines)
               if (line.slice(6).trim() && line.slice(6) !== '[DONE]') {
                 console.warn('Failed to parse SSE data:', line);

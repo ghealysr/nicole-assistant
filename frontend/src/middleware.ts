@@ -36,11 +36,6 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith(route)
   );
   
-  // Check if this is a public route
-  const isPublicRoute = PUBLIC_ROUTES.some(route => 
-    pathname === route || pathname.startsWith('/auth/')
-  );
-
   // If accessing a protected route without a session, redirect to login
   if (isProtectedRoute && !session) {
     const loginUrl = new URL('/login', req.url);

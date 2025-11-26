@@ -79,7 +79,7 @@ export default function LoginPage() {
             Nicole
           </h1>
           <p className="text-text-secondary text-lg leading-relaxed">
-            Your personal AI companion, designed to help with life's big and small moments.
+            Your personal AI companion, designed to help with life&apos;s big and small moments.
           </p>
           <div className="mt-12 flex justify-center space-x-6 text-text-tertiary text-sm">
             <span>🧠 Perfect memory</span>

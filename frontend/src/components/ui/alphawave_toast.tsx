@@ -158,17 +158,16 @@ function ToastItem({
  * Convenience functions for direct toast calls
  */
 export const toast = {
-  success: (message: string, duration?: number) => {
-    // This will be set by the provider
+  success: (message: string, _duration?: number) => {
     console.log('Toast success:', message);
   },
-  error: (message: string, duration?: number) => {
+  error: (message: string, _duration?: number) => {
     console.log('Toast error:', message);
   },
-  warning: (message: string, duration?: number) => {
+  warning: (message: string, _duration?: number) => {
     console.log('Toast warning:', message);
   },
-  info: (message: string, duration?: number) => {
+  info: (message: string, _duration?: number) => {
     console.log('Toast info:', message);
   },
 };

@@ -36,10 +36,10 @@ function EmptyState() {
         <span className="text-lavender-text text-3xl font-serif">N</span>
       </div>
       <h2 className="text-2xl font-serif text-lavender-text mb-3">
-        Hello! I'm Nicole
+        Hello! I&apos;m Nicole
       </h2>
       <p className="text-text-secondary max-w-md leading-relaxed">
-        Your personal AI assistant. I'm here to help with anything you need —
+        Your personal AI assistant. I&apos;m here to help with anything you need —
         just type a message below to get started.
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-2">
