@@ -140,7 +140,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          content,
+          message: content,
           conversation_id: conversationId,
         }),
         signal: controller.signal,
@@ -184,27 +184,31 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             try {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === 'content') {
+              if (data.type === 'token' || data.type === 'content') {
+                const textContent = data.content || data.text || '';
                 setMessages((prev) => {
                   if (!assistantCreated) {
                     assistantCreated = true;
                     return [...prev, {
                       id: assistantMessageId,
                       role: 'assistant' as const,
-                      content: data.text,
+                      content: textContent,
                       timestamp: new Date(),
                       status: 'sent' as const,
                     }];
                   } else {
                     return prev.map((m) => 
                       m.id === assistantMessageId 
-                        ? { ...m, content: m.content + data.text }
+                        ? { ...m, content: m.content + textContent }
                         : m
                     );
                   }
                 });
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
+              } else if (data.type === 'done') {
+                // Stream complete
+                console.log('Stream complete:', data.message_id);
               }
             } catch {
               // Skip invalid JSON lines (could be keep-alive or empty lines)
