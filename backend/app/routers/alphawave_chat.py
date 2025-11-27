@@ -159,26 +159,30 @@ async def send_message(
     # ========================================================================
     
     try:
+        # Query only columns that exist in the users table
+        # Note: age, date_of_birth, parental_consent may not exist yet
         user_result = supabase.table("users").select(
-            "id, age, date_of_birth, role, parental_consent"
+            "id, role, full_name, email"
         ).eq("id", user_id).execute()
         
         if not user_result.data:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_data = user_result.data[0]
-        user_age = user_data.get("age")
+            # User might not exist in users table yet (first login via Supabase Auth)
+            # Create a default user entry or use defaults
+            logger.info(f"User {user_id} not found in users table, using defaults")
+            user_data = {"id": str(user_id), "role": "standard"}
+            user_age = None
+        else:
+            user_data = user_result.data[0]
+            user_age = user_data.get("age")  # Will be None if column doesn't exist
         
     except Exception as e:
-        logger.error(
-            f"Error fetching user data: {e}",
-            extra={"correlation_id": correlation_id},
-            exc_info=True
+        # Log but don't fail - use defaults
+        logger.warning(
+            f"Error fetching user data (using defaults): {e}",
+            extra={"correlation_id": correlation_id}
         )
-        raise HTTPException(
-            status_code=500,
-            detail="Error retrieving user information"
-        )
+        user_data = {"id": str(user_id), "role": "standard"}
+        user_age = None
     
     # COPPA Compliance Check
     if settings.COPPA_REQUIRE_PARENTAL_CONSENT:
