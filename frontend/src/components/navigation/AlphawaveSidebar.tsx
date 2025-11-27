@@ -4,6 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
+interface AlphawaveSidebarProps {
+  onVibeClick?: () => void;
+  isVibeOpen?: boolean;
+}
+
 /**
  * Sidebar component for Nicole V7.
  * 
@@ -11,9 +16,10 @@ import { usePathname } from 'next/navigation';
  * - Dark theme sidebar
  * - Alphawave logo at top (large size)
  * - Navigation items with icons
+ * - Vibe button to open coding workspace
  * - Active state highlighting
  */
-export function AlphawaveSidebar() {
+export function AlphawaveSidebar({ onVibeClick, isVibeOpen }: AlphawaveSidebarProps) {
   const pathname = usePathname();
 
   const menuItems = [
@@ -33,17 +39,6 @@ export function AlphawaveSidebar() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-      )
-    },
-    { 
-      href: '/vibe', 
-      label: 'Vibe',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-          <path d="M9 18V5l12-2v13"/>
-          <circle cx="6" cy="18" r="3"/>
-          <circle cx="18" cy="16" r="3"/>
         </svg>
       )
     },
@@ -101,6 +96,19 @@ export function AlphawaveSidebar() {
             </Link>
           );
         })}
+        
+        {/* Vibe Button - Special styling, opens workspace */}
+        <button
+          onClick={onVibeClick}
+          className={`menu-item vibe-btn ${isVibeOpen ? 'vibe-active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          Vibe
+        </button>
       </nav>
       
       {/* Version indicator at bottom */}
