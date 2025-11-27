@@ -1942,3 +1942,329 @@ body.resizing * {
   box-shadow: 0 0 10px white;
   animation: vibe-breathe 2s ease-in-out infinite;
 }
+
+/* ═══ Code Panel - Traditional IDE Look ═══ */
+.vibe-code-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.vibe-code-panel.hidden {
+  display: none;
+}
+
+.vibe-code-panel.split-view {
+  flex: 1;
+  border-left: 1px solid var(--vibe-border);
+}
+
+.vibe-preview-panel.split-view {
+  flex: 1;
+}
+
+/* Code Tabs - VS Code Style */
+.vibe-code-tabs {
+  display: flex;
+  background: #252526;
+  border-bottom: 1px solid #1e1e1e;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vibe-code-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.vibe-code-tabs::-webkit-scrollbar-thumb {
+  background: #424242;
+}
+
+.vibe-code-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #2d2d2d;
+  border: none;
+  border-right: 1px solid #1e1e1e;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #969696;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  position: relative;
+}
+
+.vibe-code-tab:hover {
+  background: #323232;
+  color: #cccccc;
+}
+
+.vibe-code-tab.active {
+  background: #1e1e1e;
+  color: #ffffff;
+  border-top: 2px solid #B8A8D4;
+  margin-top: -1px;
+  padding-top: 7px;
+}
+
+.vibe-code-tab-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vibe-code-tab-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+  fill: none;
+}
+
+.vibe-code-tab-icon.html svg { stroke: #e34c26; }
+.vibe-code-tab-icon.css svg { stroke: #264de4; }
+.vibe-code-tab-icon.js svg { stroke: #f7df1e; }
+.vibe-code-tab-icon.json svg { stroke: #f5de19; }
+.vibe-code-tab-icon.md svg { stroke: #519aba; }
+
+.vibe-code-tab-name {
+  font-weight: 400;
+}
+
+.vibe-code-tab-modified {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c5c5c5;
+  margin-left: 4px;
+}
+
+.vibe-code-tab-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.vibe-code-tab:hover .vibe-code-tab-close {
+  opacity: 0.5;
+}
+
+.vibe-code-tab-close:hover {
+  opacity: 1 !important;
+  background: #3c3c3c;
+}
+
+.vibe-code-tab-close svg {
+  width: 12px;
+  height: 12px;
+  stroke: #cccccc;
+  stroke-width: 2;
+}
+
+/* Code Editor Area */
+.vibe-code-editor {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Monaco, Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Line Numbers - VS Code Style */
+.vibe-code-line-numbers {
+  width: 60px;
+  padding: 16px 0;
+  background: #1e1e1e;
+  text-align: right;
+  color: #858585;
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid #2d2d2d;
+}
+
+.vibe-line-number {
+  padding: 0 16px 0 8px;
+  height: 20.8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.vibe-line-number:hover {
+  color: #c6c6c6;
+}
+
+/* Code Content */
+.vibe-code-content {
+  flex: 1;
+  overflow: auto;
+  background: #1e1e1e;
+  padding: 16px 0;
+}
+
+.vibe-code-pre {
+  margin: 0;
+  padding: 0 16px;
+}
+
+.vibe-code-line {
+  height: 20.8px;
+  padding: 0 8px;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  white-space: pre;
+  transition: background 0.1s;
+}
+
+.vibe-code-line:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vibe-code-line.highlight {
+  background: rgba(184, 168, 212, 0.1);
+  border-left: 3px solid #B8A8D4;
+  margin-left: -3px;
+}
+
+.vibe-code-line.active {
+  background: #264f78;
+}
+
+/* Syntax Highlighting - VS Code Dark+ Theme */
+.code-keyword { 
+  color: #569cd6; 
+}
+
+.code-string { 
+  color: #ce9178; 
+}
+
+.code-tag { 
+  color: #569cd6; 
+}
+
+.code-attr { 
+  color: #9cdcfe; 
+}
+
+.code-value { 
+  color: #ce9178; 
+}
+
+.code-comment { 
+  color: #6a9955; 
+  font-style: italic; 
+}
+
+.code-function { 
+  color: #dcdcaa; 
+}
+
+.code-number { 
+  color: #b5cea8; 
+}
+
+.code-property { 
+  color: #9cdcfe; 
+}
+
+.code-bracket { 
+  color: #ffd700; 
+}
+
+.code-operator { 
+  color: #d4d4d4; 
+}
+
+/* Status Bar - VS Code Style */
+.vibe-code-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 24px;
+  background: #007acc;
+  color: white;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.vibe-statusbar-left,
+.vibe-statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.vibe-statusbar-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.vibe-statusbar-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.vibe-statusbar-item svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+/* Minimap (optional visual flair) */
+.vibe-code-minimap {
+  width: 60px;
+  background: #1e1e1e;
+  border-left: 1px solid #2d2d2d;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Code scrollbar styling */
+.vibe-code-content::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.vibe-code-content::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.vibe-code-content::-webkit-scrollbar-thumb {
+  background: #424242;
+  border: 3px solid #1e1e1e;
+  border-radius: 7px;
+}
+
+.vibe-code-content::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+.vibe-code-content::-webkit-scrollbar-corner {
+  background: #1e1e1e;
+}

@@ -49,6 +49,237 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
   const [currentDevice, setCurrentDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const [currentView, setCurrentView] = useState<'preview' | 'code' | 'split'>('preview');
   const [activityCollapsed, setActivityCollapsed] = useState(false);
+  const [activeFile, setActiveFile] = useState('index.html');
+  const [openTabs, setOpenTabs] = useState(['index.html', 'styles.css', 'app.js']);
+
+  // Sample code content for different files
+  const fileContents: Record<string, { language: string; code: string }> = {
+    'index.html': {
+      language: 'html',
+      code: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Awesome App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Welcome to My App</h1>
+      <nav class="nav">
+        <a href="#home">Home</a>
+        <a href="#about">About</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </header>
+    
+    <main class="main-content">
+      <section class="hero">
+        <h2>Build Something Amazing</h2>
+        <p>Start creating with Nicole's Vibe workspace.</p>
+        <button class="btn-primary">Get Started</button>
+      </section>
+    </main>
+    
+    <footer class="footer">
+      <p>&copy; 2024 My App. All rights reserved.</p>
+    </footer>
+  </div>
+  
+  <script src="app.js"></script>
+</body>
+</html>`
+    },
+    'styles.css': {
+      language: 'css',
+      code: `/* Reset & Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary-color: #B8A8D4;
+  --secondary-color: #8B5CF6;
+  --bg-color: #0C0C0E;
+  --text-color: #FAFAFA;
+  --muted-color: #A1A1AA;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav a {
+  color: var(--muted-color);
+  text-decoration: none;
+  margin-left: 24px;
+  transition: color 0.2s;
+}
+
+.nav a:hover {
+  color: var(--primary-color);
+}
+
+.hero {
+  text-align: center;
+  padding: 120px 0;
+}
+
+.hero h2 {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+}`
+    },
+    'app.js': {
+      language: 'javascript',
+      code: `// Main Application Entry Point
+import { initApp } from './lib/init.js';
+import { setupEventListeners } from './lib/events.js';
+
+// Configuration
+const config = {
+  apiUrl: 'https://api.example.com',
+  version: '1.0.0',
+  debug: true,
+};
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('🚀 App initializing...');
+  
+  try {
+    initApp(config);
+    setupEventListeners();
+    
+    // Fetch initial data
+    fetchUserData();
+    
+    console.log('✅ App initialized successfully!');
+  } catch (error) {
+    console.error('❌ Failed to initialize:', error);
+  }
+});
+
+// Fetch user data from API
+async function fetchUserData() {
+  const response = await fetch(\`\${config.apiUrl}/user\`);
+  const data = await response.json();
+  
+  if (data.success) {
+    updateUI(data.user);
+  }
+}
+
+// Update the UI with user data
+function updateUI(user) {
+  const greeting = document.querySelector('.hero h2');
+  if (greeting && user.name) {
+    greeting.textContent = \`Welcome back, \${user.name}!\`;
+  }
+}
+
+// Export for testing
+export { config, fetchUserData, updateUI };`
+    },
+    'package.json': {
+      language: 'json',
+      code: `{
+  "name": "my-awesome-app",
+  "version": "1.0.0",
+  "description": "A modern web application",
+  "main": "app.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "eslint": "^8.55.0",
+    "vitest": "^1.0.0"
+  },
+  "author": "Nicole AI",
+  "license": "MIT"
+}`
+    },
+    'README.md': {
+      language: 'markdown',
+      code: `# My Awesome App
+
+A modern web application built with Nicole's Vibe workspace.
+
+## Features
+
+- ⚡ Fast and responsive
+- 🎨 Beautiful UI with dark mode
+- 🔧 Easy to customize
+- 📱 Mobile-friendly
+
+## Getting Started
+
+\`\`\`bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+\`\`\`
+
+## License
+
+MIT © 2024`
+    }
+  };
 
   const [files] = useState<FileItem[]>([
     { name: 'src', type: 'folder', children: [
@@ -254,6 +485,148 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     setStatusText('Ready to Deploy');
   };
 
+  // Syntax highlighting helper
+  const renderSyntaxHighlightedLine = (line: string, language: string): React.ReactNode => {
+    if (!line) return <span>&nbsp;</span>;
+
+    // HTML syntax highlighting
+    if (language === 'html') {
+      return line.split(/(<[^>]+>|&[a-z]+;)/g).map((part, i) => {
+        if (part.startsWith('<!')) {
+          return <span key={i} className="code-comment">{part}</span>;
+        }
+        if (part.startsWith('<') && part.endsWith('>')) {
+          // Tag with attributes
+          const tagMatch = part.match(/^(<\/?)(\w+)(.*?)(\/?>)$/);
+          if (tagMatch) {
+            const [, open, tagName, attrs, close] = tagMatch;
+            return (
+              <span key={i}>
+                <span className="code-tag">{open}{tagName}</span>
+                {attrs && renderAttributes(attrs)}
+                <span className="code-tag">{close}</span>
+              </span>
+            );
+          }
+          return <span key={i} className="code-tag">{part}</span>;
+        }
+        return <span key={i}>{part}</span>;
+      });
+    }
+
+    // CSS syntax highlighting
+    if (language === 'css') {
+      // Comments
+      if (line.trim().startsWith('/*') || line.trim().startsWith('*')) {
+        return <span className="code-comment">{line}</span>;
+      }
+      // Selectors and properties
+      if (line.includes(':') && !line.includes('://')) {
+        const [prop, ...valueParts] = line.split(':');
+        const value = valueParts.join(':');
+        return (
+          <span>
+            <span className="code-attr">{prop}</span>
+            <span>:</span>
+            <span className="code-value">{value}</span>
+          </span>
+        );
+      }
+      if (line.includes('{') || line.includes('}')) {
+        return <span className="code-keyword">{line}</span>;
+      }
+      return <span>{line}</span>;
+    }
+
+    // JavaScript syntax highlighting
+    if (language === 'javascript') {
+      // Comments
+      if (line.trim().startsWith('//')) {
+        return <span className="code-comment">{line}</span>;
+      }
+      // Keywords
+      const keywords = ['const', 'let', 'var', 'function', 'async', 'await', 'return', 'if', 'else', 'try', 'catch', 'import', 'export', 'from', 'class', 'new', 'throw'];
+      
+      return (
+        <span>
+          {line.split(/(\s+|[{}()[\];,.]|'[^']*'|"[^"]*"|`[^`]*`|\b(?:const|let|var|function|async|await|return|if|else|try|catch|import|export|from|class|new|throw|true|false|null|undefined)\b)/g).map((part, i) => {
+            if (keywords.includes(part)) {
+              return <span key={i} className="code-keyword">{part}</span>;
+            }
+            if (/^['"`].*['"`]$/.test(part)) {
+              return <span key={i} className="code-string">{part}</span>;
+            }
+            if (/^\d+$/.test(part)) {
+              return <span key={i} className="code-number">{part}</span>;
+            }
+            if (/^[a-zA-Z_]\w*(?=\s*\()/.test(part)) {
+              return <span key={i} className="code-function">{part}</span>;
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    }
+
+    // JSON syntax highlighting
+    if (language === 'json') {
+      return (
+        <span>
+          {line.split(/("[^"]*")\s*(:)?/g).map((part, i) => {
+            if (part && part.startsWith('"') && part.endsWith('"')) {
+              // Check if next part is a colon (key) or not (value)
+              return <span key={i} className="code-string">{part}</span>;
+            }
+            if (part === ':') {
+              return <span key={i}>{part}</span>;
+            }
+            if (/^\d+$/.test(part?.trim())) {
+              return <span key={i} className="code-number">{part}</span>;
+            }
+            if (part === 'true' || part === 'false' || part === 'null') {
+              return <span key={i} className="code-keyword">{part}</span>;
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    }
+
+    // Markdown - basic highlighting
+    if (language === 'markdown') {
+      if (line.startsWith('#')) {
+        return <span className="code-keyword">{line}</span>;
+      }
+      if (line.startsWith('```')) {
+        return <span className="code-comment">{line}</span>;
+      }
+      if (line.startsWith('-') || line.startsWith('*')) {
+        return <span><span className="code-keyword">{line[0]}</span>{line.slice(1)}</span>;
+      }
+      return <span>{line}</span>;
+    }
+
+    return <span>{line}</span>;
+  };
+
+  // Helper for HTML attributes
+  const renderAttributes = (attrs: string): React.ReactNode => {
+    return attrs.split(/(\w+="[^"]*"|\w+='[^']*')/g).map((part, i) => {
+      const attrMatch = part.match(/^(\w+)(=)("[^"]*"|'[^']*')$/);
+      if (attrMatch) {
+        const [, name, eq, value] = attrMatch;
+        return (
+          <span key={i}>
+            <span className="code-attr"> {name}</span>
+            <span>{eq}</span>
+            <span className="code-string">{value}</span>
+          </span>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   const renderFileItem = (item: FileItem, depth: number = 0): React.ReactNode => {
     const isFolder = item.type === 'folder';
     
@@ -379,7 +752,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           </div>
 
           {/* Preview Panel */}
-          <div className={`vibe-preview-panel ${currentView === 'code' ? 'hidden' : ''}`}>
+          <div className={`vibe-preview-panel ${currentView === 'code' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
             <div className="vibe-preview-container">
               <div className={`vibe-device-frame ${currentDevice}`}>
                 <div className="vibe-device-header">
@@ -405,6 +778,90 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Code Panel - Traditional IDE Look */}
+          <div className={`vibe-code-panel ${currentView === 'preview' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
+            {/* File Tabs */}
+            <div className="vibe-code-tabs">
+              {openTabs.map(tab => {
+                const isModified = files.flatMap(f => f.children || [f]).find(f => f.name === tab)?.status === 'modified';
+                return (
+                  <button
+                    key={tab}
+                    className={`vibe-code-tab ${activeFile === tab ? 'active' : ''}`}
+                    onClick={() => setActiveFile(tab)}
+                  >
+                    <span className={`vibe-code-tab-icon ${tab.split('.').pop()}`}>
+                      {tab.endsWith('.html') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                      {tab.endsWith('.css') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                      {tab.endsWith('.js') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                      {tab.endsWith('.json') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                      {tab.endsWith('.md') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                    </span>
+                    <span className="vibe-code-tab-name">{tab}</span>
+                    {isModified && <span className="vibe-code-tab-modified" />}
+                    <button 
+                      className="vibe-code-tab-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenTabs(openTabs.filter(t => t !== tab));
+                        if (activeFile === tab && openTabs.length > 1) {
+                          setActiveFile(openTabs.find(t => t !== tab) || '');
+                        }
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Code Editor */}
+            <div className="vibe-code-editor">
+              {/* Line Numbers */}
+              <div className="vibe-code-line-numbers">
+                {fileContents[activeFile]?.code.split('\n').map((_, i) => (
+                  <div key={i} className="vibe-line-number">{i + 1}</div>
+                ))}
+              </div>
+
+              {/* Code Content with Syntax Highlighting */}
+              <div className="vibe-code-content">
+                <pre className="vibe-code-pre">
+                  <code className={`language-${fileContents[activeFile]?.language || 'text'}`}>
+                    {fileContents[activeFile]?.code.split('\n').map((line, i) => (
+                      <div key={i} className={`vibe-code-line ${i === 10 ? 'highlight' : ''}`}>
+                        {renderSyntaxHighlightedLine(line, fileContents[activeFile]?.language || 'text')}
+                      </div>
+                    ))}
+                  </code>
+                </pre>
+              </div>
+            </div>
+
+            {/* Status Bar */}
+            <div className="vibe-code-statusbar">
+              <div className="vibe-statusbar-left">
+                <span className="vibe-statusbar-item">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
+                  main
+                </span>
+                <span className="vibe-statusbar-item">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  Synced
+                </span>
+              </div>
+              <div className="vibe-statusbar-right">
+                <span className="vibe-statusbar-item">{fileContents[activeFile]?.language.toUpperCase()}</span>
+                <span className="vibe-statusbar-item">UTF-8</span>
+                <span className="vibe-statusbar-item">LF</span>
+                <span className="vibe-statusbar-item">
+                  Ln {fileContents[activeFile]?.code.split('\n').length}, Col 1
+                </span>
               </div>
             </div>
           </div>
