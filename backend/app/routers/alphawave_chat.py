@@ -374,6 +374,7 @@ async def send_message(
         print("[STREAM DEBUG] Yielded start event")
         
         try:
+            print("[STREAM DEBUG] Fetching conversation history...")
             # Fetch conversation history for context
             history_result = supabase.table("messages") \
                 .select("role, content") \
@@ -381,6 +382,7 @@ async def send_message(
                 .order("created_at", desc=False) \
                 .limit(20) \
                 .execute()
+            print(f"[STREAM DEBUG] Got {len(history_result.data)} history messages")
             
             # Build message history for Claude
             messages = []
@@ -395,6 +397,7 @@ async def send_message(
                 "role": "user",
                 "content": chat_request.text
             })
+            print(f"[STREAM DEBUG] Total messages for Claude: {len(messages)}")
             
             # System prompt (Nicole's personality)
             system_prompt = """You are Nicole, a warm and intelligent AI companion created for Glen Healy and his family.
@@ -411,8 +414,7 @@ You have perfect memory of all past conversations. Use this to provide personali
 Be natural, warm, and helpful. Adjust your tone based on who you're speaking to (Glen, his children, or other family members)."""
             
             # Generate streaming response from Claude
-            logger.info(f"Starting Claude streaming for conversation {conversation_id}")
-            logger.info(f"Messages to send: {len(messages)} messages")
+            print(f"[STREAM DEBUG] Starting Claude streaming..."))
             
             ai_generator = claude_client.generate_streaming_response(
                 messages=messages,
