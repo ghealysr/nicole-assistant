@@ -60,15 +60,14 @@ export function AlphawaveHeader({ onToggleDashboard, isDashboardOpen }: Alphawav
 
   return (
     <header className="nicole-header">
-      {/* Nicole Logo - 3x larger, overflows container */}
-      <div className="flex items-center h-9 overflow-visible">
+      {/* Nicole Logo - centered vertically in header */}
+      <div className="flex items-center justify-center h-full">
         <Image 
           src="/images/dashboard-header.png" 
           alt="Nicole" 
-          width={360} 
-          height={108}
-          className="h-[108px] w-auto object-contain"
-          style={{ margin: '-36px 0' }}
+          width={324} 
+          height={97}
+          className="h-[97px] w-auto object-contain"
           priority
         />
       </div>
