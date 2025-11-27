@@ -52,12 +52,23 @@ class AlphawaveChatRequest(BaseModel):
     
     Attributes:
         conversation_id: Existing conversation ID (None creates new)
-        message: User's message content
+        message: User's message content (also accepts 'content' for compatibility)
         research_mode: Enable deep research mode (O1-mini)
     """
     conversation_id: Optional[UUID] = None
-    message: str = Field(..., min_length=1, max_length=10000)
+    message: Optional[str] = Field(None, min_length=1, max_length=10000)
+    content: Optional[str] = Field(None, min_length=1, max_length=10000)  # Alias for compatibility
     research_mode: bool = False
+    
+    @property
+    def text(self) -> str:
+        """Get message text from either 'message' or 'content' field."""
+        return self.message or self.content or ""
+    
+    def model_post_init(self, __context):
+        """Validate that at least one of message/content is provided."""
+        if not self.message and not self.content:
+            raise ValueError("Either 'message' or 'content' must be provided")
 
 
 class AlphawaveChatHistoryResponse(BaseModel):
@@ -138,7 +149,7 @@ async def send_message(
         extra={
             "correlation_id": correlation_id,
             "user_id": str(user_id)[:8] + "...",
-            "message_length": len(chat_request.message),
+            "message_length": len(chat_request.text),
             "has_conversation": chat_request.conversation_id is not None,
         }
     )
@@ -200,7 +211,7 @@ async def send_message(
     if settings.SAFETY_ENABLE:
         try:
             safety_decision = await check_input_safety(
-                content=chat_request.message,
+                content=chat_request.text,
                 user_id=UUID(user_id),
                 user_age=user_age,
                 correlation_id=correlation_id,
@@ -263,7 +274,7 @@ async def send_message(
             supabase.table("conversations").insert({
                 "id": str(conversation_id),
                 "user_id": user_id,
-                "title": chat_request.message[:50],  # First message as title
+                "title": chat_request.text[:50],  # First message as title
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
             }).execute()
@@ -299,7 +310,7 @@ async def send_message(
             "conversation_id": str(conversation_id),
             "user_id": user_id,
             "role": "user",
-            "content": chat_request.message,
+            "content": chat_request.text,
             "created_at": datetime.utcnow().isoformat(),
         }).execute()
     
@@ -347,7 +358,7 @@ async def send_message(
             # Add current message
             messages.append({
                 "role": "user",
-                "content": chat_request.message
+                "content": chat_request.text
             })
             
             # System prompt (Nicole's personality)
