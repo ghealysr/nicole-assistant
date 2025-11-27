@@ -27,3 +27,5 @@ SSH-Nicole-new
 # Credentials
 *credentials*.env
 tiger-*.env
+.vercel
+.env*.local

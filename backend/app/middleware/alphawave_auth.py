@@ -17,6 +17,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+import re
+
 # CORS origins for error responses
 CORS_ORIGINS = [
     "https://nicole.alphawavetech.com",
@@ -24,11 +26,15 @@ CORS_ORIGINS = [
     "https://ghealysr-nicole-assistant-yyr5.vercel.app",
 ]
 
+# Regex pattern for Vercel preview deployments
+CORS_ORIGIN_REGEX = re.compile(r"https://ghealysr-nicole-assistant.*\.vercel\.app")
+
 
 def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
     """Add CORS headers to error responses."""
     origin = request.headers.get("origin", "")
-    if origin in CORS_ORIGINS:
+    # Check exact match or regex pattern
+    if origin in CORS_ORIGINS or CORS_ORIGIN_REGEX.match(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
     return response

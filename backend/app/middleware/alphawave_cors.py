@@ -28,6 +28,18 @@ def get_cors_origins() -> list[str]:
     ]
 
 
+def get_cors_origin_regex() -> str:
+    """
+    Regex pattern for allowed CORS origins.
+    Matches Vercel preview deployments and production domains.
+    """
+    if settings.ENVIRONMENT == "development":
+        return None
+    
+    # Match any Vercel preview URL for this project
+    return r"https://ghealysr-nicole-assistant.*\.vercel\.app"
+
+
 def configure_cors(app) -> None:
     """
     Configure CORS middleware on FastAPI app.
@@ -36,9 +48,12 @@ def configure_cors(app) -> None:
         app: FastAPI application instance
     """
     
+    origin_regex = get_cors_origin_regex()
+    
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_cors_origins(),
+        allow_origin_regex=origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
