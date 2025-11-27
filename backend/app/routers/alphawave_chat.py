@@ -166,10 +166,33 @@ async def send_message(
         ).eq("id", user_id).execute()
         
         if not user_result.data:
-            # User might not exist in users table yet (first login via Supabase Auth)
-            # Create a default user entry or use defaults
-            logger.info(f"User {user_id} not found in users table, using defaults")
-            user_data = {"id": str(user_id), "role": "standard"}
+            # User doesn't exist in users table yet (first login via Supabase Auth)
+            # Create the user entry to satisfy foreign key constraints
+            logger.info(f"User {user_id} not found in users table, creating entry")
+            
+            # Get user info from Supabase Auth if available
+            try:
+                auth_user = supabase.auth.get_user()
+                user_email = auth_user.user.email if auth_user and auth_user.user else f"user_{str(user_id)[:8]}@nicole.local"
+                user_name = auth_user.user.user_metadata.get("full_name", auth_user.user.user_metadata.get("name", "Nicole User")) if auth_user and auth_user.user else "Nicole User"
+            except Exception:
+                user_email = f"user_{str(user_id)[:8]}@nicole.local"
+                user_name = "Nicole User"
+            
+            # Create user in database
+            try:
+                supabase.table("users").insert({
+                    "id": user_id,
+                    "email": user_email,
+                    "full_name": user_name,
+                    "role": "standard",
+                    "created_at": datetime.utcnow().isoformat(),
+                }).execute()
+                logger.info(f"Created user entry for {user_id}")
+            except Exception as create_err:
+                logger.warning(f"Could not create user (may already exist): {create_err}")
+            
+            user_data = {"id": str(user_id), "role": "standard", "full_name": user_name}
             user_age = None
         else:
             user_data = user_result.data[0]
