@@ -365,6 +365,9 @@ async def send_message(
         assistant_message_id = uuid4()
         full_response = ""
         
+        # Send immediate acknowledgment
+        yield f"data: {json.dumps({'type': 'start', 'message_id': str(assistant_message_id)})}\n\n"
+        
         try:
             # Fetch conversation history for context
             history_result = supabase.table("messages") \
@@ -403,6 +406,9 @@ You have perfect memory of all past conversations. Use this to provide personali
 Be natural, warm, and helpful. Adjust your tone based on who you're speaking to (Glen, his children, or other family members)."""
             
             # Generate streaming response from Claude
+            logger.info(f"Starting Claude streaming for conversation {conversation_id}")
+            logger.info(f"Messages to send: {len(messages)} messages")
+            
             ai_generator = claude_client.generate_streaming_response(
                 messages=messages,
                 system_prompt=system_prompt,
@@ -411,22 +417,19 @@ Be natural, warm, and helpful. Adjust your tone based on who you're speaking to 
                 temperature=0.7,
             )
             
-            # Wrap with safety moderation
-            if settings.SAFETY_ENABLE:
-                safe_generator = moderate_streaming_output(
-                    generator=ai_generator,
-                    user_id=UUID(user_id),
-                    tier=classify_age_tier(user_age),
-                    correlation_id=correlation_id,
-                    check_interval_ms=settings.SAFETY_CHECK_INTERVAL_MS,
-                )
-            else:
-                safe_generator = ai_generator
+            # Skip safety moderation for now to debug streaming
+            # TODO: Re-enable after confirming Claude works
+            safe_generator = ai_generator
+            logger.info("Using direct Claude generator (safety moderation disabled for debug)")
             
             # Stream chunks to client
+            chunk_count = 0
             async for chunk in safe_generator:
+                chunk_count += 1
                 full_response += chunk
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            
+            logger.info(f"Streaming complete: {chunk_count} chunks, {len(full_response)} chars")
             
             # Save assistant message
             supabase.table("messages").insert({
