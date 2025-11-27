@@ -414,7 +414,7 @@ You have perfect memory of all past conversations. Use this to provide personali
 Be natural, warm, and helpful. Adjust your tone based on who you're speaking to (Glen, his children, or other family members)."""
             
             # Generate streaming response from Claude
-            print(f"[STREAM DEBUG] Starting Claude streaming..."))
+            print(f"[STREAM DEBUG] Starting Claude streaming...")
             
             ai_generator = claude_client.generate_streaming_response(
                 messages=messages,
