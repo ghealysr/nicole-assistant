@@ -22,8 +22,11 @@ class AlphawaveClaudeClient:
     def __init__(self):
         """Initialize Claude client."""
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self.sonnet_model = "claude-sonnet-4-5-20250929"
-        self.haiku_model = "claude-haiku-4-5-20250514"
+        # Use latest Claude Sonnet and Haiku models
+        # claude-sonnet-4-20250514 is the latest Sonnet 4 model
+        self.sonnet_model = "claude-sonnet-4-20250514"
+        self.haiku_model = "claude-haiku-4-20250514"
+        logger.info(f"Claude client initialized with Sonnet: {self.sonnet_model}, Haiku: {self.haiku_model}")
     
     async def generate_response(
         self,
@@ -95,6 +98,7 @@ class AlphawaveClaudeClient:
             model = self.sonnet_model
         
         try:
+            logger.info(f"Starting Claude stream with model: {model}")
             with self.client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
@@ -102,8 +106,11 @@ class AlphawaveClaudeClient:
                 system=system_prompt if system_prompt else "",
                 messages=messages
             ) as stream:
+                chunk_count = 0
                 for text in stream.text_stream:
+                    chunk_count += 1
                     yield text
+                logger.info(f"Claude stream complete, {chunk_count} chunks")
                     
         except Exception as e:
             logger.error(f"Claude streaming error: {e}", exc_info=True)
