@@ -416,27 +416,33 @@ Be natural, warm, and helpful. Adjust your tone based on who you're speaking to 
             # Generate streaming response from Claude
             print(f"[STREAM DEBUG] Starting Claude streaming...")
             
-            ai_generator = claude_client.generate_streaming_response(
-                messages=messages,
-                system_prompt=system_prompt,
-                model=None,  # Use default Sonnet 4.5
-                max_tokens=4096,
-                temperature=0.7,
-            )
-            
-            # Skip safety moderation for now to debug streaming
-            # TODO: Re-enable after confirming Claude works
-            safe_generator = ai_generator
-            logger.info("Using direct Claude generator (safety moderation disabled for debug)")
-            
-            # Stream chunks to client
-            chunk_count = 0
-            async for chunk in safe_generator:
-                chunk_count += 1
-                full_response += chunk
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-            
-            logger.info(f"Streaming complete: {chunk_count} chunks, {len(full_response)} chars")
+            try:
+                print(f"[STREAM DEBUG] Creating Claude generator...")
+                ai_generator = claude_client.generate_streaming_response(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    model=None,  # Use default Sonnet 4.5
+                    max_tokens=4096,
+                    temperature=0.7,
+                )
+                print(f"[STREAM DEBUG] Claude generator created, starting iteration...")
+                
+                # Stream chunks to client
+                chunk_count = 0
+                async for chunk in ai_generator:
+                    chunk_count += 1
+                    full_response += chunk
+                    if chunk_count == 1:
+                        print(f"[STREAM DEBUG] First chunk received!")
+                    yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                
+                print(f"[STREAM DEBUG] Streaming complete: {chunk_count} chunks, {len(full_response)} chars")
+            except Exception as claude_error:
+                print(f"[STREAM DEBUG] Claude error: {type(claude_error).__name__}: {claude_error}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'message': str(claude_error)})}\n\n"
+                return
             
             # Save assistant message
             supabase.table("messages").insert({
