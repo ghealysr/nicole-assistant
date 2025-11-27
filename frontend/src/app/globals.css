@@ -135,10 +135,137 @@ button:focus {
   outline: none;
 }
 
-/* Nicole's message styling - elegant serif font */
+/* Nicole's message styling - prose formatting like Claude */
 .nicole-message {
-  font-family: Georgia, serif;
-  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.7;
+  font-size: 15px;
+  color: #374151;
+}
+
+/* Prose styling for AI responses */
+.nicole-message p {
+  margin-bottom: 1em;
+}
+
+.nicole-message p:last-child {
+  margin-bottom: 0;
+}
+
+.nicole-message strong,
+.nicole-message b {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.nicole-message em,
+.nicole-message i {
+  font-style: italic;
+}
+
+.nicole-message ul,
+.nicole-message ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.nicole-message ul {
+  list-style-type: disc;
+}
+
+.nicole-message ol {
+  list-style-type: decimal;
+}
+
+.nicole-message li {
+  margin: 0.375em 0;
+  padding-left: 0.25em;
+}
+
+.nicole-message li::marker {
+  color: #9B8AB8;
+}
+
+.nicole-message code {
+  background: #f3f4f6;
+  padding: 0.125em 0.375em;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.9em;
+  color: #1f2937;
+}
+
+.nicole-message pre {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+.nicole-message pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.nicole-message blockquote {
+  border-left: 3px solid #B8A8D4;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.nicole-message h1,
+.nicole-message h2,
+.nicole-message h3,
+.nicole-message h4 {
+  font-weight: 600;
+  color: #1f2937;
+  margin: 1.25em 0 0.5em;
+}
+
+.nicole-message h1 { font-size: 1.5em; }
+.nicole-message h2 { font-size: 1.25em; }
+.nicole-message h3 { font-size: 1.125em; }
+.nicole-message h4 { font-size: 1em; }
+
+.nicole-message a {
+  color: #9B8AB8;
+  text-decoration: underline;
+}
+
+.nicole-message a:hover {
+  color: #7a6b94;
+}
+
+.nicole-message hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5em 0;
+}
+
+.nicole-message table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.nicole-message th,
+.nicole-message td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.nicole-message th {
+  background: #f9fafb;
+  font-weight: 600;
 }
 
 /* Loading pulse */

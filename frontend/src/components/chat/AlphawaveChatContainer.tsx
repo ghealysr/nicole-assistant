@@ -69,10 +69,71 @@ function EmptyState() {
 }
 
 /**
+ * Simple markdown parser for Nicole's responses
+ * Converts basic markdown to HTML
+ */
+function parseMarkdown(text: string): string {
+  let html = text;
+  
+  // Escape HTML first
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  
+  // Italic: *text* or _text_
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+  
+  // Inline code: `code`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Numbered lists: 1. item
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>');
+  
+  // Bullet lists: - item or * item
+  html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+  
+  // Wrap consecutive <li> in <ol> or <ul>
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
+    if (match.includes('1.')) {
+      return '<ol>' + match + '</ol>';
+    }
+    return '<ul>' + match + '</ul>';
+  });
+  
+  // Headers: ## Header
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  
+  // Paragraphs: double newlines
+  html = html.split(/\n\n+/).map(p => {
+    if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || p.startsWith('<pre')) {
+      return p;
+    }
+    return `<p>${p}</p>`;
+  }).join('');
+  
+  // Single line breaks within paragraphs
+  html = html.replace(/\n/g, '<br/>');
+  
+  // Clean up extra <br/> in lists
+  html = html.replace(/<\/li><br\/>/g, '</li>');
+  html = html.replace(/<br\/><li>/g, '<li>');
+  
+  return html;
+}
+
+/**
  * Message bubble component
  */
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
+  
+  // Parse markdown for assistant messages
+  const formattedContent = isUser ? message.content : parseMarkdown(message.content);
   
   return (
     <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'}`}>
@@ -89,9 +150,16 @@ function MessageBubble({ message }: { message: Message }) {
           <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">
             {isUser ? 'Glen' : 'Nicole'}
           </div>
-          <div className={`text-[15px] leading-relaxed text-[#374151] ${isUser ? '' : 'nicole-message'}`}>
-            <span className={isUser ? 'message-text' : ''}>{message.content}</span>
-          </div>
+          {isUser ? (
+            <div className="text-[15px] leading-relaxed text-[#374151]">
+              <span className="message-text">{message.content}</span>
+            </div>
+          ) : (
+            <div 
+              className="nicole-message"
+              dangerouslySetInnerHTML={{ __html: formattedContent }}
+            />
+          )}
           
           {/* Action buttons for assistant messages */}
           {!isUser && (
