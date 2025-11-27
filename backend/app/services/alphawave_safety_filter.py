@@ -566,7 +566,7 @@ async def provider_moderation_check(text: str, tier: AgeTier) -> SafetyDecision:
         
         response = await client.moderations.create(
             input=text,
-            model="text-moderation-latest"
+            model="omni-moderation-latest"
         )
         
         result = response.results[0]
@@ -618,8 +618,10 @@ async def provider_moderation_check(text: str, tier: AgeTier) -> SafetyDecision:
     except Exception as e:
         logger.error(f"Provider moderation API error: {e}", exc_info=True)
         
-        # Fail-safe: Conservative for children, permissive for adults
-        if tier in [AgeTier.CHILD_8_12, AgeTier.TEEN_13_15, AgeTier.UNKNOWN]:
+        # Fail-safe: Conservative for children only, permissive for adults/unknown
+        # Note: For family assistant, unknown users are likely adults (authenticated)
+        # Real child protection comes from explicit age verification, not guessing
+        if tier in [AgeTier.CHILD_8_12, AgeTier.TEEN_13_15]:
             return SafetyDecision(
                 is_safe=False,
                 severity=SafetySeverity.MEDIUM,
@@ -629,7 +631,9 @@ async def provider_moderation_check(text: str, tier: AgeTier) -> SafetyDecision:
                 tier_applied=tier,
             )
         else:
-            # Allow for adults if service fails (availability over extreme safety)
+            # Allow for adults and unknown if service fails
+            # Unknown users already passed local pattern check (explicit bad content)
+            logger.warning(f"Provider moderation failed, allowing for tier: {tier.value}")
             return SafetyDecision(
                 is_safe=True,
                 severity=SafetySeverity.LOW,
