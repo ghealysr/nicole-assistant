@@ -182,13 +182,18 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const jsonStr = line.slice(6);
+              console.log('[SSE] Raw line:', jsonStr);
+              const data = JSON.parse(jsonStr);
+              console.log('[SSE] Parsed data:', data);
 
               if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
+                console.log('[SSE] Token content:', textContent);
                 setMessages((prev) => {
                   if (!assistantCreated) {
                     assistantCreated = true;
+                    console.log('[SSE] Creating assistant message');
                     return [...prev, {
                       id: assistantMessageId,
                       role: 'assistant' as const,
@@ -197,6 +202,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                       status: 'sent' as const,
                     }];
                   } else {
+                    console.log('[SSE] Appending to assistant message');
                     return prev.map((m) => 
                       m.id === assistantMessageId 
                         ? { ...m, content: m.content + textContent }
@@ -208,12 +214,14 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 throw new Error(data.message || 'An error occurred during response');
               } else if (data.type === 'done') {
                 // Stream complete
-                console.log('Stream complete:', data.message_id);
+                console.log('[SSE] Stream complete:', data.message_id);
+              } else if (data.type === 'start') {
+                console.log('[SSE] Stream started:', data.message_id);
               }
-            } catch {
+            } catch (parseError) {
               // Skip invalid JSON lines (could be keep-alive or empty lines)
               if (line.slice(6).trim() && line.slice(6) !== '[DONE]') {
-                console.warn('Failed to parse SSE data:', line);
+                console.warn('[SSE] Failed to parse:', line, parseError);
               }
             }
           }
