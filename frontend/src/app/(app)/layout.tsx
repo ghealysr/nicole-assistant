@@ -1,31 +1,24 @@
 import { AlphawaveSidebar } from '@/components/navigation/AlphawaveSidebar';
-import { AlphawaveHeader } from '@/components/navigation/AlphawaveHeader';
 
 /**
- * Authenticated app layout with sidebar and header.
+ * Authenticated app layout with sidebar.
  * 
  * QA NOTES:
- * - Sidebar: 60px collapsed, 240px expanded
- * - Header: 80px height
+ * - Sidebar: 240px fixed width (dark theme)
  * - Main content area fills remaining space
+ * - Header is now managed per-page (e.g., chat has its own header with dashboard toggle)
  * - Used for all authenticated routes (chat, dashboard, journal, etc.)
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen">
-      {/* Sidebar: 60px collapsed, 240px expanded */}
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar: 240px fixed */}
       <AlphawaveSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header: 80px height */}
-        <AlphawaveHeader />
-
-        {/* Main content area */}
-        <main className="flex-1 overflow-hidden">
-          {children}
-        </main>
-      </div>
+      {/* Main content area */}
+      <main className="flex-1 min-w-0 overflow-hidden">
+        {children}
+      </main>
     </div>
   );
 }
-

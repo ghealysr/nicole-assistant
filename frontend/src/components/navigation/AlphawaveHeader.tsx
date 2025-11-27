@@ -13,16 +13,21 @@ interface User {
   };
 }
 
+interface AlphawaveHeaderProps {
+  onToggleDashboard?: () => void;
+  isDashboardOpen?: boolean;
+}
+
 /**
  * Header component for Nicole V7.
  * 
  * Features:
- * - Fixed height of 80px
- * - Displays user profile info from Supabase auth
- * - Logout functionality
- * - Clean, minimal design
+ * - Nicole logo with elegant typography
+ * - User profile info from Supabase auth
+ * - Dashboard toggle button
+ * - Settings button
  */
-export function AlphawaveHeader() {
+export function AlphawaveHeader({ onToggleDashboard, isDashboardOpen }: AlphawaveHeaderProps) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -53,47 +58,51 @@ export function AlphawaveHeader() {
     || user?.email?.split('@')[0] 
     || 'User';
 
-  // Get first letter for avatar
-  const avatarLetter = displayName.charAt(0).toUpperCase();
-
   return (
-    <header className="bg-white border-b border-border-line h-20 flex items-center justify-between px-6 shrink-0">
+    <header className="nicole-header">
       {/* Logo/Brand */}
-      <div className="flex items-center">
-        <div className="w-10 h-10 rounded-full bg-lavender/20 flex items-center justify-center mr-3">
-          <span className="text-lavender-text text-lg font-serif">N</span>
-        </div>
-        <h1 className="text-xl font-serif text-lavender-text">Nicole</h1>
+      <div className="flex items-center gap-3">
+        <Image 
+          src="/images/nicole-logo.png" 
+          alt="Nicole" 
+          width={140} 
+          height={40}
+          className="h-10 w-auto"
+          priority
+        />
       </div>
 
-      {/* User info and actions */}
-      <div className="flex items-center space-x-4">
-        {/* User profile */}
-        <div className="flex items-center space-x-3">
-          {user?.user_metadata?.avatar_url ? (
-            <Image 
-              src={user.user_metadata.avatar_url} 
-              alt={displayName}
-              width={32}
-              height={32}
-              className="rounded-full"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-mint flex items-center justify-center">
-              <span className="text-mint-dark text-sm font-medium">{avatarLetter}</span>
-            </div>
-          )}
-          <span className="text-text-secondary text-sm hidden sm:inline">
-            {displayName}
-          </span>
-        </div>
-
-        {/* Logout button */}
-        <button
+      {/* Right side actions */}
+      <div className="flex items-center gap-4">
+        {/* User name */}
+        <span className="text-sm font-medium text-[#6b7280]">
+          {displayName}
+        </span>
+        
+        {/* Settings button */}
+        <button 
           onClick={handleLogout}
-          className="px-3 py-2 text-text-secondary hover:text-text-primary hover:bg-light-gray rounded-lg text-sm transition-colors"
+          className="w-9 h-9 border-0 bg-transparent rounded-lg cursor-pointer flex items-center justify-center transition-colors hover:bg-black/5"
+          title="Sign out"
         >
-          Sign out
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 stroke-[#6b7280]" strokeWidth={2}>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+        
+        {/* Dashboard toggle button */}
+        <button 
+          onClick={onToggleDashboard}
+          className={`dashboard-btn ${isDashboardOpen ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 stroke-white" strokeWidth={2}>
+            <rect x="3" y="3" width="7" height="9" rx="1"/>
+            <rect x="14" y="3" width="7" height="5" rx="1"/>
+            <rect x="14" y="12" width="7" height="9" rx="1"/>
+            <rect x="3" y="16" width="7" height="5" rx="1"/>
+          </svg>
+          Dashboard
         </button>
       </div>
     </header>
