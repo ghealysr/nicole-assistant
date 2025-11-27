@@ -170,58 +170,61 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       const assistantMessageId = crypto.randomUUID();
-      let assistantCreated = false;
+      
+      // Create assistant message immediately (empty, will be filled with streamed content)
+      setMessages((prev) => [...prev, {
+        id: assistantMessageId,
+        role: 'assistant' as const,
+        content: '',
+        timestamp: new Date(),
+        status: 'sent' as const,
+      }]);
+      console.log('[SSE] Created empty assistant message:', assistantMessageId);
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[SSE] Stream reader done');
+          break;
+        }
 
-        const chunk = decoder.decode(value);
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('[SSE] Raw chunk:', chunk);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const jsonStr = line.slice(6);
-              console.log('[SSE] Raw line:', jsonStr);
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr) continue;
+              
+              console.log('[SSE] Parsing:', jsonStr);
               const data = JSON.parse(jsonStr);
-              console.log('[SSE] Parsed data:', data);
 
               if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
-                console.log('[SSE] Token content:', textContent);
-                setMessages((prev) => {
-                  if (!assistantCreated) {
-                    assistantCreated = true;
-                    console.log('[SSE] Creating assistant message');
-                    return [...prev, {
-                      id: assistantMessageId,
-                      role: 'assistant' as const,
-                      content: textContent,
-                      timestamp: new Date(),
-                      status: 'sent' as const,
-                    }];
-                  } else {
-                    console.log('[SSE] Appending to assistant message');
-                    return prev.map((m) => 
-                      m.id === assistantMessageId 
-                        ? { ...m, content: m.content + textContent }
-                        : m
-                    );
-                  }
-                });
+                console.log('[SSE] Token:', textContent);
+                
+                // Append to existing assistant message
+                setMessages((prev) => 
+                  prev.map((m) => 
+                    m.id === assistantMessageId 
+                      ? { ...m, content: m.content + textContent }
+                      : m
+                  )
+                );
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               } else if (data.type === 'done') {
-                // Stream complete
                 console.log('[SSE] Stream complete:', data.message_id);
               } else if (data.type === 'start') {
                 console.log('[SSE] Stream started:', data.message_id);
               }
             } catch (parseError) {
-              // Skip invalid JSON lines (could be keep-alive or empty lines)
-              if (line.slice(6).trim() && line.slice(6) !== '[DONE]') {
-                console.warn('[SSE] Failed to parse:', line, parseError);
+              // Skip invalid JSON lines
+              const trimmed = line.slice(6).trim();
+              if (trimmed && trimmed !== '[DONE]') {
+                console.warn('[SSE] Parse error:', trimmed, parseError);
               }
             }
           }
