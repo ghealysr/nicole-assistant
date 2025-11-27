@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
  * 
  * Features:
  * - Dark theme sidebar
- * - Alphawave logo at top (2x size, overflows container)
+ * - Alphawave logo at top (large size)
  * - Navigation items with icons
  * - Active state highlighting
  */
@@ -71,19 +71,16 @@ export function AlphawaveSidebar() {
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
-      {/* Logo - image is 2x size, overflows but clipped */}
-      <div className="p-5 border-b border-[#333] overflow-visible">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 flex items-center justify-center overflow-visible">
-            <Image 
-              src="/images/alphawave-logo.png" 
-              alt="Alphawave" 
-              width={72} 
-              height={72}
-              className="w-[72px] h-[72px] object-contain"
-              style={{ margin: '-16px' }}
-            />
-          </div>
+      {/* Logo - larger image */}
+      <div className="p-5 border-b border-[#333]">
+        <div className="flex items-center gap-4">
+          <Image 
+            src="/images/alphawave-logo.png" 
+            alt="Alphawave" 
+            width={56} 
+            height={56}
+            className="rounded-xl"
+          />
           <span className="text-white text-xl font-semibold tracking-tight">Alphawave</span>
         </div>
       </div>

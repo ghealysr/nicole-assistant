@@ -17,27 +17,21 @@ interface Message {
 }
 
 /**
- * Thinking indicator component - shows spinning Nicole avatar
+ * Thinking indicator component - shows only the spinning Nicole avatar
  */
 function ThinkingIndicator() {
   return (
-    <div className="py-4 px-6 animate-fade-in-up">
-      <div className="max-w-[800px] mx-auto flex gap-3">
-        {/* Nicole avatar - spinning */}
-        <div className="w-8 h-8 rounded-full flex-shrink-0 animate-spin-slow">
+    <div className="py-6 px-6 animate-fade-in-up">
+      <div className="max-w-[800px] mx-auto flex justify-center">
+        {/* Nicole thinking avatar - spinning only */}
+        <div className="w-12 h-12 animate-spin-slow">
           <Image 
             src="/images/nicole-thinking-avatar.png" 
             alt="Nicole thinking" 
-            width={32} 
-            height={32}
-            className="rounded-full"
+            width={48} 
+            height={48}
+            className="w-12 h-12"
           />
-        </div>
-        <div className="flex-1">
-          <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Nicole</div>
-          <div className="text-[15px] leading-relaxed text-[#374151]">
-            <span className="text-lavender-text font-serif text-sm">Thinking...</span>
-          </div>
         </div>
       </div>
     </div>

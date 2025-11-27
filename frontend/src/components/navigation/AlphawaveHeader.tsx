@@ -22,7 +22,7 @@ interface AlphawaveHeaderProps {
  * Header component for Nicole V7.
  * 
  * Features:
- * - Nicole logo (styled text with spiral icon as "o")
+ * - Nicole logo image (dashboard-header.png)
  * - User profile info from Supabase auth
  * - Dashboard toggle button
  * - Settings button
@@ -60,24 +60,16 @@ export function AlphawaveHeader({ onToggleDashboard, isDashboardOpen }: Alphawav
 
   return (
     <header className="nicole-header">
-      {/* Nicole Logo - styled text with spinning spiral icon */}
-      <div className="flex items-center gap-1">
-        <span className="text-[28px] font-serif text-[#C4B5DC] tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-          Nic
-        </span>
-        {/* Spiral "o" - spinning thinking avatar */}
-        <div className="w-7 h-7 -mx-0.5 animate-spin-slow">
-          <Image 
-            src="/images/nicole-thinking-avatar.png" 
-            alt="o" 
-            width={28} 
-            height={28}
-            className="rounded-full"
-          />
-        </div>
-        <span className="text-[28px] font-serif text-[#C4B5DC] tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-          le
-        </span>
+      {/* Nicole Logo */}
+      <div className="flex items-center">
+        <Image 
+          src="/images/dashboard-header.png" 
+          alt="Nicole" 
+          width={120} 
+          height={36}
+          className="h-9 w-auto object-contain"
+          priority
+        />
       </div>
 
       {/* Right side actions */}
