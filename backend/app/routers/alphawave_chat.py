@@ -362,11 +362,16 @@ async def send_message(
         
         Yields SSE-formatted events with real-time content moderation.
         """
+        print(f"[STREAM DEBUG] Generator started for conversation {conversation_id}")
+        logger.info(f"[STREAM DEBUG] Generator function entered")
+        
         assistant_message_id = uuid4()
         full_response = ""
         
         # Send immediate acknowledgment
+        print("[STREAM DEBUG] About to yield start event")
         yield f"data: {json.dumps({'type': 'start', 'message_id': str(assistant_message_id)})}\n\n"
+        print("[STREAM DEBUG] Yielded start event")
         
         try:
             # Fetch conversation history for context
