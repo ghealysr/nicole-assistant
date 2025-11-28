@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { AlphawaveChatInput } from './AlphawaveChatInput';
+import { AlphawaveChatInput, type FileAttachment } from './AlphawaveChatInput';
 import { AlphawaveDashPanel } from './AlphawaveDashPanel';
 import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
 import { useChat } from '@/lib/hooks/alphawave_use_chat';
@@ -14,6 +14,7 @@ interface Message {
   content: string;
   timestamp: Date;
   status?: 'sending' | 'sent' | 'error';
+  attachments?: FileAttachment[];
 }
 
 /**
@@ -23,7 +24,6 @@ function ThinkingIndicator() {
   return (
     <div className="py-6 px-6 animate-fade-in-up">
       <div className="max-w-[800px] mx-auto flex justify-center">
-        {/* Nicole thinking avatar - spinning only */}
         <div className="w-12 h-12 animate-spin-slow">
           <Image 
             src="/images/nicole-thinking-avatar.png" 
@@ -45,7 +45,6 @@ function EmptyState() {
   return (
     <div className="empty-state">
       <div className="text-center">
-        {/* Nicole logo spinning */}
         <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 animate-spin-slow">
           <Image 
             src="/images/nicole-thinking-avatar.png" 
@@ -63,57 +62,103 @@ function EmptyState() {
 }
 
 /**
+ * Claude-style file attachment chip.
+ * Clean, minimal display - no Azure metadata visible.
+ */
+function AttachmentChip({ attachment }: { attachment: FileAttachment }) {
+  const isImage = attachment.type.startsWith('image/');
+  
+  const getIcon = () => {
+    if (isImage) {
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      );
+    }
+    if (attachment.type.includes('pdf')) {
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <path d="M14 2v6h6"/>
+        </svg>
+      );
+    }
+    return (
+      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <path d="M14 2v6h6"/>
+      </svg>
+    );
+  };
+
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const truncateName = (name: string, maxLen: number = 18): string => {
+    if (name.length <= maxLen) return name;
+    const ext = name.split('.').pop() || '';
+    const baseName = name.slice(0, name.length - ext.length - 1);
+    const truncated = baseName.slice(0, maxLen - ext.length - 4);
+    return `${truncated}...${ext}`;
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg 
+                    bg-[#e8e7e0] border border-[#d8d7cc] text-[#4b5563] text-xs">
+      <span className="text-[#6b7280]">{getIcon()}</span>
+      <span className="font-medium">{truncateName(attachment.name)}</span>
+      <span className="text-[#9ca3af]">{formatSize(attachment.size)}</span>
+    </div>
+  );
+}
+
+/**
+ * Clean message content by removing any [Uploaded: ...] metadata blocks.
+ */
+function cleanMessageContent(content: string): string {
+  let cleaned = content.replace(/\[Uploaded:[^\]]*\]\n*/g, '');
+  cleaned = cleaned.trim();
+  cleaned = cleaned.replace(/^Please review and summarize the document\(s\) I just uploaded\.?\s*/i, '');
+  cleaned = cleaned.replace(/^Please review what I've shared\.?\s*/i, '');
+  return cleaned;
+}
+
+/**
  * Simple markdown parser for Nicole's responses
- * Converts basic markdown to HTML
  */
 function parseMarkdown(text: string): string {
   let html = text;
   
-  // Escape HTML first
   html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  
-  // Bold: **text** or __text__
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  
-  // Italic: *text* or _text_
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
   html = html.replace(/_(.+?)_/g, '<em>$1</em>');
-  
-  // Inline code: `code`
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
-  // Numbered lists: 1. item
   html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>');
-  
-  // Bullet lists: - item or * item
   html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
-  
-  // Wrap consecutive <li> in <ol> or <ul>
   html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
     if (match.includes('1.')) {
       return '<ol>' + match + '</ol>';
     }
     return '<ul>' + match + '</ul>';
   });
-  
-  // Headers: ## Header
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  
-  // Paragraphs: double newlines
   html = html.split(/\n\n+/).map(p => {
     if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || p.startsWith('<pre')) {
       return p;
     }
     return `<p>${p}</p>`;
   }).join('');
-  
-  // Single line breaks within paragraphs
   html = html.replace(/\n/g, '<br/>');
-  
-  // Clean up extra <br/> in lists
   html = html.replace(/<\/li><br\/>/g, '</li>');
   html = html.replace(/<br\/><li>/g, '<li>');
   
@@ -121,13 +166,15 @@ function parseMarkdown(text: string): string {
 }
 
 /**
- * Message bubble component
+ * Message bubble component - Claude style with attachment chips
  */
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
+  const hasAttachments = message.attachments && message.attachments.length > 0;
   
-  // Parse markdown for assistant messages
-  const formattedContent = isUser ? message.content : parseMarkdown(message.content);
+  // Clean content for user messages (remove metadata)
+  const displayContent = isUser ? cleanMessageContent(message.content) : message.content;
+  const formattedContent = isUser ? displayContent : parseMarkdown(displayContent);
   
   return (
     <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'}`}>
@@ -144,9 +191,22 @@ function MessageBubble({ message }: { message: Message }) {
           <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">
             {isUser ? 'Glen' : 'Nicole'}
           </div>
+          
           {isUser ? (
             <div className="text-[15px] leading-relaxed text-[#374151]">
-              <span className="message-text">{message.content}</span>
+              {/* Attachment chips - Claude style */}
+              {hasAttachments && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {message.attachments!.map(attachment => (
+                    <AttachmentChip key={attachment.id} attachment={attachment} />
+                  ))}
+                </div>
+              )}
+              
+              {/* User's text message (clean, no metadata) */}
+              {displayContent && (
+                <span className="message-text">{displayContent}</span>
+              )}
             </div>
           ) : (
             <div 
@@ -184,12 +244,7 @@ function MessageBubble({ message }: { message: Message }) {
 
 /**
  * Main chat container component for Nicole V7.
- * 
- * QA NOTES:
- * - Full redesign matching the HTML mockup
- * - Includes header with dashboard toggle
- * - Spinning Nicole avatar for thinking state
- * - Clean message layout with action buttons
+ * Claude-style file uploads with invisible AI processing.
  */
 export function AlphawaveChatContainer() {
   const { showToast } = useToast();
@@ -201,7 +256,6 @@ export function AlphawaveChatContainer() {
   const [dashOpen, setDashOpen] = useState(false);
   const [dashboardWidth, setDashboardWidth] = useState(420);
 
-  // Show toast when error state changes
   useEffect(() => {
     if (error) {
       showToast(error, 'error');
@@ -226,7 +280,7 @@ export function AlphawaveChatContainer() {
           {hasMessages ? (
             <div className="flex-1 overflow-y-auto py-4">
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble key={message.id} message={message as Message} />
               ))}
               {isLoading && <ThinkingIndicator />}
             </div>
@@ -234,7 +288,7 @@ export function AlphawaveChatContainer() {
             <EmptyState />
           )}
           
-          {/* Input area */}
+          {/* Input area - now passes attachments */}
           <AlphawaveChatInput 
             onSendMessage={sendMessage} 
             isLoading={isLoading} 

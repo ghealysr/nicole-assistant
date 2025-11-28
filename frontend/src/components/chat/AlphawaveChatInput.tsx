@@ -1,13 +1,26 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/alphawave_supabase';
+
+/**
+ * File attachment with metadata for Claude-style display.
+ */
+export interface FileAttachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  documentId?: string;  // From backend after processing
+  thumbnailUrl?: string;  // For image previews
+}
 
 /**
  * Props for AlphawaveChatInput.
  */
 interface AlphawaveChatInputProps {
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, attachments?: FileAttachment[]) => void;
   isLoading: boolean;
 }
 
@@ -17,14 +30,17 @@ interface PendingFile {
   id: string;
   name: string;
   file: File;
+  type: string;
+  size: number;
   status: 'pending' | 'uploading' | 'processing' | 'ready' | 'error';
-  summary?: string;
+  documentId?: string;
+  thumbnailUrl?: string;
   error?: string;
 }
 
 /**
  * Chat input component for Nicole V7.
- * Supports file uploads with document intelligence processing.
+ * Claude-style file uploads with thumbnail previews and invisible AI processing.
  */
 export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatInputProps) {
   const [content, setContent] = useState('');
@@ -56,16 +72,25 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
   }, []);
 
   /**
+   * Create thumbnail URL for image files.
+   */
+  const createThumbnail = (file: File): string | undefined => {
+    if (file.type.startsWith('image/')) {
+      return URL.createObjectURL(file);
+    }
+    return undefined;
+  };
+
+  /**
    * Upload a file to the document intelligence API.
+   * Azure analysis is internal - not exposed to user.
    */
   const uploadFile = useCallback(async (file: File, fileId: string) => {
-    // Update status to uploading
     setPendingFiles(prev => prev.map(f => 
       f.id === fileId ? { ...f, status: 'uploading' as const } : f
     ));
 
     try {
-      // Get auth token from Supabase session
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
@@ -77,7 +102,6 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
 
-      // Update status to processing
       setPendingFiles(prev => prev.map(f => 
         f.id === fileId ? { ...f, status: 'processing' as const } : f
       ));
@@ -97,12 +121,12 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
 
       const result = await response.json();
 
-      // Update with result
+      // Store document ID for backend context - NO visible metadata
       setPendingFiles(prev => prev.map(f => 
         f.id === fileId ? { 
           ...f, 
-          status: 'ready' as const, 
-          summary: result.summary || 'Document processed' 
+          status: 'ready' as const,
+          documentId: result.document_id,
         } : f
       ));
 
@@ -130,55 +154,62 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
     for (let i = 0; i < Math.min(files.length, maxFiles); i++) {
       const file = files[i];
       const fileId = `${Date.now()}-${i}`;
+      const thumbnailUrl = createThumbnail(file);
       
       newFiles.push({
         id: fileId,
         name: file.name,
         file: file,
+        type: file.type,
+        size: file.size,
         status: 'pending',
+        thumbnailUrl,
       });
     }
 
     if (newFiles.length > 0) {
       setPendingFiles(prev => [...prev, ...newFiles]);
-      
-      // Start uploads
       newFiles.forEach(f => uploadFile(f.file, f.id));
     }
   }, [pendingFiles.length, uploadFile]);
 
   /**
-   * Handles form submission to send the message.
+   * Handles form submission - sends CLEAN message + attachment metadata.
+   * No [Uploaded: ...] blocks - Azure analysis stays invisible.
    */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Include file context in message
-    let messageContent = content.trim();
-    
+    const messageText = content.trim();
     const readyFiles = pendingFiles.filter(f => f.status === 'ready');
-    if (readyFiles.length > 0) {
-      const fileContext = readyFiles
-        .map(f => `[Uploaded: ${f.name}${f.summary ? ` - ${f.summary}` : ''}]`)
-        .join('\n');
-      
-      if (messageContent) {
-        messageContent = `${fileContext}\n\n${messageContent}`;
-      } else {
-        messageContent = `${fileContext}\n\nPlease review and summarize the document(s) I just uploaded.`;
-      }
-    }
+    
+    // Build clean attachments array (no Azure metadata exposed)
+    const attachments: FileAttachment[] = readyFiles.map(f => ({
+      id: f.id,
+      name: f.name,
+      type: f.type,
+      size: f.size,
+      documentId: f.documentId,
+      thumbnailUrl: f.thumbnailUrl,
+    }));
 
-    if (messageContent && !isLoading) {
-      onSendMessage(messageContent);
+    // Send message with attachments - NO metadata in message content
+    if ((messageText || attachments.length > 0) && !isLoading) {
+      const finalMessage = messageText || (attachments.length > 0 
+        ? "Please review what I've shared." 
+        : '');
+      
+      onSendMessage(finalMessage, attachments.length > 0 ? attachments : undefined);
       setContent('');
+      
+      // Clean up thumbnail URLs
+      pendingFiles.forEach(f => {
+        if (f.thumbnailUrl) URL.revokeObjectURL(f.thumbnailUrl);
+      });
       setPendingFiles([]);
     }
   };
 
-  /**
-   * Handles keyboard shortcuts (Enter to send).
-   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -186,23 +217,16 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
     }
   };
 
-  /**
-   * Opens file picker.
-   */
   const openFilePicker = () => {
     fileInputRef.current?.click();
   };
 
-  /**
-   * Removes a pending file.
-   */
   const removeFile = (id: string) => {
+    const file = pendingFiles.find(f => f.id === id);
+    if (file?.thumbnailUrl) URL.revokeObjectURL(file.thumbnailUrl);
     setPendingFiles(pendingFiles.filter(f => f.id !== id));
   };
 
-  /**
-   * Handle drag events.
-   */
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -220,40 +244,31 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
   };
 
   /**
-   * Get file icon based on type.
+   * Format file size for display.
    */
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (ext === 'pdf') return '📕';
-    if (ext === 'doc' || ext === 'docx') return '📘';
-    if (ext === 'txt' || ext === 'md') return '📄';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return '🖼️';
-    return '📎';
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   /**
-   * Get status indicator.
+   * Check if file is an image type.
    */
-  const getStatusIndicator = (status: PendingFile['status']) => {
-    switch (status) {
-      case 'uploading':
-      case 'processing':
-        return <span className="animate-spin">⏳</span>;
-      case 'ready':
-        return <span className="text-green-600">✓</span>;
-      case 'error':
-        return <span className="text-red-500">✕</span>;
-      default:
-        return null;
-    }
+  const isImageFile = (type: string): boolean => {
+    return type.startsWith('image/');
   };
 
   const hasReadyFiles = pendingFiles.some(f => f.status === 'ready');
-  const hasProcessingFiles = pendingFiles.some(f => f.status === 'uploading' || f.status === 'processing');
+  const hasProcessingFiles = pendingFiles.some(f => 
+    f.status === 'uploading' || f.status === 'processing'
+  );
 
   return (
     <div 
-      className={`bg-[#F5F4ED] px-6 py-4 pb-6 shrink-0 transition-all ${isDragOver ? 'ring-2 ring-[#B8A8D4] ring-inset' : ''}`}
+      className={`bg-[#F5F4ED] px-6 py-4 pb-6 shrink-0 transition-all ${
+        isDragOver ? 'ring-2 ring-[#B8A8D4] ring-inset' : ''
+      }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -269,7 +284,7 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
           onChange={(e) => handleFileSelect(e.target.files)}
         />
 
-        {/* Drag overlay message */}
+        {/* Drag overlay */}
         {isDragOver && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#F5F4ED]/90 z-10 pointer-events-none">
             <div className="text-center">
@@ -279,37 +294,96 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
           </div>
         )}
 
-        {/* Pending files */}
+        {/* Claude-style Thumbnail Previews */}
         {pendingFiles.length > 0 && (
-          <div className="flex gap-2 flex-wrap mb-3">
+          <div className="flex gap-3 flex-wrap mb-4">
             {pendingFiles.map(file => (
               <div 
                 key={file.id} 
                 className={`
-                  flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-white text-sm
-                  ${file.status === 'error' ? 'border-red-300 bg-red-50' : 'border-[#d8d7cc]'}
-                  ${file.status === 'ready' ? 'border-green-300 bg-green-50' : ''}
+                  relative group rounded-xl overflow-hidden border-2 transition-all
+                  ${file.status === 'error' 
+                    ? 'border-red-300 bg-red-50' 
+                    : file.status === 'ready' 
+                      ? 'border-[#d8d7cc] bg-white' 
+                      : 'border-[#e5e4dc] bg-[#fafaf8]'
+                  }
                 `}
               >
-                <span>{getFileIcon(file.name)}</span>
-                <span className="max-w-[150px] truncate text-[#374151]">{file.name}</span>
-                {getStatusIndicator(file.status)}
-                <button 
+                {/* Image Thumbnail */}
+                {isImageFile(file.type) && file.thumbnailUrl ? (
+                  <div className="w-20 h-20 relative">
+                    <Image
+                      src={file.thumbnailUrl}
+                      alt={file.name}
+                      fill
+                      className="object-cover"
+                    />
+                    {/* Processing overlay */}
+                    {(file.status === 'uploading' || file.status === 'processing') && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Document Preview */
+                  <div className="w-20 h-20 flex flex-col items-center justify-center p-2">
+                    <div className="text-2xl mb-1">
+                      {file.type.includes('pdf') ? '📕' : 
+                       file.type.includes('word') ? '📘' : '📄'}
+                    </div>
+                    <div className="text-[9px] text-[#6b7280] text-center truncate w-full px-1">
+                      {file.name.length > 12 
+                        ? file.name.slice(0, 10) + '...' 
+                        : file.name
+                      }
+                    </div>
+                    {(file.status === 'uploading' || file.status === 'processing') && (
+                      <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                        <div className="w-5 h-5 border-2 border-[#B8A8D4] border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Remove button - appears on hover */}
+                <button
                   onClick={() => removeFile(file.id)}
-                  className="border-0 bg-transparent text-[#9ca3af] cursor-pointer text-base px-1 hover:text-[#6b7280]"
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[#374151] text-white rounded-full 
+                           flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 
+                           transition-opacity hover:bg-[#1f2937] shadow-sm"
                 >
                   ×
                 </button>
+
+                {/* Ready indicator */}
+                {file.status === 'ready' && (
+                  <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 rounded-full 
+                                flex items-center justify-center">
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* Error indicator */}
+                {file.status === 'error' && (
+                  <div className="absolute bottom-1 right-1 w-4 h-4 bg-red-500 rounded-full 
+                                flex items-center justify-center text-white text-xs font-bold">
+                    !
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
-        
-        {/* Processing indicator */}
+
+        {/* Processing status - subtle, not technical */}
         {hasProcessingFiles && (
-          <div className="text-xs text-[#6b7280] mb-2 flex items-center gap-1">
-            <span className="animate-spin">⏳</span>
-            Processing documents with Azure Document Intelligence...
+          <div className="text-xs text-[#9ca3af] mb-2 flex items-center gap-1.5">
+            <div className="w-3 h-3 border-2 border-[#B8A8D4] border-t-transparent rounded-full animate-spin" />
+            Preparing files...
           </div>
         )}
         
@@ -318,7 +392,10 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
           <textarea
             ref={textareaRef}
             className="input-textarea"
-            placeholder={hasReadyFiles ? "Add a message about your files, or send to get a summary..." : "Message Nicole..."}
+            placeholder={pendingFiles.length > 0 
+              ? "Add a message..." 
+              : "Message Nicole..."
+            }
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -333,12 +410,11 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
                 type="button" 
                 className="tool-btn" 
                 onClick={openFilePicker} 
-                title="Upload document (PDF, Word, images)"
+                title="Attach files"
                 disabled={pendingFiles.length >= 5}
               >
                 <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
               </button>
               <button type="button" className="tool-btn" title="Extended thinking">
@@ -362,7 +438,8 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
                 <button 
                   type="button"
                   onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 border-0 bg-transparent rounded-lg cursor-pointer text-[13px] text-[#6b7280] transition-colors hover:bg-[#f3f4f6]"
+                  className="flex items-center gap-1 px-2.5 py-1.5 border-0 bg-transparent rounded-lg 
+                           cursor-pointer text-[13px] text-[#6b7280] transition-colors hover:bg-[#f3f4f6]"
                 >
                   <span>{selectedModel}</span>
                   <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3 h-3 stroke-[#6b7280]">
@@ -407,11 +484,6 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
             </div>
           </div>
         </form>
-        
-        {/* File types hint */}
-        <div className="text-[10px] text-[#9ca3af] mt-2 text-center">
-          Supports PDF, Word, text, and images • Drag & drop or click +
-        </div>
       </div>
     </div>
   );

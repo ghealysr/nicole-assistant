@@ -6,11 +6,13 @@
  * - Handles SSE streaming for real-time responses
  * - Includes error handling with user-friendly messages
  * - Supports conversation loading from history
+ * - Claude-style attachments with invisible AI processing
  */
 
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/alphawave_supabase';
 import { ENDPOINTS, REQUEST_CONFIG } from '@/lib/alphawave_config';
+import type { FileAttachment } from '@/components/chat/AlphawaveChatInput';
 
 export interface ChatMessage {
   id: string;
@@ -18,6 +20,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   status?: 'sending' | 'sent' | 'error';
+  attachments?: FileAttachment[];  // Claude-style file attachments
 }
 
 export interface UseChatOptions {
@@ -27,7 +30,7 @@ export interface UseChatOptions {
 
 export interface UseChatReturn {
   messages: ChatMessage[];
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, attachments?: FileAttachment[]) => Promise<void>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
@@ -69,68 +72,68 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       }
     } catch (err) {
       console.error('Failed to load conversation history:', err);
-      // Don't set error state - this is a non-critical failure
     }
   }, []);
 
-  // Load conversation history on mount if conversationId provided
   useEffect(() => {
     if (conversationId) {
       loadConversationHistory(conversationId);
     }
   }, [conversationId, loadConversationHistory]);
 
-  /**
-   * Clear error state
-   */
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  /**
-   * Clear all messages
-   */
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
 
   /**
-   * Sends a message to the backend and streams the response.
+   * Sends a message to the backend with optional file attachments.
+   * 
+   * Claude-style flow:
+   * - User sees clean message + attachment chips
+   * - Document IDs sent to backend for context injection
+   * - Azure analysis invisible to user - Nicole responds naturally
    */
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim()) return;
+  const sendMessage = useCallback(async (content: string, attachments?: FileAttachment[]) => {
+    if (!content.trim() && (!attachments || attachments.length === 0)) return;
     
-    // Clear any previous error
     setError(null);
 
-    // Add user message immediately with sending status
+    // Add user message with attachments (displayed as chips, not metadata)
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
       timestamp: new Date(),
       status: 'sending',
+      attachments,  // Displayed as Claude-style chips
     };
     setMessages((prev) => [...prev, userMessage]);
 
     setIsLoading(true);
 
     try {
-      // Get JWT token
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
         throw new Error('Please log in to continue chatting');
       }
 
-      // Update user message to sent
       setMessages((prev) => prev.map((m) => 
         m.id === userMessage.id ? { ...m, status: 'sent' as const } : m
       ));
 
-      // Create AbortController for timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_CONFIG.timeout);
+
+      // Extract document IDs for backend context injection
+      // These are used internally - user never sees the Azure analysis
+      const documentIds = attachments
+        ?.filter(a => a.documentId)
+        .map(a => a.documentId) || [];
 
       // SSE streaming request
       const response = await fetch(ENDPOINTS.chat.message, {
@@ -142,13 +145,14 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         body: JSON.stringify({ 
           message: content,
           conversation_id: conversationId,
+          // Send document IDs for invisible context injection
+          document_ids: documentIds.length > 0 ? documentIds : undefined,
         }),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      // Handle non-OK responses
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Session expired. Please log in again.');
@@ -162,7 +166,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         }
       }
 
-      // Check for streaming response
       if (!response.body) {
         throw new Error('No response received');
       }
@@ -171,7 +174,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const decoder = new TextDecoder();
       const assistantMessageId = crypto.randomUUID();
       
-      // Create assistant message immediately (empty, will be filled with streamed content)
+      // Create empty assistant message for streaming
       setMessages((prev) => [...prev, {
         id: assistantMessageId,
         role: 'assistant' as const,
@@ -179,17 +182,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         timestamp: new Date(),
         status: 'sent' as const,
       }]);
-      console.log('[SSE] Created empty assistant message:', assistantMessageId);
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          console.log('[SSE] Stream reader done');
-          break;
-        }
+        if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        console.log('[SSE] Raw chunk:', chunk);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
@@ -198,14 +196,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               const jsonStr = line.slice(6).trim();
               if (!jsonStr) continue;
               
-              console.log('[SSE] Parsing:', jsonStr);
               const data = JSON.parse(jsonStr);
 
               if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
-                console.log('[SSE] Token:', textContent);
                 
-                // Append to existing assistant message
                 setMessages((prev) => 
                   prev.map((m) => 
                     m.id === assistantMessageId 
@@ -215,23 +210,17 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 );
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
-              } else if (data.type === 'done') {
-                console.log('[SSE] Stream complete:', data.message_id);
-              } else if (data.type === 'start') {
-                console.log('[SSE] Stream started:', data.message_id);
               }
             } catch (parseError) {
-              // Skip invalid JSON lines
               const trimmed = line.slice(6).trim();
               if (trimmed && trimmed !== '[DONE]') {
-                console.warn('[SSE] Parse error:', trimmed, parseError);
+                console.warn('[SSE] Parse error:', trimmed);
               }
             }
           }
         }
       }
     } catch (err) {
-      // Handle different error types
       let errorMessage = 'Something went wrong. Please try again.';
       
       if (err instanceof Error) {
@@ -244,12 +233,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
       setError(errorMessage);
       
-      // Mark user message as error
       setMessages((prev) => prev.map((m) => 
         m.id === userMessage.id ? { ...m, status: 'error' as const } : m
       ));
 
-      // Call onError callback if provided
       if (onError && err instanceof Error) {
         onError(err);
       }
