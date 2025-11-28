@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/alphawave_supabase';
 
 /**
  * Props for AlphawaveChatInput.
@@ -64,22 +65,17 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
     ));
 
     try {
+      // Get auth token from Supabase session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Please log in to upload files');
+      }
+
       const formData = new FormData();
       formData.append('file', file);
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
-      const token = localStorage.getItem('supabase.auth.token');
-      
-      // Parse token to get access_token
-      let accessToken = '';
-      if (token) {
-        try {
-          const parsed = JSON.parse(token);
-          accessToken = parsed.access_token || '';
-        } catch {
-          accessToken = token;
-        }
-      }
 
       // Update status to processing
       setPendingFiles(prev => prev.map(f => 
@@ -89,13 +85,14 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
       const response = await fetch(`${apiUrl}/documents/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Upload failed');
       }
 
       const result = await response.json();
@@ -115,7 +112,7 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
         f.id === fileId ? { 
           ...f, 
           status: 'error' as const, 
-          error: 'Upload failed' 
+          error: error instanceof Error ? error.message : 'Upload failed' 
         } : f
       ));
     }

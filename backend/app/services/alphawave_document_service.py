@@ -172,6 +172,13 @@ class AlphawaveDocumentService:
             return {"error": str(e), "status": "failed"}
         
         try:
+            # Step 0: Upload to Supabase Storage for persistence
+            storage_path = await self._upload_to_storage(
+                content, doc_id, filename, user_id
+            )
+            if storage_path:
+                logger.info(f"[DOCUMENT] Stored at: {storage_path}")
+            
             # Step 1: Extract text
             if content_type in SUPPORTED_IMAGE_TYPES:
                 extracted = await self._extract_from_image(content, content_type)
@@ -225,7 +232,7 @@ class AlphawaveDocumentService:
             )
             
             # Update document record with results
-            supabase.table("document_repository").update({
+            update_data = {
                 "status": "completed",
                 "full_text": full_text,
                 "summary": summary,
@@ -234,7 +241,11 @@ class AlphawaveDocumentService:
                 "page_count": page_count,
                 "word_count": len(full_text.split()),
                 "processed_at": datetime.utcnow().isoformat(),
-            }).eq("id", doc_id).execute()
+            }
+            if storage_path:
+                update_data["storage_path"] = storage_path
+            
+            supabase.table("document_repository").update(update_data).eq("id", doc_id).execute()
             
             return {
                 "document_id": doc_id,
@@ -1086,6 +1097,72 @@ ENTITIES:
         except Exception as e:
             logger.error(f"[DOCUMENT] List documents failed: {e}")
             return []
+    
+    # =========================================================================
+    # STORAGE
+    # =========================================================================
+    
+    async def _upload_to_storage(
+        self,
+        content: bytes,
+        doc_id: str,
+        filename: str,
+        user_id: str,
+    ) -> Optional[str]:
+        """
+        Upload document to Supabase Storage for persistence.
+        
+        Args:
+            content: File bytes
+            doc_id: Document UUID
+            filename: Original filename
+            user_id: User UUID
+            
+        Returns:
+            Storage path or None if upload failed
+        """
+        supabase = get_supabase()
+        if not supabase:
+            return None
+        
+        try:
+            # Create storage path: documents/{user_id}/{doc_id}/{filename}
+            storage_path = f"documents/{user_id}/{doc_id}/{filename}"
+            
+            # Get file extension for content type
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            content_type = {
+                "pdf": "application/pdf",
+                "doc": "application/msword",
+                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "txt": "text/plain",
+                "md": "text/markdown",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "png": "image/png",
+                "gif": "image/gif",
+                "webp": "image/webp",
+            }.get(ext, "application/octet-stream")
+            
+            # Upload to Supabase Storage
+            # Note: Requires 'documents' bucket to exist in Supabase
+            result = supabase.storage.from_("documents").upload(
+                path=storage_path,
+                file=content,
+                file_options={"content-type": content_type}
+            )
+            
+            if hasattr(result, 'error') and result.error:
+                logger.warning(f"[DOCUMENT] Storage upload failed: {result.error}")
+                return None
+            
+            logger.info(f"[DOCUMENT] Uploaded to storage: {storage_path}")
+            return storage_path
+            
+        except Exception as e:
+            # Storage is optional - don't fail the whole process
+            logger.warning(f"[DOCUMENT] Storage upload error (continuing): {e}")
+            return None
     
     # =========================================================================
     # UTILITIES
