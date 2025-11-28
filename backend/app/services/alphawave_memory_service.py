@@ -153,9 +153,14 @@ class MemoryService:
                 logger.warning(f"[MEMORY] Could not generate embedding (continuing without): {embed_err}")
 
             # Save to PostgreSQL (structured) - this is the primary storage
+            # Generate UUID for the memory entry
+            import uuid
+            memory_id = str(uuid.uuid4())
+            
             # Note: related_conversations column doesn't exist in current schema,
             # so we store conversation context in the 'context' field instead
             memory_data = {
+                "id": memory_id,  # Explicitly provide UUID
                 "user_id": user_id_str,
                 "memory_type": memory_type,
                 "content": content,
