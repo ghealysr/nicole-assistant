@@ -244,15 +244,6 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
   };
 
   /**
-   * Format file size for display.
-   */
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  /**
    * Check if file is an image type.
    */
   const isImageFile = (type: string): boolean => {

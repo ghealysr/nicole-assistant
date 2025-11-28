@@ -211,7 +211,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               }
-            } catch (parseError) {
+            } catch {
               const trimmed = line.slice(6).trim();
               if (trimmed && trimmed !== '[DONE]') {
                 console.warn('[SSE] Parse error:', trimmed);
