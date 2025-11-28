@@ -153,19 +153,18 @@ class MemoryService:
                 logger.warning(f"[MEMORY] Could not generate embedding (continuing without): {embed_err}")
 
             # Save to PostgreSQL (structured) - this is the primary storage
+            # Note: related_conversations column doesn't exist in current schema,
+            # so we store conversation context in the 'context' field instead
             memory_data = {
                 "user_id": user_id_str,
                 "memory_type": memory_type,
                 "content": content,
-                "context": context,
+                "context": f"{context} (conversation: {related_conversation})" if related_conversation and context else (context or f"From conversation {related_conversation}" if related_conversation else None),
                 "importance_score": min(max(importance, 0.0), 1.0),
                 "confidence_score": 1.0,  # New memories start with full confidence
                 "access_count": 0,
                 "created_at": datetime.utcnow().isoformat()
             }
-
-            if related_conversation:
-                memory_data["related_conversations"] = [related_conversation]
 
             result = supabase.table("memory_entries").insert(memory_data).execute()
 
