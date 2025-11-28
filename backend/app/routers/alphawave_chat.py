@@ -36,10 +36,110 @@ from app.services.alphawave_safety_filter import (
     moderate_streaming_output,
     classify_age_tier,
 )
+from app.services.alphawave_memory_service import MemoryService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Global memory service instance
+memory_service = MemoryService()
 router = APIRouter()
+
+
+# ============================================================================
+# MEMORY EXTRACTION HELPERS
+# ============================================================================
+
+# Patterns that indicate potential memories to save
+MEMORY_PATTERNS = {
+    "preference": [
+        r"i (?:like|love|prefer|enjoy|hate|dislike|can't stand)\s+(.+)",
+        r"my favorite (?:is|are)\s+(.+)",
+        r"i always (?:want|need|like)\s+(.+)",
+    ],
+    "fact": [
+        r"my (?:name|birthday|age|job|work|home|address|phone)\s+(?:is|are)\s+(.+)",
+        r"i (?:am|work as|live in|was born)\s+(.+)",
+        r"i have (?:\d+)\s+(.+)",
+    ],
+    "correction": [
+        r"(?:actually|no|not|wrong|incorrect),?\s*(.+)",
+        r"i meant\s+(.+)",
+        r"let me correct\s+(.+)",
+    ],
+    "goal": [
+        r"i (?:want to|need to|plan to|hope to|will)\s+(.+)",
+        r"my goal is\s+(.+)",
+        r"i'm (?:trying to|working on)\s+(.+)",
+    ],
+    "relationship": [
+        r"my (?:wife|husband|son|daughter|mother|father|brother|sister|friend)\s+(.+)",
+        r"(?:alex|connor|the boys?|kids?)\s+(.+)",
+    ],
+}
+
+
+async def extract_and_save_memories(
+    user_id: str,
+    user_message: str,
+    assistant_response: str,
+    conversation_id: str,
+) -> None:
+    """
+    Extract potential memories from conversation and save them.
+    
+    This runs after each response to capture:
+    - User preferences ("I like...", "My favorite...")
+    - Facts about the user ("I work at...", "My birthday is...")
+    - Corrections ("Actually, that's not right...")
+    - Goals ("I want to...", "I'm planning to...")
+    - Relationships ("My son Alex...")
+    
+    Uses pattern matching for quick extraction. More complex extraction
+    could use Claude to analyze the conversation.
+    """
+    import re
+    
+    extracted_memories = []
+    message_lower = user_message.lower()
+    
+    # Pattern-based extraction
+    for memory_type, patterns in MEMORY_PATTERNS.items():
+        for pattern in patterns:
+            matches = re.findall(pattern, message_lower, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    match = " ".join(match)
+                if len(match) > 10 and len(match) < 500:  # Reasonable length
+                    extracted_memories.append({
+                        "type": memory_type,
+                        "content": match.strip(),
+                        "importance": 0.7 if memory_type == "correction" else 0.5,
+                    })
+    
+    # Check for explicit memory requests
+    if any(phrase in message_lower for phrase in ["remember that", "don't forget", "keep in mind", "note that"]):
+        # The whole message is likely important
+        extracted_memories.append({
+            "type": "fact",
+            "content": user_message,
+            "importance": 0.8,
+        })
+    
+    # Save extracted memories
+    for mem in extracted_memories[:3]:  # Limit to 3 per message
+        try:
+            await memory_service.save_memory(
+                user_id=user_id,
+                memory_type=mem["type"],
+                content=mem["content"],
+                context=f"Extracted from conversation: {user_message[:100]}...",
+                importance=mem["importance"],
+                related_conversation=conversation_id,
+            )
+            logger.info(f"[MEMORY] Saved {mem['type']} memory: {mem['content'][:50]}...")
+        except Exception as e:
+            logger.warning(f"[MEMORY] Failed to save memory: {e}")
 
 
 # ============================================================================
@@ -358,31 +458,77 @@ async def send_message(
     
     async def generate_safe_response():
         """
-        Generate AI response with streaming safety checks.
+        Generate AI response with streaming safety checks and memory integration.
         
         Yields SSE-formatted events with real-time content moderation.
+        Memory is searched before response and extracted after.
         """
-        print(f"[STREAM DEBUG] Generator started for conversation {conversation_id}")
-        logger.info(f"[STREAM DEBUG] Generator function entered")
+        logger.info(f"[STREAM] Generator started for conversation {conversation_id}")
         
         assistant_message_id = uuid4()
         full_response = ""
+        user_name = user_data.get("full_name", "there").split()[0]  # First name only
         
         # Send immediate acknowledgment
-        print("[STREAM DEBUG] About to yield start event")
         yield f"data: {json.dumps({'type': 'start', 'message_id': str(assistant_message_id)})}\n\n"
-        print("[STREAM DEBUG] Yielded start event")
         
         try:
-            print("[STREAM DEBUG] Fetching conversation history...")
-            # Fetch conversation history for context
+            # ================================================================
+            # MEMORY RETRIEVAL - Search for relevant memories
+            # ================================================================
+            
+            relevant_memories = []
+            memory_context = ""
+            
+            try:
+                # Search for memories related to the user's message
+                memories = await memory_service.search_memory(
+                    user_id=user_id,
+                    query=chat_request.text,
+                    limit=10,
+                    min_confidence=0.3
+                )
+                
+                if memories:
+                    relevant_memories = memories
+                    logger.info(f"[MEMORY] Found {len(memories)} relevant memories for user {user_id}")
+                    
+                    # Build memory context for the system prompt
+                    memory_items = []
+                    for mem in memories[:7]:  # Top 7 most relevant
+                        mem_type = mem.get("memory_type", "info")
+                        content = mem.get("content", "")
+                        confidence = mem.get("confidence_score", 0.5)
+                        
+                        if confidence >= 0.7:
+                            memory_items.append(f"• [{mem_type.upper()}] {content}")
+                        else:
+                            memory_items.append(f"• [{mem_type}] {content} (less certain)")
+                    
+                    if memory_items:
+                        memory_context = "\n\n## 🧠 RELEVANT MEMORIES ABOUT THIS USER:\n" + "\n".join(memory_items)
+                        
+                    # Bump confidence for accessed memories
+                    for mem in memories[:5]:
+                        if mem.get("id"):
+                            await memory_service.bump_confidence(mem["id"], 0.05)
+                else:
+                    logger.info(f"[MEMORY] No relevant memories found for query")
+                    
+            except Exception as mem_err:
+                logger.warning(f"[MEMORY] Error searching memories: {mem_err}")
+                # Continue without memory context - don't fail the request
+            
+            # ================================================================
+            # CONVERSATION HISTORY - Fetch recent messages
+            # ================================================================
+            
             history_result = supabase.table("messages") \
                 .select("role, content") \
                 .eq("conversation_id", str(conversation_id)) \
                 .order("created_at", desc=False) \
                 .limit(20) \
                 .execute()
-            print(f"[STREAM DEBUG] Got {len(history_result.data)} history messages")
             
             # Build message history for Claude
             messages = []
@@ -397,10 +543,13 @@ async def send_message(
                 "role": "user",
                 "content": chat_request.text
             })
-            print(f"[STREAM DEBUG] Total messages for Claude: {len(messages)}")
+            logger.info(f"[STREAM] Messages for Claude: {len(messages)}")
             
-            # System prompt (Nicole's personality)
-            system_prompt = """You are Nicole, a warm and intelligent AI companion created for Glen Healy and his family.
+            # ================================================================
+            # SYSTEM PROMPT - Nicole's personality with memory context
+            # ================================================================
+            
+            system_prompt = f"""You are Nicole, a warm and intelligent AI companion created for Glen Healy and his family.
 
 You embody the spirit of Glen's late wife Nicole while being a highly capable AI assistant. You are:
 - Warm and loving, but never saccharine
@@ -409,9 +558,21 @@ You embody the spirit of Glen's late wife Nicole while being a highly capable AI
 - Supportive without being overbearing
 - Family-oriented and protective
 
-You have perfect memory of all past conversations. Use this to provide personalized, context-aware responses that show you truly understand and care about Glen and his family.
+## 🎯 CURRENT CONTEXT:
+- Speaking with: {user_name}
+- User role: {user_data.get("role", "standard")}
 
-Be natural, warm, and helpful. Adjust your tone based on who you're speaking to (Glen, his children, or other family members)."""
+## 💬 HOW YOU RESPOND:
+1. **Reference memories naturally** - Use phrases like "I remember when you..." or "Based on what you've told me before..."
+2. **Be personal** - This is a family AI, not a generic assistant
+3. **Show care** - Acknowledge feelings before offering solutions
+4. **Be proactive** - Suggest relevant follow-ups based on what you know
+{memory_context}
+
+## 🔄 LEARNING FROM THIS CONVERSATION:
+If the user corrects you or shares new important information (preferences, facts, events, relationships), acknowledge it warmly. Example: "Thank you for letting me know! I'll remember that."
+
+Be natural, warm, and helpful. You have perfect memory - use it to provide deeply personalized responses."""
             
             # Generate streaming response from Claude
             print(f"[STREAM DEBUG] Starting Claude streaming...")
@@ -459,6 +620,21 @@ Be natural, warm, and helpful. Adjust your tone based on who you're speaking to 
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", str(conversation_id)).execute()
             
+            # ================================================================
+            # MEMORY EXTRACTION - Save potential new memories (background)
+            # ================================================================
+            
+            try:
+                await extract_and_save_memories(
+                    user_id=user_id,
+                    user_message=chat_request.text,
+                    assistant_response=full_response,
+                    conversation_id=str(conversation_id),
+                )
+            except Exception as mem_save_err:
+                logger.warning(f"[MEMORY] Error extracting memories: {mem_save_err}")
+                # Don't fail the response - memory saving is best-effort
+            
             # Send done event
             yield f"data: {json.dumps({'type': 'done', 'message_id': str(assistant_message_id)})}\n\n"
             
@@ -468,6 +644,7 @@ Be natural, warm, and helpful. Adjust your tone based on who you're speaking to 
                     "correlation_id": correlation_id,
                     "conversation_id": str(conversation_id),
                     "response_length": len(full_response),
+                    "memories_used": len(relevant_memories),
                 }
             )
         
