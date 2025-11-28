@@ -28,9 +28,13 @@ class MemoryService:
     - Multi-modal retrieval (text, semantic, temporal)
     """
 
+    # Global collection name for all users (filter by user_id in payload)
+    QDRANT_COLLECTION = "nicole_memories"
+
     def __init__(self):
         self.redis_ttl = 3600  # 1 hour cache
         self.memory_decay_rate = 0.03  # 3% decay per week for unused memories
+        self._collection_initialized = False
 
     async def search_memory(
         self,
@@ -53,23 +57,31 @@ class MemoryService:
         Returns:
             Ranked list of relevant memories
         """
+        
+        logger.info(f"[MEMORY] Searching memories for user {user_id[:8]}...: query='{query[:50]}...'")
 
         cache_key = f"memory:{user_id}:{hash(query) % 10000}"
         redis_client = get_redis()
 
         # Check Redis hot cache first
         if redis_client:
-            cached = redis_client.get(cache_key)
-            if cached:
-                cached_results = json.loads(cached)
-                # Filter by confidence and types if specified
-                filtered = self._filter_results(cached_results, memory_types, min_confidence)
-                if filtered:
-                    return filtered[:limit]
+            try:
+                cached = redis_client.get(cache_key)
+                if cached:
+                    cached_results = json.loads(cached)
+                    # Filter by confidence and types if specified
+                    filtered = self._filter_results(cached_results, memory_types, min_confidence)
+                    if filtered:
+                        logger.info(f"[MEMORY] Found {len(filtered)} cached results")
+                        return filtered[:limit]
+            except Exception as cache_err:
+                logger.debug(f"[MEMORY] Cache check failed: {cache_err}")
 
         # Perform hybrid search
         vector_results = await self._vector_search(user_id, query, limit * 2)
         structured_results = await self._structured_search(user_id, query, limit * 2, memory_types)
+
+        logger.info(f"[MEMORY] Search results: {len(vector_results)} vector, {len(structured_results)} structured")
 
         # Combine and re-rank results
         combined = self._rerank_results(vector_results, structured_results, query)
@@ -77,9 +89,14 @@ class MemoryService:
         # Apply filters
         filtered_combined = self._filter_results(combined, memory_types, min_confidence)
 
-        # Cache results
-        if redis_client:
-            redis_client.setex(cache_key, self.redis_ttl, json.dumps(filtered_combined))
+        logger.info(f"[MEMORY] After filtering: {len(filtered_combined)} memories")
+
+        # Cache results (if we have any)
+        if redis_client and filtered_combined:
+            try:
+                redis_client.setex(cache_key, self.redis_ttl, json.dumps(filtered_combined))
+            except Exception as cache_err:
+                logger.debug(f"[MEMORY] Cache save failed: {cache_err}")
 
         return filtered_combined[:limit]
 
@@ -107,16 +124,23 @@ class MemoryService:
             Created memory entry or None if failed
         """
 
+        logger.info(f"[MEMORY] Saving memory for user {user_id[:8]}...: type={memory_type}, content={content[:50]}...")
+
         try:
             supabase = get_supabase()
             if not supabase:
-                logger.error(f"Supabase unavailable for memory save: {user_id}")
+                logger.error(f"[MEMORY] Supabase unavailable for memory save: {user_id}")
                 return None
 
-            # Generate embedding for vector storage
-            embedding = await openai_client.generate_embedding(content)
+            # Generate embedding for vector storage (optional - don't fail if OpenAI unavailable)
+            embedding = None
+            try:
+                embedding = await openai_client.generate_embedding(content)
+                logger.debug(f"[MEMORY] Generated embedding for memory")
+            except Exception as embed_err:
+                logger.warning(f"[MEMORY] Could not generate embedding (continuing without): {embed_err}")
 
-            # Save to PostgreSQL (structured)
+            # Save to PostgreSQL (structured) - this is the primary storage
             memory_data = {
                 "user_id": user_id,
                 "memory_type": memory_type,
@@ -124,6 +148,7 @@ class MemoryService:
                 "context": context,
                 "importance_score": min(max(importance, 0.0), 1.0),
                 "confidence_score": 1.0,  # New memories start with full confidence
+                "access_count": 0,
                 "created_at": datetime.utcnow().isoformat()
             }
 
@@ -133,22 +158,24 @@ class MemoryService:
             result = supabase.table("memory_entries").insert(memory_data).execute()
 
             if not result.data:
-                logger.error(f"Failed to save memory to PostgreSQL: {user_id}")
+                logger.error(f"[MEMORY] Failed to save memory to PostgreSQL: {user_id}")
                 return None
 
             memory_id = result.data[0]["id"]
+            logger.info(f"[MEMORY] ✅ Saved to PostgreSQL: {memory_id}")
 
-            # Save to Qdrant (vector) - Queue for background processing
-            await self._queue_vector_embedding(memory_id, content, embedding)
+            # Save to Qdrant (vector) - only if we have embedding
+            if embedding:
+                await self._queue_vector_embedding(memory_id, content, embedding)
 
             # Update hot cache
             await self._update_hot_cache(user_id, result.data[0])
 
-            logger.info(f"Memory saved successfully: {memory_id} for user {user_id}")
+            logger.info(f"[MEMORY] Memory saved successfully: {memory_id} for user {user_id[:8]}...")
             return result.data[0]
 
         except Exception as e:
-            logger.error(f"Error saving memory: {e}", exc_info=True)
+            logger.error(f"[MEMORY] Error saving memory: {e}", exc_info=True)
             return None
 
     async def get_recent_memories(
@@ -464,13 +491,31 @@ class MemoryService:
         try:
             qdrant_client = get_qdrant()
             if not qdrant_client:
+                logger.debug("[MEMORY] Qdrant not available, skipping vector search")
                 return []
 
-            query_embedding = await openai_client.generate_embedding(query)
+            # Generate embedding for the query
+            try:
+                query_embedding = await openai_client.generate_embedding(query)
+            except Exception as embed_err:
+                logger.warning(f"[MEMORY] Failed to generate embedding: {embed_err}")
+                return []
 
+            # Import filter for Qdrant
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+            # Search with user_id filter
             results = qdrant_client.search(
-                collection_name=f"nicole_core_{user_id}",
+                collection_name=self.QDRANT_COLLECTION,
                 query_vector=query_embedding,
+                query_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="user_id",
+                            match=MatchValue(value=user_id)
+                        )
+                    ]
+                ),
                 limit=limit,
                 score_threshold=0.1  # Minimum relevance threshold
             )
@@ -488,10 +533,11 @@ class MemoryService:
                     "source": "vector"
                 })
 
+            logger.info(f"[MEMORY] Vector search found {len(formatted_results)} results")
             return formatted_results
 
         except Exception as e:
-            logger.error(f"Vector search failed: {e}")
+            logger.error(f"[MEMORY] Vector search failed: {e}")
             return []
 
     async def _structured_search(
@@ -505,44 +551,61 @@ class MemoryService:
         try:
             supabase = get_supabase()
             if not supabase:
+                logger.debug("[MEMORY] Supabase not available for structured search")
                 return []
 
+            # First, try to get all memories for this user (simpler approach)
+            # Full-text search might not be configured in Supabase
             query_builder = (
                 supabase.table("memory_entries")
                 .select("*")
                 .eq("user_id", user_id)
-                .is_("archived_at", None)  # Not archived
-                .order("confidence_score", desc=True)
-                .limit(limit)
+                .is_("archived_at", "null")  # Not archived
+                .order("created_at", desc=True)
+                .limit(limit * 2)  # Get more, then filter
             )
-
-            # Add text search
-            query_builder = query_builder.textSearch("content", query)
 
             if memory_types:
                 query_builder = query_builder.in_("memory_type", memory_types)
 
             result = query_builder.execute()
 
-            # Format results
+            # Simple keyword matching as fallback (since textSearch may not work)
+            query_words = set(query.lower().split())
+            
+            # Format and filter results
             formatted_results = []
             for memory in result.data or []:
-                formatted_results.append({
-                    "id": memory["id"],
-                    "content": memory["content"],
-                    "memory_type": memory["memory_type"],
-                    "confidence_score": memory["confidence_score"],
-                    "importance_score": memory["importance_score"],
-                    "access_count": memory.get("access_count", 0),
-                    "last_accessed": memory.get("last_accessed"),
-                    "score": memory["confidence_score"],  # Use confidence as relevance score
-                    "source": "structured"
-                })
+                content_lower = memory["content"].lower()
+                
+                # Calculate simple relevance score based on word overlap
+                content_words = set(content_lower.split())
+                overlap = len(query_words & content_words)
+                relevance = overlap / max(len(query_words), 1)
+                
+                # Include if any query word is in content
+                if overlap > 0 or any(word in content_lower for word in query_words):
+                    formatted_results.append({
+                        "id": memory["id"],
+                        "content": memory["content"],
+                        "memory_type": memory["memory_type"],
+                        "confidence_score": memory["confidence_score"],
+                        "importance_score": memory["importance_score"],
+                        "access_count": memory.get("access_count", 0),
+                        "last_accessed": memory.get("last_accessed"),
+                        "created_at": memory.get("created_at"),
+                        "score": memory["confidence_score"] * (0.5 + relevance * 0.5),
+                        "source": "structured"
+                    })
 
-            return formatted_results
+            # Sort by score
+            formatted_results.sort(key=lambda x: x["score"], reverse=True)
+            
+            logger.info(f"[MEMORY] Structured search found {len(formatted_results)} results from {len(result.data or [])} total memories")
+            return formatted_results[:limit]
 
         except Exception as e:
-            logger.error(f"Structured search failed: {e}")
+            logger.error(f"[MEMORY] Structured search failed: {e}")
             return []
 
     def _rerank_results(
@@ -660,6 +723,7 @@ class MemoryService:
             # For now, save directly to Qdrant
             qdrant_client = get_qdrant()
             if not qdrant_client:
+                logger.debug("[MEMORY] Qdrant not available, skipping vector storage")
                 return
 
             # Get full memory data for payload
@@ -669,22 +733,36 @@ class MemoryService:
                 if result.data:
                     memory = result.data[0]
 
-                    # Save to Qdrant
+                    # Import PointStruct for Qdrant
+                    from qdrant_client.models import PointStruct
+                    import uuid
+
+                    # Convert memory_id to a valid Qdrant point ID (must be int or UUID)
+                    try:
+                        point_id = str(uuid.UUID(memory_id))
+                    except (ValueError, TypeError):
+                        point_id = str(uuid.uuid4())
+
+                    # Save to global Qdrant collection with user_id in payload for filtering
                     qdrant_client.upsert(
-                        collection_name=f"nicole_core_{memory['user_id']}",
-                        points=[{
-                            "id": memory_id,
-                            "vector": embedding,
-                            "payload": {
-                                "content": content,
-                                "memory_type": memory["memory_type"],
-                                "confidence_score": memory["confidence_score"],
-                                "importance_score": memory["importance_score"],
-                                "created_at": memory["created_at"],
-                                "user_id": memory["user_id"]
-                            }
-                        }]
+                        collection_name=self.QDRANT_COLLECTION,
+                        points=[
+                            PointStruct(
+                                id=point_id,
+                                vector=embedding,
+                                payload={
+                                    "content": content,
+                                    "memory_type": memory["memory_type"],
+                                    "confidence_score": memory["confidence_score"],
+                                    "importance_score": memory["importance_score"],
+                                    "created_at": memory["created_at"],
+                                    "user_id": memory["user_id"],
+                                    "memory_id": memory_id
+                                }
+                            )
+                        ]
                     )
+                    logger.info(f"[MEMORY] Saved vector embedding for memory {memory_id[:8]}...")
 
         except Exception as e:
-            logger.error(f"Failed to queue vector embedding: {e}")
+            logger.error(f"[MEMORY] Failed to queue vector embedding: {e}")

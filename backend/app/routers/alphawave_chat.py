@@ -100,6 +100,8 @@ async def extract_and_save_memories(
     """
     import re
     
+    logger.info(f"[MEMORY EXTRACT] Analyzing message: '{user_message[:80]}...'")
+    
     extracted_memories = []
     message_lower = user_message.lower()
     
@@ -110,12 +112,16 @@ async def extract_and_save_memories(
             for match in matches:
                 if isinstance(match, tuple):
                     match = " ".join(match)
-                if len(match) > 10 and len(match) < 500:  # Reasonable length
+                match = match.strip()
+                if len(match) > 5 and len(match) < 500:  # Lowered minimum length
+                    # Save the FULL user message as the memory content for better context
                     extracted_memories.append({
                         "type": memory_type,
-                        "content": match.strip(),
-                        "importance": 0.7 if memory_type == "correction" else 0.5,
+                        "content": user_message,  # Full message, not just the match
+                        "importance": 0.7 if memory_type == "correction" else 0.6,
                     })
+                    logger.info(f"[MEMORY EXTRACT] Pattern matched: type={memory_type}, match='{match[:50]}...'")
+                    break  # One match per pattern type is enough
     
     # Check for explicit memory requests
     if any(phrase in message_lower for phrase in ["remember that", "don't forget", "keep in mind", "note that"]):
@@ -125,21 +131,46 @@ async def extract_and_save_memories(
             "content": user_message,
             "importance": 0.8,
         })
+        logger.info(f"[MEMORY EXTRACT] Explicit memory request detected")
     
-    # Save extracted memories
+    # Also save any message that contains personal information keywords
+    personal_keywords = ["my tea", "my coffee", "i prefer", "i always", "i never", "my name", "i live", "i work", "my kids", "my son", "my daughter", "my wife", "my husband"]
+    if any(keyword in message_lower for keyword in personal_keywords) and not extracted_memories:
+        extracted_memories.append({
+            "type": "preference",
+            "content": user_message,
+            "importance": 0.6,
+        })
+        logger.info(f"[MEMORY EXTRACT] Personal keyword detected in message")
+    
+    if not extracted_memories:
+        logger.info(f"[MEMORY EXTRACT] No memories to extract from this message")
+        return
+    
+    logger.info(f"[MEMORY EXTRACT] Saving {len(extracted_memories)} memories...")
+    
+    # Save extracted memories (deduplicate by content)
+    saved_contents = set()
     for mem in extracted_memories[:3]:  # Limit to 3 per message
+        if mem["content"] in saved_contents:
+            continue
+        saved_contents.add(mem["content"])
+        
         try:
-            await memory_service.save_memory(
+            result = await memory_service.save_memory(
                 user_id=user_id,
                 memory_type=mem["type"],
                 content=mem["content"],
-                context=f"Extracted from conversation: {user_message[:100]}...",
+                context=f"User said this in conversation",
                 importance=mem["importance"],
                 related_conversation=conversation_id,
             )
-            logger.info(f"[MEMORY] Saved {mem['type']} memory: {mem['content'][:50]}...")
+            if result:
+                logger.info(f"[MEMORY EXTRACT] ✅ Saved {mem['type']} memory: {mem['content'][:50]}...")
+            else:
+                logger.warning(f"[MEMORY EXTRACT] ⚠️ Memory service returned None")
         except Exception as e:
-            logger.warning(f"[MEMORY] Failed to save memory: {e}")
+            logger.error(f"[MEMORY EXTRACT] ❌ Failed to save memory: {e}", exc_info=True)
 
 
 # ============================================================================
