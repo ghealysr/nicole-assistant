@@ -58,9 +58,15 @@ class MemoryService:
             Ranked list of relevant memories
         """
         
-        logger.info(f"[MEMORY] Searching memories for user {user_id[:8]}...: query='{query[:50]}...'")
+        # Ensure user_id is a string
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            logger.warning("[MEMORY] Cannot search memories: user_id is None or invalid")
+            return []
+            
+        logger.info(f"[MEMORY] Searching memories for user {user_id_str[:8]}...: query='{query[:50]}...'")
 
-        cache_key = f"memory:{user_id}:{hash(query) % 10000}"
+        cache_key = f"memory:{user_id_str}:{hash(query) % 10000}"
         redis_client = get_redis()
 
         # Check Redis hot cache first
@@ -78,8 +84,8 @@ class MemoryService:
                 logger.debug(f"[MEMORY] Cache check failed: {cache_err}")
 
         # Perform hybrid search
-        vector_results = await self._vector_search(user_id, query, limit * 2)
-        structured_results = await self._structured_search(user_id, query, limit * 2, memory_types)
+        vector_results = await self._vector_search(user_id_str, query, limit * 2)
+        structured_results = await self._structured_search(user_id_str, query, limit * 2, memory_types)
 
         logger.info(f"[MEMORY] Search results: {len(vector_results)} vector, {len(structured_results)} structured")
 
@@ -124,12 +130,18 @@ class MemoryService:
             Created memory entry or None if failed
         """
 
-        logger.info(f"[MEMORY] Saving memory for user {user_id[:8]}...: type={memory_type}, content={content[:50]}...")
+        # Ensure user_id is a string
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            logger.error("[MEMORY] Cannot save memory: user_id is None or invalid")
+            return None
+            
+        logger.info(f"[MEMORY] Saving memory for user {user_id_str[:8]}...: type={memory_type}, content={content[:50]}...")
 
         try:
             supabase = get_supabase()
             if not supabase:
-                logger.error(f"[MEMORY] Supabase unavailable for memory save: {user_id}")
+                logger.error(f"[MEMORY] Supabase unavailable for memory save: {user_id_str}")
                 return None
 
             # Generate embedding for vector storage (optional - don't fail if OpenAI unavailable)
@@ -142,7 +154,7 @@ class MemoryService:
 
             # Save to PostgreSQL (structured) - this is the primary storage
             memory_data = {
-                "user_id": user_id,
+                "user_id": user_id_str,
                 "memory_type": memory_type,
                 "content": content,
                 "context": context,
@@ -169,9 +181,9 @@ class MemoryService:
                 await self._queue_vector_embedding(memory_id, content, embedding)
 
             # Update hot cache
-            await self._update_hot_cache(user_id, result.data[0])
+            await self._update_hot_cache(user_id_str, result.data[0])
 
-            logger.info(f"[MEMORY] Memory saved successfully: {memory_id} for user {user_id[:8]}...")
+            logger.info(f"[MEMORY] Memory saved successfully: {memory_id} for user {user_id_str[:8]}...")
             return result.data[0]
 
         except Exception as e:
@@ -554,12 +566,20 @@ class MemoryService:
                 logger.debug("[MEMORY] Supabase not available for structured search")
                 return []
 
+            # Ensure user_id is a string for database query
+            user_id_str = str(user_id) if user_id else None
+            if not user_id_str:
+                logger.warning("[MEMORY] Cannot search: user_id is None")
+                return []
+                
+            logger.info(f"[MEMORY] Structured search: user_id={user_id_str[:8]}..., query='{query[:30]}...'")
+                
             # First, try to get all memories for this user (simpler approach)
             # Full-text search might not be configured in Supabase
             query_builder = (
                 supabase.table("memory_entries")
                 .select("*")
-                .eq("user_id", user_id)
+                .eq("user_id", user_id_str)
                 .is_("archived_at", "null")  # Not archived
                 .order("created_at", desc=True)
                 .limit(limit * 2)  # Get more, then filter

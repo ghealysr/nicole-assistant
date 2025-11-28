@@ -512,17 +512,23 @@ async def send_message(
             memory_context = ""
             
             try:
-                # Search for memories related to the user's message
-                memories = await memory_service.search_memory(
-                    user_id=user_id,
-                    query=chat_request.text,
-                    limit=10,
-                    min_confidence=0.3
-                )
+                # Ensure user_id is a string (UUID objects need conversion)
+                user_id_str = str(user_id) if user_id else None
+                if not user_id_str:
+                    logger.warning("[MEMORY] No user_id available for memory search")
+                    memories = []
+                else:
+                    # Search for memories related to the user's message
+                    memories = await memory_service.search_memory(
+                        user_id=user_id_str,
+                        query=chat_request.text,
+                        limit=10,
+                        min_confidence=0.3
+                    )
                 
                 if memories:
                     relevant_memories = memories
-                    logger.info(f"[MEMORY] Found {len(memories)} relevant memories for user {user_id}")
+                    logger.info(f"[MEMORY] Found {len(memories)} relevant memories for user {user_id_str[:8]}...")
                     
                     # Build memory context for the system prompt
                     memory_items = []
@@ -538,16 +544,20 @@ async def send_message(
                     
                     if memory_items:
                         memory_context = "\n\n## 🧠 RELEVANT MEMORIES ABOUT THIS USER:\n" + "\n".join(memory_items)
+                        logger.info(f"[MEMORY] Added {len(memory_items)} memories to system prompt")
                         
                     # Bump confidence for accessed memories
                     for mem in memories[:5]:
                         if mem.get("id"):
-                            await memory_service.bump_confidence(mem["id"], 0.05)
+                            try:
+                                await memory_service.bump_confidence(mem["id"], 0.05)
+                            except Exception as bump_err:
+                                logger.debug(f"[MEMORY] Could not bump confidence: {bump_err}")
                 else:
-                    logger.info(f"[MEMORY] No relevant memories found for query")
+                    logger.info(f"[MEMORY] No relevant memories found for query '{chat_request.text[:50]}...'")
                     
             except Exception as mem_err:
-                logger.warning(f"[MEMORY] Error searching memories: {mem_err}")
+                logger.error(f"[MEMORY] Error searching memories: {mem_err}", exc_info=True)
                 # Continue without memory context - don't fail the request
             
             # ================================================================
@@ -656,12 +666,17 @@ Be natural, warm, and helpful. You have perfect memory - use it to provide deepl
             # ================================================================
             
             try:
-                await extract_and_save_memories(
-                    user_id=user_id,
-                    user_message=chat_request.text,
-                    assistant_response=full_response,
-                    conversation_id=str(conversation_id),
-                )
+                # Ensure user_id is a string for memory extraction
+                user_id_str = str(user_id) if user_id else None
+                if user_id_str:
+                    await extract_and_save_memories(
+                        user_id=user_id_str,
+                        user_message=chat_request.text,
+                        assistant_response=full_response,
+                        conversation_id=str(conversation_id),
+                    )
+                else:
+                    logger.warning("[MEMORY] No user_id available for memory extraction")
             except Exception as mem_save_err:
                 logger.warning(f"[MEMORY] Error extracting memories: {mem_save_err}")
                 # Don't fail the response - memory saving is best-effort
