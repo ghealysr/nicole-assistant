@@ -37,6 +37,8 @@ from app.services.alphawave_safety_filter import (
     classify_age_tier,
 )
 from app.services.alphawave_memory_service import MemoryService
+from app.services.alphawave_document_service import document_service
+from app.services.alphawave_link_processor import link_processor
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -561,6 +563,63 @@ async def send_message(
                 # Continue without memory context - don't fail the request
             
             # ================================================================
+            # DOCUMENT SEARCH - Find relevant document content
+            # ================================================================
+            
+            document_context = ""
+            
+            try:
+                user_id_str = str(user_id) if user_id else None
+                if user_id_str:
+                    # Search for relevant documents
+                    doc_results = await document_service.search_documents(
+                        user_id=user_id_str,
+                        query=chat_request.text,
+                        limit=3,
+                    )
+                    
+                    if doc_results:
+                        logger.info(f"[DOCUMENT] Found {len(doc_results)} relevant documents")
+                        doc_items = []
+                        for doc in doc_results:
+                            title = doc.get("title", "Document")
+                            content = doc.get("content", "")[:300]  # Truncate
+                            score = doc.get("score", 0)
+                            if score >= 0.4:  # Only include relevant docs
+                                doc_items.append(f"• From '{title}': {content}...")
+                        
+                        if doc_items:
+                            document_context = "\n\n## 📄 RELEVANT DOCUMENT CONTENT:\n" + "\n".join(doc_items)
+                            
+            except Exception as doc_err:
+                logger.debug(f"[DOCUMENT] Error searching documents: {doc_err}")
+                # Continue without document context
+            
+            # ================================================================
+            # URL PROCESSING - Process any links in the message
+            # ================================================================
+            
+            try:
+                user_id_str = str(user_id) if user_id else None
+                if user_id_str:
+                    # Check for URLs in the message
+                    urls = link_processor.extract_urls(chat_request.text)
+                    if urls:
+                        logger.info(f"[LINK] Found {len(urls)} URLs in message")
+                        # Process URLs in background (don't block response)
+                        # This creates memories that Nicole can reference later
+                        import asyncio
+                        asyncio.create_task(
+                            link_processor.process_urls_in_message(
+                                user_id=user_id_str,
+                                message=chat_request.text,
+                                conversation_id=str(conversation_id),
+                            )
+                        )
+            except Exception as url_err:
+                logger.debug(f"[LINK] Error processing URLs: {url_err}")
+            
+            # ================================================================
             # CONVERSATION HISTORY - Fetch recent messages
             # ================================================================
             
@@ -609,6 +668,7 @@ You embody the spirit of Glen's late wife Nicole while being a highly capable AI
 3. **Show care** - Acknowledge feelings before offering solutions
 4. **Be proactive** - Suggest relevant follow-ups based on what you know
 {memory_context}
+{document_context}
 
 ## 🔄 LEARNING FROM THIS CONVERSATION:
 If the user corrects you or shares new important information (preferences, facts, events, relationships), acknowledge it warmly. Example: "Thank you for letting me know! I'll remember that."

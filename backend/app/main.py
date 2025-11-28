@@ -14,6 +14,7 @@ from app.routers import (
     alphawave_health,
     alphawave_auth,
     alphawave_chat,
+    alphawave_documents,
     alphawave_files,
     alphawave_journal,
     alphawave_memories,
@@ -46,6 +47,7 @@ app.middleware("http")(rate_limit_middleware)
 app.include_router(alphawave_health.router, prefix="/health", tags=["Health"])
 app.include_router(alphawave_auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(alphawave_chat.router, prefix="/chat", tags=["Chat"])
+app.include_router(alphawave_documents.router, prefix="/documents", tags=["Documents"])
 app.include_router(alphawave_files.router, prefix="/files", tags=["Files"])
 app.include_router(alphawave_journal.router, prefix="/journal", tags=["Journal"])
 app.include_router(alphawave_memories.router, prefix="/memories", tags=["Memories"])
