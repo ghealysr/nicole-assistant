@@ -8,8 +8,6 @@ interface AlphawaveSidebarProps {
   onVibeClick?: () => void;
   isVibeOpen?: boolean;
   onMemoryClick?: () => void;
-  onDocumentsClick?: () => void;
-  onHistoryClick?: () => void;
   isMemoryOpen?: boolean;
 }
 
@@ -27,8 +25,6 @@ export function AlphawaveSidebar({
   onVibeClick, 
   isVibeOpen, 
   onMemoryClick, 
-  onDocumentsClick, 
-  onHistoryClick,
   isMemoryOpen 
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
@@ -121,30 +117,6 @@ export function AlphawaveSidebar({
             <path d="M7 14v.01"/>
           </svg>
           Memory
-        </button>
-
-        {/* Documents Button - Opens Memory Dashboard to Documents tab */}
-        <button
-          onClick={onDocumentsClick}
-          className="menu-item"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          Documents
-        </button>
-
-        {/* History Button - Opens Memory Dashboard to History tab */}
-        <button
-          onClick={onHistoryClick}
-          className="menu-item"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          History
         </button>
       </nav>
       

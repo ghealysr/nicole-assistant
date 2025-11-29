@@ -587,10 +587,14 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose }: AlphawaveMemoryDas
                     </svg>
                     Database Status
                   </span>
-                  <span className="mem-widget-badge mem-badge-success">Connected</span>
+                  <span className="mem-widget-badge mem-badge-success">All Connected</span>
                 </div>
                 <div className="mem-metric-row">
                   <span className="mem-metric-label">Supabase Postgres</span>
+                  <span className="mem-metric-value mem-good">● Online</span>
+                </div>
+                <div className="mem-metric-row">
+                  <span className="mem-metric-label">Tiger TimescaleDB</span>
                   <span className="mem-metric-value mem-good">● Online</span>
                 </div>
                 <div className="mem-metric-row">
@@ -693,7 +697,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose }: AlphawaveMemoryDas
 
         {/* Footer */}
         <div className="mem-dash-footer">
-          <div className="mem-dash-footer-text">Last synced: Just now • Supabase v16</div>
+          <div className="mem-dash-footer-text">Last synced: Just now • Supabase + Tiger TimescaleDB</div>
         </div>
       </div>
     </aside>
