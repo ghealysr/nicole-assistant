@@ -13,6 +13,8 @@ interface AlphawaveJournalPanelProps {
 
 type EntryType = 'reflection' | 'dream' | 'gratitude' | 'relationship' | 'goal' | 'mood' | 'voice';
 type MoodLevel = 1 | 2 | 3 | 4 | 5;
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'beverage';
+type SupplementType = 'vitamin' | 'mineral' | 'medication' | 'supplement' | 'other';
 
 interface JournalEntry {
   id: string;
@@ -51,6 +53,61 @@ interface DayInsight {
   summary: string;
   correlations: string[];
   patterns: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// NUTRITION TYPES
+// ═══════════════════════════════════════════════════════════════════════
+
+interface FoodItem {
+  id: string;
+  name: string;
+  brand?: string;
+  portion: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+}
+
+interface MealEntry {
+  id: string;
+  mealType: MealType;
+  time: string;
+  items: FoodItem[];
+  notes?: string;
+}
+
+interface SupplementEntry {
+  id: string;
+  name: string;
+  brand?: string;
+  type: SupplementType;
+  dosage: string;
+  time: string;
+  taken: boolean;
+}
+
+interface HydrationEntry {
+  id: string;
+  type: 'water' | 'coffee' | 'tea' | 'juice' | 'soda' | 'alcohol' | 'other';
+  amount: number; // in oz
+  time: string;
+}
+
+interface DailyNutrition {
+  date: string;
+  meals: MealEntry[];
+  supplements: SupplementEntry[];
+  hydration: HydrationEntry[];
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  totalWater: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -115,6 +172,87 @@ const sampleInsights: DayInsight[] = [
       'Gratitude practice correlates with better sleep',
     ],
   },
+];
+
+// ═══════════════════════════════════════════════════════════════════════
+// NUTRITION SAMPLE DATA
+// ═══════════════════════════════════════════════════════════════════════
+
+const sampleTodayNutrition: DailyNutrition = {
+  date: new Date().toISOString().split('T')[0],
+  meals: [
+    {
+      id: 'm1',
+      mealType: 'breakfast',
+      time: '7:30 AM',
+      items: [
+        { id: 'f1', name: 'Greek Yogurt', brand: 'Fage', portion: '1 cup', calories: 130, protein: 18, carbs: 6, fat: 4 },
+        { id: 'f2', name: 'Blueberries', portion: '1/2 cup', calories: 42, protein: 1, carbs: 11, fat: 0 },
+        { id: 'f3', name: 'Granola', brand: 'KIND', portion: '1/4 cup', calories: 120, protein: 3, carbs: 18, fat: 5 },
+      ],
+    },
+    {
+      id: 'm2',
+      mealType: 'lunch',
+      time: '12:30 PM',
+      items: [
+        { id: 'f4', name: 'Grilled Chicken Salad', portion: '1 bowl', calories: 380, protein: 35, carbs: 12, fat: 22 },
+        { id: 'f5', name: 'Iced Green Tea', brand: 'Ito En', portion: '16 oz', calories: 0, protein: 0, carbs: 0, fat: 0 },
+      ],
+    },
+  ],
+  supplements: [
+    { id: 's1', name: 'Vitamin D3', brand: 'NOW Foods', type: 'vitamin', dosage: '5000 IU', time: '7:30 AM', taken: true },
+    { id: 's2', name: 'Omega-3 Fish Oil', brand: 'Nordic Naturals', type: 'supplement', dosage: '2 softgels', time: '7:30 AM', taken: true },
+    { id: 's3', name: 'Magnesium Glycinate', brand: 'Pure Encapsulations', type: 'mineral', dosage: '400mg', time: '9:00 PM', taken: false },
+    { id: 's4', name: 'Multivitamin', brand: 'Thorne', type: 'vitamin', dosage: '2 capsules', time: '7:30 AM', taken: true },
+    { id: 's5', name: 'Ashwagandha', brand: 'Jarrow', type: 'supplement', dosage: '300mg', time: '9:00 PM', taken: false },
+  ],
+  hydration: [
+    { id: 'h1', type: 'water', amount: 16, time: '7:00 AM' },
+    { id: 'h2', type: 'coffee', amount: 12, time: '8:00 AM' },
+    { id: 'h3', type: 'water', amount: 16, time: '10:30 AM' },
+    { id: 'h4', type: 'water', amount: 16, time: '1:00 PM' },
+  ],
+  totalCalories: 672,
+  totalProtein: 57,
+  totalCarbs: 47,
+  totalFat: 31,
+  totalWater: 48,
+};
+
+const recentFoods: FoodItem[] = [
+  { id: 'rf1', name: 'Greek Yogurt', brand: 'Fage', portion: '1 cup', calories: 130, protein: 18, carbs: 6, fat: 4 },
+  { id: 'rf2', name: 'Avocado Toast', portion: '2 slices', calories: 320, protein: 8, carbs: 28, fat: 20 },
+  { id: 'rf3', name: 'Chicken Breast', portion: '6 oz', calories: 280, protein: 52, carbs: 0, fat: 6 },
+  { id: 'rf4', name: 'Brown Rice', portion: '1 cup', calories: 216, protein: 5, carbs: 45, fat: 2 },
+  { id: 'rf5', name: 'Salmon Fillet', portion: '6 oz', calories: 350, protein: 40, carbs: 0, fat: 20 },
+];
+
+const MEAL_TYPES: { type: MealType; label: string; icon: string; color: string }[] = [
+  { type: 'breakfast', label: 'Breakfast', icon: '🌅', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  { type: 'lunch', label: 'Lunch', icon: '☀️', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { type: 'dinner', label: 'Dinner', icon: '🌙', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  { type: 'snack', label: 'Snack', icon: '🍎', color: 'bg-green-100 text-green-700 border-green-200' },
+  { type: 'beverage', label: 'Beverage', icon: '🥤', color: 'bg-sky-100 text-sky-700 border-sky-200' },
+];
+
+const HYDRATION_TYPES: { type: HydrationEntry['type']; label: string; icon: string }[] = [
+  { type: 'water', label: 'Water', icon: '💧' },
+  { type: 'coffee', label: 'Coffee', icon: '☕' },
+  { type: 'tea', label: 'Tea', icon: '🍵' },
+  { type: 'juice', label: 'Juice', icon: '🧃' },
+  { type: 'soda', label: 'Soda', icon: '🥤' },
+  { type: 'alcohol', label: 'Alcohol', icon: '🍷' },
+  { type: 'other', label: 'Other', icon: '🫗' },
+];
+
+const SUPPLEMENT_TYPES: { type: SupplementType; label: string; icon: string }[] = [
+  { type: 'vitamin', label: 'Vitamin', icon: '💊' },
+  { type: 'mineral', label: 'Mineral', icon: '⚪' },
+  { type: 'medication', label: 'Medication', icon: '💉' },
+  { type: 'supplement', label: 'Supplement', icon: '🌿' },
+  { type: 'other', label: 'Other', icon: '📦' },
 ];
 
 const ENTRY_TYPES: { type: EntryType; label: string; icon: string; prompt: string; color: string }[] = [
@@ -201,8 +339,24 @@ export function AlphawaveJournalPanel({ isOpen, onClose }: AlphawaveJournalPanel
   const startWidthRef = useRef(600);
 
   // View state
-  const [activeView, setActiveView] = useState<'write' | 'history' | 'insights'>('write');
+  const [activeView, setActiveView] = useState<'write' | 'nutrition' | 'history' | 'insights'>('write');
   
+  // Nutrition state
+  const [todayNutrition, setTodayNutrition] = useState<DailyNutrition>(sampleTodayNutrition);
+  const [nutritionSubView, setNutritionSubView] = useState<'log' | 'supplements' | 'hydration'>('log');
+  const [selectedMealType, setSelectedMealType] = useState<MealType>('breakfast');
+  const [newFoodName, setNewFoodName] = useState('');
+  const [newFoodBrand, setNewFoodBrand] = useState('');
+  const [newFoodPortion, setNewFoodPortion] = useState('');
+  const [newFoodCalories, setNewFoodCalories] = useState('');
+  const [showAddMeal, setShowAddMeal] = useState(false);
+  const [showAddSupplement, setShowAddSupplement] = useState(false);
+  const [newSupplementName, setNewSupplementName] = useState('');
+  const [newSupplementBrand, setNewSupplementBrand] = useState('');
+  const [newSupplementType, setNewSupplementType] = useState<SupplementType>('vitamin');
+  const [newSupplementDosage, setNewSupplementDosage] = useState('');
+  const [selectedHydrationType, setSelectedHydrationType] = useState<HydrationEntry['type']>('water');
+
   // Entry state
   const [selectedType, setSelectedType] = useState<EntryType>('reflection');
   const [entryContent, setEntryContent] = useState('');
@@ -358,6 +512,19 @@ export function AlphawaveJournalPanel({ isOpen, onClose }: AlphawaveJournalPanel
               <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
             Write
+          </button>
+          <button 
+            className={`journal-view-tab ${activeView === 'nutrition' ? 'active' : ''}`}
+            onClick={() => setActiveView('nutrition')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+              <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+              <line x1="6" y1="1" x2="6" y2="4"/>
+              <line x1="10" y1="1" x2="10" y2="4"/>
+              <line x1="14" y1="1" x2="14" y2="4"/>
+            </svg>
+            Nutrition
           </button>
           <button 
             className={`journal-view-tab ${activeView === 'history' ? 'active' : ''}`}
@@ -556,6 +723,476 @@ export function AlphawaveJournalPanel({ isOpen, onClose }: AlphawaveJournalPanel
                   into a thoughtful response by morning. ✨
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════════════
+              NUTRITION VIEW - Comprehensive Dietary Tracking
+              ═══════════════════════════════════════════════════════════════════════ */}
+          {activeView === 'nutrition' && (
+            <div className="journal-nutrition-view">
+              {/* Daily Summary Stats */}
+              <div className="nutrition-summary-card">
+                <div className="nutrition-summary-header">
+                  <h3 className="nutrition-summary-title">Today&apos;s Nutrition</h3>
+                  <span className="nutrition-date">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                </div>
+                <div className="nutrition-macro-grid">
+                  <div className="nutrition-macro-item">
+                    <div className="nutrition-macro-ring" style={{ '--progress': `${Math.min((todayNutrition.totalCalories / 2000) * 100, 100)}%` } as React.CSSProperties}>
+                      <span className="nutrition-macro-value">{todayNutrition.totalCalories}</span>
+                    </div>
+                    <span className="nutrition-macro-label">Calories</span>
+                    <span className="nutrition-macro-goal">/ 2000</span>
+                  </div>
+                  <div className="nutrition-macro-item">
+                    <div className="nutrition-macro-ring protein" style={{ '--progress': `${Math.min((todayNutrition.totalProtein / 150) * 100, 100)}%` } as React.CSSProperties}>
+                      <span className="nutrition-macro-value">{todayNutrition.totalProtein}g</span>
+                    </div>
+                    <span className="nutrition-macro-label">Protein</span>
+                    <span className="nutrition-macro-goal">/ 150g</span>
+                  </div>
+                  <div className="nutrition-macro-item">
+                    <div className="nutrition-macro-ring carbs" style={{ '--progress': `${Math.min((todayNutrition.totalCarbs / 250) * 100, 100)}%` } as React.CSSProperties}>
+                      <span className="nutrition-macro-value">{todayNutrition.totalCarbs}g</span>
+                    </div>
+                    <span className="nutrition-macro-label">Carbs</span>
+                    <span className="nutrition-macro-goal">/ 250g</span>
+                  </div>
+                  <div className="nutrition-macro-item">
+                    <div className="nutrition-macro-ring fat" style={{ '--progress': `${Math.min((todayNutrition.totalFat / 65) * 100, 100)}%` } as React.CSSProperties}>
+                      <span className="nutrition-macro-value">{todayNutrition.totalFat}g</span>
+                    </div>
+                    <span className="nutrition-macro-label">Fat</span>
+                    <span className="nutrition-macro-goal">/ 65g</span>
+                  </div>
+                </div>
+                {/* Hydration Quick View */}
+                <div className="nutrition-hydration-quick">
+                  <span className="hydration-icon">💧</span>
+                  <div className="hydration-bar">
+                    <div className="hydration-fill" style={{ width: `${Math.min((todayNutrition.totalWater / 64) * 100, 100)}%` }}></div>
+                  </div>
+                  <span className="hydration-text">{todayNutrition.totalWater} / 64 oz</span>
+                </div>
+              </div>
+
+              {/* Nutrition Sub-Tabs */}
+              <div className="nutrition-subtabs">
+                <button 
+                  className={`nutrition-subtab ${nutritionSubView === 'log' ? 'active' : ''}`}
+                  onClick={() => setNutritionSubView('log')}
+                >
+                  🍽️ Meals
+                </button>
+                <button 
+                  className={`nutrition-subtab ${nutritionSubView === 'supplements' ? 'active' : ''}`}
+                  onClick={() => setNutritionSubView('supplements')}
+                >
+                  💊 Supplements
+                </button>
+                <button 
+                  className={`nutrition-subtab ${nutritionSubView === 'hydration' ? 'active' : ''}`}
+                  onClick={() => setNutritionSubView('hydration')}
+                >
+                  💧 Hydration
+                </button>
+              </div>
+
+              {/* ═══════════════════════════════════════════════════════════════════════
+                  MEALS LOG SUB-VIEW
+                  ═══════════════════════════════════════════════════════════════════════ */}
+              {nutritionSubView === 'log' && (
+                <div className="nutrition-meals-view">
+                  {/* Add Meal Button */}
+                  {!showAddMeal && (
+                    <button className="nutrition-add-btn" onClick={() => setShowAddMeal(true)}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                      Add Food / Meal
+                    </button>
+                  )}
+
+                  {/* Add Meal Form */}
+                  {showAddMeal && (
+                    <div className="nutrition-add-form">
+                      <div className="nutrition-form-header">
+                        <h4>Add Food Item</h4>
+                        <button className="nutrition-form-close" onClick={() => setShowAddMeal(false)}>×</button>
+                      </div>
+                      
+                      {/* Meal Type Selector */}
+                      <div className="nutrition-meal-types">
+                        {MEAL_TYPES.map(({ type, label, icon, color }) => (
+                          <button
+                            key={type}
+                            className={`nutrition-meal-type-btn ${selectedMealType === type ? 'active ' + color : ''}`}
+                            onClick={() => setSelectedMealType(type)}
+                          >
+                            <span>{icon}</span>
+                            <span>{label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Food Input Fields */}
+                      <div className="nutrition-form-fields">
+                        <div className="nutrition-form-row">
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Food name (e.g., Greek Yogurt)"
+                            value={newFoodName}
+                            onChange={(e) => setNewFoodName(e.target.value)}
+                          />
+                        </div>
+                        <div className="nutrition-form-row two-col">
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Brand (optional)"
+                            value={newFoodBrand}
+                            onChange={(e) => setNewFoodBrand(e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Portion (e.g., 1 cup)"
+                            value={newFoodPortion}
+                            onChange={(e) => setNewFoodPortion(e.target.value)}
+                          />
+                        </div>
+                        <div className="nutrition-form-row">
+                          <input
+                            type="number"
+                            className="nutrition-input"
+                            placeholder="Calories (optional)"
+                            value={newFoodCalories}
+                            onChange={(e) => setNewFoodCalories(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Recent Foods */}
+                      <div className="nutrition-recent">
+                        <h5 className="nutrition-recent-title">Recent Foods</h5>
+                        <div className="nutrition-recent-list">
+                          {recentFoods.map(food => (
+                            <button 
+                              key={food.id} 
+                              className="nutrition-recent-item"
+                              onClick={() => {
+                                setNewFoodName(food.name);
+                                setNewFoodBrand(food.brand || '');
+                                setNewFoodPortion(food.portion);
+                                setNewFoodCalories(food.calories?.toString() || '');
+                              }}
+                            >
+                              <span className="recent-food-name">{food.name}</span>
+                              {food.brand && <span className="recent-food-brand">{food.brand}</span>}
+                              <span className="recent-food-cal">{food.calories} cal</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button 
+                        className="nutrition-save-btn"
+                        onClick={() => {
+                          // TODO: Add to meals list via API
+                          console.log('Adding food:', { name: newFoodName, brand: newFoodBrand, portion: newFoodPortion, calories: newFoodCalories, mealType: selectedMealType });
+                          setNewFoodName('');
+                          setNewFoodBrand('');
+                          setNewFoodPortion('');
+                          setNewFoodCalories('');
+                          setShowAddMeal(false);
+                        }}
+                        disabled={!newFoodName.trim()}
+                      >
+                        Add to {MEAL_TYPES.find(m => m.type === selectedMealType)?.label}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Meals List */}
+                  <div className="nutrition-meals-list">
+                    {todayNutrition.meals.map(meal => (
+                      <div key={meal.id} className="nutrition-meal-card">
+                        <div className="meal-card-header">
+                          <span className="meal-type-badge">
+                            {MEAL_TYPES.find(m => m.type === meal.mealType)?.icon}
+                            {MEAL_TYPES.find(m => m.type === meal.mealType)?.label}
+                          </span>
+                          <span className="meal-time">{meal.time}</span>
+                        </div>
+                        <div className="meal-items-list">
+                          {meal.items.map(item => (
+                            <div key={item.id} className="meal-item">
+                              <div className="meal-item-info">
+                                <span className="meal-item-name">{item.name}</span>
+                                {item.brand && <span className="meal-item-brand">{item.brand}</span>}
+                                <span className="meal-item-portion">{item.portion}</span>
+                              </div>
+                              <div className="meal-item-macros">
+                                {item.calories && <span className="macro-cal">{item.calories} cal</span>}
+                                {item.protein && <span className="macro-pro">{item.protein}g P</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="meal-card-total">
+                          Total: {meal.items.reduce((sum, i) => sum + (i.calories || 0), 0)} calories
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══════════════════════════════════════════════════════════════════════
+                  SUPPLEMENTS SUB-VIEW
+                  ═══════════════════════════════════════════════════════════════════════ */}
+              {nutritionSubView === 'supplements' && (
+                <div className="nutrition-supplements-view">
+                  {/* Add Supplement Button */}
+                  {!showAddSupplement && (
+                    <button className="nutrition-add-btn" onClick={() => setShowAddSupplement(true)}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                      Add Supplement / Vitamin
+                    </button>
+                  )}
+
+                  {/* Add Supplement Form */}
+                  {showAddSupplement && (
+                    <div className="nutrition-add-form">
+                      <div className="nutrition-form-header">
+                        <h4>Add Supplement</h4>
+                        <button className="nutrition-form-close" onClick={() => setShowAddSupplement(false)}>×</button>
+                      </div>
+
+                      {/* Supplement Type Selector */}
+                      <div className="nutrition-supplement-types">
+                        {SUPPLEMENT_TYPES.map(({ type, label, icon }) => (
+                          <button
+                            key={type}
+                            className={`nutrition-supp-type-btn ${newSupplementType === type ? 'active' : ''}`}
+                            onClick={() => setNewSupplementType(type)}
+                          >
+                            <span>{icon}</span>
+                            <span>{label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="nutrition-form-fields">
+                        <div className="nutrition-form-row">
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Supplement name (e.g., Vitamin D3)"
+                            value={newSupplementName}
+                            onChange={(e) => setNewSupplementName(e.target.value)}
+                          />
+                        </div>
+                        <div className="nutrition-form-row two-col">
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Brand (e.g., NOW Foods)"
+                            value={newSupplementBrand}
+                            onChange={(e) => setNewSupplementBrand(e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="nutrition-input"
+                            placeholder="Dosage (e.g., 5000 IU)"
+                            value={newSupplementDosage}
+                            onChange={(e) => setNewSupplementDosage(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <button 
+                        className="nutrition-save-btn"
+                        onClick={() => {
+                          console.log('Adding supplement:', { name: newSupplementName, brand: newSupplementBrand, type: newSupplementType, dosage: newSupplementDosage });
+                          setNewSupplementName('');
+                          setNewSupplementBrand('');
+                          setNewSupplementDosage('');
+                          setShowAddSupplement(false);
+                        }}
+                        disabled={!newSupplementName.trim()}
+                      >
+                        Add Supplement
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Supplements List */}
+                  <div className="nutrition-supplements-list">
+                    <div className="supplements-section">
+                      <h4 className="supplements-section-title">Morning</h4>
+                      {todayNutrition.supplements
+                        .filter(s => s.time.includes('AM'))
+                        .map(supp => (
+                          <div key={supp.id} className={`supplement-item ${supp.taken ? 'taken' : ''}`}>
+                            <button 
+                              className="supplement-check"
+                              onClick={() => {
+                                setTodayNutrition(prev => ({
+                                  ...prev,
+                                  supplements: prev.supplements.map(s => 
+                                    s.id === supp.id ? { ...s, taken: !s.taken } : s
+                                  )
+                                }));
+                              }}
+                            >
+                              {supp.taken ? '✓' : ''}
+                            </button>
+                            <div className="supplement-info">
+                              <span className="supplement-name">{supp.name}</span>
+                              {supp.brand && <span className="supplement-brand">{supp.brand}</span>}
+                            </div>
+                            <span className="supplement-dosage">{supp.dosage}</span>
+                            <span className="supplement-time">{supp.time}</span>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="supplements-section">
+                      <h4 className="supplements-section-title">Evening</h4>
+                      {todayNutrition.supplements
+                        .filter(s => s.time.includes('PM'))
+                        .map(supp => (
+                          <div key={supp.id} className={`supplement-item ${supp.taken ? 'taken' : ''}`}>
+                            <button 
+                              className="supplement-check"
+                              onClick={() => {
+                                setTodayNutrition(prev => ({
+                                  ...prev,
+                                  supplements: prev.supplements.map(s => 
+                                    s.id === supp.id ? { ...s, taken: !s.taken } : s
+                                  )
+                                }));
+                              }}
+                            >
+                              {supp.taken ? '✓' : ''}
+                            </button>
+                            <div className="supplement-info">
+                              <span className="supplement-name">{supp.name}</span>
+                              {supp.brand && <span className="supplement-brand">{supp.brand}</span>}
+                            </div>
+                            <span className="supplement-dosage">{supp.dosage}</span>
+                            <span className="supplement-time">{supp.time}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Supplement Stats */}
+                  <div className="supplement-stats">
+                    <div className="supplement-stat">
+                      <span className="supplement-stat-value">
+                        {todayNutrition.supplements.filter(s => s.taken).length}/{todayNutrition.supplements.length}
+                      </span>
+                      <span className="supplement-stat-label">Taken Today</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══════════════════════════════════════════════════════════════════════
+                  HYDRATION SUB-VIEW
+                  ═══════════════════════════════════════════════════════════════════════ */}
+              {nutritionSubView === 'hydration' && (
+                <div className="nutrition-hydration-view">
+                  {/* Hydration Goal Progress */}
+                  <div className="hydration-goal-card">
+                    <div className="hydration-goal-visual">
+                      <div className="hydration-glass">
+                        <div 
+                          className="hydration-glass-fill" 
+                          style={{ height: `${Math.min((todayNutrition.totalWater / 64) * 100, 100)}%` }}
+                        ></div>
+                        <div className="hydration-glass-marks">
+                          <span>64 oz</span>
+                          <span>48 oz</span>
+                          <span>32 oz</span>
+                          <span>16 oz</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="hydration-goal-info">
+                      <span className="hydration-current">{todayNutrition.totalWater} oz</span>
+                      <span className="hydration-goal-text">of 64 oz daily goal</span>
+                      <div className="hydration-remaining">
+                        {Math.max(0, 64 - todayNutrition.totalWater)} oz remaining
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Add Hydration */}
+                  <div className="hydration-quick-add">
+                    <h4 className="hydration-quick-title">Quick Add</h4>
+                    <div className="hydration-type-selector">
+                      {HYDRATION_TYPES.map(({ type, label, icon }) => (
+                        <button
+                          key={type}
+                          className={`hydration-type-btn ${selectedHydrationType === type ? 'active' : ''}`}
+                          onClick={() => setSelectedHydrationType(type)}
+                        >
+                          <span>{icon}</span>
+                          <span>{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="hydration-amount-btns">
+                      {[8, 12, 16, 20, 24].map(oz => (
+                        <button
+                          key={oz}
+                          className="hydration-amount-btn"
+                          onClick={() => {
+                            const newEntry: HydrationEntry = {
+                              id: `h${Date.now()}`,
+                              type: selectedHydrationType,
+                              amount: oz,
+                              time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                            };
+                            setTodayNutrition(prev => ({
+                              ...prev,
+                              hydration: [...prev.hydration, newEntry],
+                              totalWater: prev.totalWater + oz
+                            }));
+                          }}
+                        >
+                          +{oz} oz
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Hydration Log */}
+                  <div className="hydration-log">
+                    <h4 className="hydration-log-title">Today&apos;s Log</h4>
+                    <div className="hydration-log-list">
+                      {todayNutrition.hydration.map(entry => (
+                        <div key={entry.id} className="hydration-log-item">
+                          <span className="hydration-log-icon">
+                            {HYDRATION_TYPES.find(h => h.type === entry.type)?.icon}
+                          </span>
+                          <span className="hydration-log-type">
+                            {HYDRATION_TYPES.find(h => h.type === entry.type)?.label}
+                          </span>
+                          <span className="hydration-log-amount">{entry.amount} oz</span>
+                          <span className="hydration-log-time">{entry.time}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
