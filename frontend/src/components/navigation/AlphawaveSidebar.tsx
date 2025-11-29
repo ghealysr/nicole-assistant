@@ -9,6 +9,8 @@ interface AlphawaveSidebarProps {
   isVibeOpen?: boolean;
   onMemoryClick?: () => void;
   isMemoryOpen?: boolean;
+  onJournalClick?: () => void;
+  isJournalOpen?: boolean;
 }
 
 /**
@@ -25,31 +27,13 @@ export function AlphawaveSidebar({
   onVibeClick, 
   isVibeOpen, 
   onMemoryClick, 
-  isMemoryOpen 
+  isMemoryOpen,
+  onJournalClick,
+  isJournalOpen
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
 
-  const menuItems = [
-    { 
-      href: '/chat', 
-      label: 'New Chat',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-      )
-    },
-    { 
-      href: '/journal', 
-      label: 'Journal',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-      )
-    },
-  ];
+  const isOnChat = pathname === '/chat' || pathname?.startsWith('/chat/');
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
@@ -69,20 +53,28 @@ export function AlphawaveSidebar({
       
       {/* Navigation */}
       <nav className="flex-1 p-3 flex flex-col gap-1">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-          
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`menu-item ${isActive ? 'active' : ''}`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
+        {/* New Chat - navigates to chat page */}
+        <Link
+          href="/chat"
+          className={`menu-item ${isOnChat ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          New Chat
+        </Link>
+        
+        {/* Journal Button - Opens Journal Panel */}
+        <button
+          onClick={onJournalClick}
+          className={`menu-item ${isJournalOpen ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          Journal
+        </button>
         
         {/* Vibe Button - Special styling, opens workspace */}
         <button
