@@ -89,7 +89,7 @@ class MemoryConsolidation(BaseModel):
         from_attributes = True
 
 
-class NicoleActionType = Literal[
+NicoleActionType = Literal[
     'create_memory',
     'create_knowledge_base',
     'organize_memories',
@@ -102,7 +102,7 @@ class NicoleActionType = Literal[
 ]
 
 
-class TargetType = Literal['memory', 'knowledge_base', 'tag', 'relationship']
+TargetType = Literal['memory', 'knowledge_base', 'tag', 'relationship']
 
 
 class NicoleMemoryAction(BaseModel):
