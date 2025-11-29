@@ -58,7 +58,7 @@ class MemoryRelationshipExpanded(MemoryRelationship):
     target_memory_type: Optional[str] = None
 
 
-class ConsolidationType = Literal[
+ConsolidationType = Literal[
     'merge',        # Multiple memories merged into one
     'summarize',    # Long memory summarized
     'deduplicate',  # Duplicate memories merged
