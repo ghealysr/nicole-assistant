@@ -1254,20 +1254,19 @@ Consolidated memory:"""
         try:
             supabase = get_supabase()
             if not supabase:
+                logger.warning("[MEMORY] Supabase unavailable for structured search")
                 return []
 
+            logger.info(f"[MEMORY] Structured search: user={user_id[:8]}..., query='{query[:30]}...'")
+
+            # Simpler query - just get user's memories directly
             query_builder = (
                 supabase.table("memory_entries")
                 .select("*")
+                .eq("user_id", user_id)
                 .order("created_at", desc=True)
-                .limit(limit * 2)
+                .limit(limit * 3)  # Get more to allow filtering
             )
-
-            # User filter (include shared if requested)
-            if include_shared:
-                query_builder = query_builder.or_(f"user_id.eq.{user_id},is_shared.eq.true")
-            else:
-                query_builder = query_builder.eq("user_id", user_id)
 
             if not include_archived:
                 query_builder = query_builder.is_("archived_at", "null")
@@ -1279,28 +1278,52 @@ Consolidated memory:"""
                 query_builder = query_builder.eq("knowledge_base_id", knowledge_base_id)
 
             result = query_builder.execute()
+            
+            all_memories = result.data or []
+            logger.info(f"[MEMORY] Found {len(all_memories)} total memories for user")
+
+            if not all_memories:
+                return []
 
             # Keyword relevance scoring
             query_words = set(query.lower().split())
             scored = []
 
-            for m in result.data or []:
-                content_words = set(m["content"].lower().split())
+            for m in all_memories:
+                content_lower = m["content"].lower()
+                content_words = set(content_lower.split())
                 overlap = len(query_words & content_words)
                 relevance = overlap / max(len(query_words), 1)
 
-                if overlap > 0 or any(w in m["content"].lower() for w in query_words):
+                # Check for any keyword match (including partial)
+                has_keyword_match = overlap > 0 or any(w in content_lower for w in query_words if len(w) > 2)
+                
+                if has_keyword_match:
+                    conf = float(m.get("confidence_score", 0.5) or 0.5)
                     scored.append({
                         **m,
-                        "score": float(m["confidence_score"]) * (0.5 + relevance * 0.5),
+                        "score": conf * (0.5 + relevance * 0.5),
                         "source": "structured"
+                    })
+                    logger.debug(f"[MEMORY] Match: overlap={overlap}, content='{m['content'][:40]}...'")
+
+            # If no keyword matches, return ALL memories as fallback (user has few memories)
+            if not scored and len(all_memories) <= 20:
+                logger.info(f"[MEMORY] No keyword matches, returning all {len(all_memories)} memories as context")
+                for m in all_memories:
+                    conf = float(m.get("confidence_score", 0.5) or 0.5)
+                    scored.append({
+                        **m,
+                        "score": conf * 0.4,  # Lower score for fallback
+                        "source": "structured_fallback"
                     })
 
             scored.sort(key=lambda x: x["score"], reverse=True)
+            logger.info(f"[MEMORY] Returning {min(limit, len(scored))} scored memories")
             return scored[:limit]
 
         except Exception as e:
-            logger.error(f"[MEMORY] Structured search error: {e}")
+            logger.error(f"[MEMORY] Structured search error: {e}", exc_info=True)
             return []
 
     def _rerank_results(
