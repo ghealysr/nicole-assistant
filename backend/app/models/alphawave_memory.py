@@ -12,7 +12,6 @@ Enhanced to support:
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 from datetime import datetime
-from uuid import UUID
 from decimal import Decimal
 
 
@@ -46,8 +45,8 @@ class AlphawaveMemoryEntry(BaseModel):
         embedding_status: Vector storage state
     """
     
-    id: UUID
-    user_id: UUID
+    id: int
+    user_id: int
     memory_type: MemoryType
     content: str
     context: Optional[str]
@@ -59,10 +58,10 @@ class AlphawaveMemoryEntry(BaseModel):
     archived_at: Optional[datetime] = None
     
     # New fields
-    knowledge_base_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
     source: MemorySource = "user"
     is_shared: bool = False
-    parent_memory_id: Optional[UUID] = None
+    parent_memory_id: Optional[int] = None
     embedding_status: EmbeddingStatus = "pending"
     
     # Computed/expanded fields (populated by service)
@@ -82,11 +81,11 @@ class AlphawaveMemoryCreate(BaseModel):
     importance_score: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
     
     # New optional fields
-    knowledge_base_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
     source: MemorySource = "user"
     is_shared: bool = False
-    parent_memory_id: Optional[UUID] = None
-    tag_ids: List[UUID] = Field(default_factory=list)
+    parent_memory_id: Optional[int] = None
+    tag_ids: List[int] = Field(default_factory=list)
 
 
 class AlphawaveMemoryUpdate(BaseModel):
@@ -95,7 +94,7 @@ class AlphawaveMemoryUpdate(BaseModel):
     context: Optional[str] = Field(None, max_length=2000)
     confidence_score: Optional[Decimal] = Field(None, ge=0, le=1)
     importance_score: Optional[Decimal] = Field(None, ge=0, le=1)
-    knowledge_base_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
     is_shared: Optional[bool] = None
     archived_at: Optional[datetime] = None
 
@@ -104,7 +103,7 @@ class MemorySearchQuery(BaseModel):
     """Search query for memories."""
     query: str = Field(..., min_length=1, max_length=500)
     memory_types: Optional[List[MemoryType]] = None
-    knowledge_base_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
     min_confidence: float = Field(default=0.1, ge=0, le=1)
     include_shared: bool = True
     include_archived: bool = False
@@ -144,7 +143,7 @@ class MemoryStats(BaseModel):
 
 class BulkMemoryOperation(BaseModel):
     """Bulk operation on memories."""
-    memory_ids: List[UUID]
+    memory_ids: List[int]
     operation: Literal[
         "archive",
         "unarchive", 
@@ -156,14 +155,14 @@ class BulkMemoryOperation(BaseModel):
         "unshare"
     ]
     # Operation-specific parameters
-    knowledge_base_id: Optional[UUID] = None
-    tag_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
+    tag_id: Optional[int] = None
     confidence_boost: Optional[float] = None
 
 
 class MemoryConsolidateRequest(BaseModel):
     """Request to consolidate multiple memories."""
-    memory_ids: List[UUID] = Field(..., min_items=2)
+    memory_ids: List[int] = Field(..., min_items=2)
     consolidation_type: Literal["merge", "summarize", "deduplicate"] = "merge"
     keep_originals: bool = True  # Archive originals or delete
 
@@ -177,7 +176,7 @@ class NicoleMemoryCreateRequest(BaseModel):
     memory_type: MemoryType
     context: Optional[str] = None
     importance_score: float = Field(default=0.7, ge=0, le=1)
-    knowledge_base_id: Optional[UUID] = None
+    knowledge_base_id: Optional[int] = None
     knowledge_base_name: Optional[str] = None  # Create new KB if doesn't exist
     reason: str  # Why Nicole is creating this memory
-    tag_ids: List[UUID] = Field(default_factory=list)
+    tag_ids: List[int] = Field(default_factory=list)

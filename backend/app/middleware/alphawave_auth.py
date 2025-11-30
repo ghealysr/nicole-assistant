@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 
 from app.config import settings
+from app.services.tiger_user_service import tiger_user_service
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,11 @@ def get_current_user_id(request: Request) -> Optional[str]:
 def get_current_user_role(request: Request) -> Optional[str]:
     """Helper to get current user role from request state if available."""
     return getattr(request.state, "user_role", None)
+
+
+def get_current_tiger_user_id(request: Request) -> Optional[int]:
+    """Helper to get Tiger Postgres user_id from request state."""
+    return getattr(request.state, "tiger_user_id", None)
 
 
 def get_correlation_id(request: Request) -> str:
@@ -192,12 +198,27 @@ async def verify_jwt(request: Request, call_next: Callable):
             # Determine user role
             user_role = user_metadata.get("role", "standard")
 
+            user_email = payload.get("email") or user_metadata.get("email")
+
             # Attach user context to request state
             request.state.user_id = user_id
             request.state.user_role = user_role
-            request.state.user_email = payload.get("email")
+            request.state.user_email = user_email
             request.state.token_issued_at = payload.get("iat")
             request.state.token_expires_at = payload.get("exp")
+
+            # Ensure Tiger user exists
+            tiger_user = None
+            if user_email:
+                tiger_user = await tiger_user_service.get_or_create_user(
+                    user_email,
+                    full_name=user_metadata.get("full_name"),
+                    role=user_role,
+                    relationship=user_metadata.get("relationship"),
+                )
+                request.state.tiger_user_id = tiger_user["user_id"]
+                request.state.tiger_user = tiger_user
+                await tiger_user_service.touch_user_activity(tiger_user["user_id"])
 
             masked_user = f"{str(user_id)[:8]}..."
             logger.info(

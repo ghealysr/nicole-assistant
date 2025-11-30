@@ -16,12 +16,14 @@ All endpoints require authentication via JWT.
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from uuid import UUID
+from typing import Optional, List, Tuple
 import logging
 
 from app.services.alphawave_memory_service import memory_service
-from app.middleware.alphawave_auth import get_current_user_id
+from app.middleware.alphawave_auth import (
+    get_current_user_id,
+    get_current_tiger_user_id,
+)
 from app.models.alphawave_memory import (
     AlphawaveMemoryCreate,
     AlphawaveMemoryUpdate,
@@ -46,6 +48,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _require_user_ids(request: Request) -> tuple[str, int]:
+    """Ensure both Supabase and Tiger user identifiers are present."""
+    supabase_user_id = get_current_user_id(request)
+    tiger_user_id = get_current_tiger_user_id(request)
+
+    if not supabase_user_id or tiger_user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authenticated user context missing",
+        )
+
+    return str(supabase_user_id), int(tiger_user_id)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MEMORY CRUD OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -54,7 +70,7 @@ router = APIRouter()
 async def list_memories(
     request: Request,
     memory_type: Optional[str] = Query(None, description="Filter by memory type"),
-    knowledge_base_id: Optional[UUID] = Query(None, description="Filter by knowledge base"),
+    knowledge_base_id: Optional[int] = Query(None, description="Filter by knowledge base"),
     include_archived: bool = Query(False, description="Include archived memories"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0)
@@ -64,16 +80,15 @@ async def list_memories(
     
     Returns paginated list of memories, sorted by creation date.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
         memories = await memory_service.get_recent_memories(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             limit=limit,
             memory_type=memory_type,
-            knowledge_base_id=str(knowledge_base_id) if knowledge_base_id else None
+            knowledge_base_id=knowledge_base_id,
+            include_archived=include_archived,
         )
 
         return {
@@ -89,17 +104,15 @@ async def list_memories(
 
 
 @router.get("/{memory_id}")
-async def get_memory(request: Request, memory_id: UUID):
+async def get_memory(request: Request, memory_id: int):
     """
     Get a single memory by ID.
     
     Returns full memory details including tags and relationships.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    memory = await memory_service.get_memory(str(memory_id), str(user_id))
+    memory = await memory_service.get_memory(memory_id, tiger_user_id)
 
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
@@ -114,22 +127,20 @@ async def create_memory(request: Request, memory_data: AlphawaveMemoryCreate):
     
     Automatically generates embeddings for vector search.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
         memory = await memory_service.save_memory(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             memory_type=memory_data.memory_type,
             content=memory_data.content,
             context=memory_data.context,
             importance=float(memory_data.importance_score),
-            knowledge_base_id=str(memory_data.knowledge_base_id) if memory_data.knowledge_base_id else None,
+            knowledge_base_id=memory_data.knowledge_base_id,
             source=memory_data.source,
             is_shared=memory_data.is_shared,
-            parent_memory_id=str(memory_data.parent_memory_id) if memory_data.parent_memory_id else None,
-            tag_ids=[str(t) for t in memory_data.tag_ids] if memory_data.tag_ids else None
+            parent_memory_id=memory_data.parent_memory_id,
+            tag_ids=memory_data.tag_ids or None,
         )
 
         if not memory:
@@ -145,23 +156,21 @@ async def create_memory(request: Request, memory_data: AlphawaveMemoryCreate):
 @router.put("/{memory_id}")
 async def update_memory(
     request: Request,
-    memory_id: UUID,
-    updates: AlphawaveMemoryUpdate
+    memory_id: int,
+    updates: AlphawaveMemoryUpdate,
 ):
     """
     Update an existing memory.
     
     Re-generates embeddings if content changes.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
         memory = await memory_service.update_memory(
-            memory_id=str(memory_id),
-            user_id=str(user_id),
-            updates=updates.model_dump(exclude_unset=True)
+            memory_id=memory_id,
+            user_id=tiger_user_id,
+            updates=updates.model_dump(exclude_unset=True),
         )
 
         if not memory:
@@ -175,22 +184,20 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}")
-async def delete_memory(request: Request, memory_id: UUID):
+async def delete_memory(request: Request, memory_id: int):
     """
     Delete (archive) a memory.
     
     Memories are soft-deleted (archived) not permanently removed.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    success = await memory_service.delete_memory(str(memory_id), str(user_id))
+    success = await memory_service.delete_memory(memory_id, tiger_user_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    return {"status": "archived", "memory_id": str(memory_id)}
+    return {"status": "archived", "memory_id": memory_id}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -204,20 +211,18 @@ async def search_memories(request: Request, search_query: MemorySearchQuery):
     
     Combines semantic similarity with confidence-based ranking.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
         import time
         start = time.time()
 
         results = await memory_service.search_memory(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             query=search_query.query,
             limit=search_query.limit,
             memory_types=search_query.memory_types,
-            knowledge_base_id=str(search_query.knowledge_base_id) if search_query.knowledge_base_id else None,
+            knowledge_base_id=search_query.knowledge_base_id,
             min_confidence=search_query.min_confidence,
             include_shared=search_query.include_shared,
             include_archived=search_query.include_archived
@@ -246,12 +251,10 @@ async def quick_search(
     """
     Quick search endpoint for autocomplete/suggestions.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     results = await memory_service.search_memory(
-        user_id=str(user_id),
+        user_id=tiger_user_id,
         query=q,
         limit=limit,
         min_confidence=0.3
@@ -276,12 +279,10 @@ async def list_knowledge_bases(
     """
     List all knowledge bases for the user.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     kbs = await memory_service.get_knowledge_bases(
-        user_id=str(user_id),
+        user_id=tiger_user_id,
         include_shared=include_shared,
         kb_type=kb_type
     )
@@ -294,11 +295,9 @@ async def get_knowledge_base_tree(request: Request):
     """
     Get hierarchical tree of knowledge bases.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    tree = await memory_service.get_knowledge_base_tree(str(user_id))
+    tree = await memory_service.get_knowledge_base_tree(tiger_user_id)
     return tree
 
 
@@ -307,21 +306,9 @@ async def create_knowledge_base(request: Request, kb_data: KnowledgeBaseCreate):
     """
     Create a new knowledge base for organizing memories.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    kb = await memory_service.create_knowledge_base(
-        user_id=str(user_id),
-        name=kb_data.name,
-        description=kb_data.description,
-        kb_type=kb_data.kb_type,
-        parent_id=str(kb_data.parent_id) if kb_data.parent_id else None,
-        icon=kb_data.icon,
-        color=kb_data.color,
-        is_shared=kb_data.is_shared,
-        created_by="user"
-    )
+    kb = await memory_service.create_knowledge_base(tiger_user_id, kb_data)
 
     if not kb:
         raise HTTPException(status_code=400, detail="Failed to create knowledge base")
@@ -332,24 +319,22 @@ async def create_knowledge_base(request: Request, kb_data: KnowledgeBaseCreate):
 @router.post("/knowledge-bases/{kb_id}/organize")
 async def organize_memories(
     request: Request,
-    kb_id: UUID,
-    memory_ids: List[UUID]
+    kb_id: int,
+    memory_ids: List[int],
 ):
     """
     Move memories into a knowledge base.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     count = await memory_service.organize_memories_into_kb(
-        user_id=str(user_id),
-        memory_ids=[str(m) for m in memory_ids],
-        knowledge_base_id=str(kb_id),
-        organized_by="user"
+        user_id=tiger_user_id,
+        memory_ids=memory_ids,
+        knowledge_base_id=kb_id,
+        organized_by="user",
     )
 
-    return {"organized": count, "knowledge_base_id": str(kb_id)}
+    return {"organized": count, "knowledge_base_id": kb_id}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -364,13 +349,11 @@ async def list_tags(
     """
     List available tags (system + user's custom tags).
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     tags = await memory_service.get_tags(
-        user_id=str(user_id),
-        include_system=include_system
+        user_id=tiger_user_id,
+        include_system=include_system,
     )
 
     return {"tags": tags, "count": len(tags)}
@@ -381,18 +364,9 @@ async def create_tag(request: Request, tag_data: MemoryTagCreate):
     """
     Create a custom tag.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    tag = await memory_service.create_tag(
-        user_id=str(user_id),
-        name=tag_data.name,
-        description=tag_data.description,
-        color=tag_data.color,
-        icon=tag_data.icon,
-        tag_type=tag_data.tag_type
-    )
+    tag = await memory_service.create_tag(tiger_user_id, tag_data)
 
     if not tag:
         raise HTTPException(status_code=400, detail="Failed to create tag")
@@ -403,35 +377,31 @@ async def create_tag(request: Request, tag_data: MemoryTagCreate):
 @router.post("/{memory_id}/tags")
 async def tag_memory(
     request: Request,
-    memory_id: UUID,
-    tag_assignment: BulkTagAssignment
+    memory_id: int,
+    tag_assignment: BulkTagAssignment,
 ):
     """
     Assign tags to a memory.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     count = await memory_service.tag_memory(
-        memory_id=str(memory_id),
-        tag_ids=[str(t) for t in tag_assignment.tag_ids],
-        assigned_by=tag_assignment.assigned_by
+        memory_id=memory_id,
+        tag_ids=[int(t) for t in tag_assignment.tag_ids],
+        assigned_by=tag_assignment.assigned_by,
     )
 
-    return {"assigned": count, "memory_id": str(memory_id)}
+    return {"assigned": count, "memory_id": memory_id}
 
 
 @router.delete("/{memory_id}/tags/{tag_id}")
-async def untag_memory(request: Request, memory_id: UUID, tag_id: UUID):
+async def untag_memory(request: Request, memory_id: int, tag_id: int):
     """
     Remove a tag from a memory.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    success = await memory_service.untag_memory(str(memory_id), str(tag_id))
+    success = await memory_service.untag_memory(memory_id, tag_id)
 
     if not success:
         raise HTTPException(status_code=400, detail="Failed to remove tag")
@@ -448,16 +418,15 @@ async def link_memories(request: Request, relationship: MemoryRelationshipCreate
     """
     Create a relationship between two memories.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     rel = await memory_service.link_memories(
-        source_id=str(relationship.source_memory_id),
-        target_id=str(relationship.target_memory_id),
+        user_id=tiger_user_id,
+        source_memory_id=relationship.source_memory_id,
+        target_memory_id=relationship.target_memory_id,
         relationship_type=relationship.relationship_type,
         strength=float(relationship.strength),
-        created_by=relationship.created_by
+        created_by=relationship.created_by,
     )
 
     if not rel:
@@ -469,21 +438,18 @@ async def link_memories(request: Request, relationship: MemoryRelationshipCreate
 @router.get("/{memory_id}/related")
 async def get_related_memories(
     request: Request,
-    memory_id: UUID,
-    relationship_types: Optional[str] = Query(None, description="Comma-separated types")
+    memory_id: int,
+    relationship_types: Optional[str] = Query(None, description="Comma-separated types"),
 ):
     """
     Get memories related to a given memory.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
+    _require_user_ids(request)
     types = relationship_types.split(",") if relationship_types else None
 
     related = await memory_service.get_related_memories(
-        memory_id=str(memory_id),
-        relationship_types=types
+        memory_id=memory_id,
+        relationship_types=types,
     )
 
     return {"related": related, "count": len(related)}
@@ -501,27 +467,27 @@ async def bulk_operation(request: Request, operation: BulkMemoryOperation):
     Operations: archive, unarchive, move_to_kb, add_tag, remove_tag,
     boost_confidence, share, unshare
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
         affected = 0
-        memory_ids = [str(m) for m in operation.memory_ids]
+        memory_ids = operation.memory_ids
 
         if operation.operation == "archive":
             for mid in memory_ids:
-                if await memory_service.delete_memory(mid, str(user_id)):
+                if await memory_service.delete_memory(mid, tiger_user_id):
                     affected += 1
 
         elif operation.operation == "move_to_kb" and operation.knowledge_base_id:
             affected = await memory_service.organize_memories_into_kb(
-                str(user_id), memory_ids, str(operation.knowledge_base_id)
+                tiger_user_id,
+                memory_ids,
+                operation.knowledge_base_id,
             )
 
         elif operation.operation == "add_tag" and operation.tag_id:
             for mid in memory_ids:
-                count = await memory_service.tag_memory(mid, [str(operation.tag_id)], "user")
+                count = await memory_service.tag_memory(mid, [operation.tag_id], "user")
                 affected += count
 
         elif operation.operation == "boost_confidence":
@@ -548,17 +514,10 @@ async def consolidate_memories(request: Request, consolidate: MemoryConsolidateR
     
     Uses AI to intelligently merge related memories.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     try:
-        result = await memory_service.consolidate_memories(
-            user_id=str(user_id),
-            memory_ids=[str(m) for m in consolidate.memory_ids],
-            consolidation_type=consolidate.consolidation_type,
-            keep_originals=consolidate.keep_originals
-        )
+        result = await memory_service.consolidate_memories(tiger_user_id, consolidate)
 
         if not result:
             raise HTTPException(status_code=400, detail="Consolidation failed")
@@ -585,20 +544,9 @@ async def nicole_create_memory(request: Request, memory_request: NicoleMemoryCre
     
     Used when Nicole wants to remember something she's learned.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    memory = await memory_service.nicole_create_memory(
-        user_id=str(user_id),
-        content=memory_request.content,
-        memory_type=memory_request.memory_type,
-        reason=memory_request.reason,
-        context=memory_request.context,
-        importance=memory_request.importance_score,
-        knowledge_base_name=memory_request.knowledge_base_name,
-        tag_ids=[str(t) for t in memory_request.tag_ids] if memory_request.tag_ids else None
-    )
+    memory = await memory_service.nicole_create_memory(tiger_user_id, memory_request)
 
     if not memory:
         raise HTTPException(status_code=400, detail="Failed to create memory")
@@ -621,14 +569,12 @@ async def nicole_organize_topic(
     
     Creates a knowledge base and links related memories.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     result = await memory_service.nicole_organize_topic(
-        user_id=str(user_id),
+        user_id=tiger_user_id,
         topic=topic,
-        create_kb=create_kb
+        create_kb=create_kb,
     )
 
     return result
@@ -643,11 +589,9 @@ async def get_memory_stats(request: Request):
     """
     Get comprehensive memory statistics.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
-    stats = await memory_service.get_memory_stats(str(user_id))
+    stats = await memory_service.get_memory_stats(tiger_user_id)
 
     if "error" in stats:
         raise HTTPException(status_code=500, detail=stats["error"])
@@ -665,15 +609,13 @@ async def learn_from_correction(
     """
     Record a correction for learning.
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    _, tiger_user_id = _require_user_ids(request)
 
     success = await memory_service.learn_from_correction(
-        user_id=str(user_id),
+        user_id=tiger_user_id,
         original_content=original,
         corrected_content=corrected,
-        context=context
+        context=context,
     )
 
     if not success:

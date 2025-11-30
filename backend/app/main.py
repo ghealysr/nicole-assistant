@@ -10,6 +10,7 @@ from app.middleware.alphawave_cors import configure_cors
 from app.middleware.alphawave_logging import logging_middleware
 from app.middleware.alphawave_auth import verify_jwt
 from app.middleware.alphawave_rate_limit import rate_limit_middleware
+from app.database import startup_db, shutdown_db
 from app.routers import (
     alphawave_health,
     alphawave_auth,
@@ -35,6 +36,14 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
 )
 
+@app.on_event("startup")
+async def on_startup():
+    await startup_db()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await shutdown_db()
 # CORS middleware (custom implementation as per Agent 1 spec)
 configure_cors(app)
 

@@ -1,5 +1,5 @@
 """
-Documents Router for Nicole V7.
+Documents Router for Nicole V7 (Tiger Native).
 Production-grade document intelligence API.
 
 Features:
@@ -12,7 +12,7 @@ Features:
 All documents are:
 - Extracted with Azure Document Intelligence
 - Analyzed with Claude for summaries and key points
-- Chunked and embedded for semantic search
+- Chunked and embedded for semantic search (Tiger pgvectorscale)
 - Saved to memory for persistent recall
 """
 
@@ -23,6 +23,8 @@ from typing import Optional, List
 import logging
 from uuid import UUID
 
+from app.database import db
+from app.middleware.alphawave_auth import get_current_tiger_user_id, get_current_user_id
 from app.services.alphawave_document_service import document_service
 from app.services.alphawave_link_processor import link_processor
 
@@ -36,7 +38,7 @@ router = APIRouter()
 
 class DocumentUploadResponse(BaseModel):
     """Response from document upload."""
-    document_id: str
+    document_id: int
     title: str
     summary: Optional[str] = None
     key_points: List[str] = []
@@ -55,7 +57,7 @@ class DocumentSearchRequest(BaseModel):
 
 class DocumentSearchResult(BaseModel):
     """Single search result."""
-    document_id: str
+    document_id: int
     title: str
     content: str
     score: float
@@ -82,7 +84,7 @@ class DocumentListResponse(BaseModel):
 
 class DocumentDetailResponse(BaseModel):
     """Detailed document response."""
-    id: str
+    id: int
     title: str
     filename: Optional[str]
     source_type: str
@@ -123,8 +125,10 @@ async def upload_document(
     
     Returns processing results including summary and key points.
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    user_id = get_current_user_id(request)
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if not user_id or tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     
     if not file.filename:
@@ -138,17 +142,18 @@ async def upload_document(
     if len(content) > max_size:
         raise HTTPException(
             status_code=400,
-            detail=f"File too large. Maximum size is 50MB"
+            detail="File too large. Maximum size is 50MB"
         )
     
     logger.info(
         f"[DOCUMENTS] Upload: {file.filename} ({len(content)} bytes) "
-        f"for user {user_id[:8]}..."
+        f"for user {tiger_user_id}"
     )
     
     try:
         result = await document_service.process_document(
             user_id=str(user_id),
+            tiger_user_id=tiger_user_id,
             content=content,
             filename=title or file.filename,
             content_type=file.content_type or "application/octet-stream",
@@ -186,20 +191,23 @@ async def process_url(
     - Documentation pages
     - Research materials
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    user_id = get_current_user_id(request)
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if not user_id or tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     
     url = str(body.url)
     
     logger.info(
-        f"[DOCUMENTS] URL: {url[:50]}... for user {user_id[:8]}..."
+        f"[DOCUMENTS] URL: {url[:50]}... for user {tiger_user_id}"
     )
     
     try:
         result = await document_service.process_url(
             user_id=str(user_id),
             url=url,
+            tiger_user_id=tiger_user_id,
         )
         
         if result.get("status") == "failed":
@@ -235,13 +243,14 @@ async def search_documents(
     - "Find information about the project timeline"
     - "What were the key recommendations?"
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
         results = await document_service.search_documents(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             query=body.query,
             limit=body.limit,
         )
@@ -284,13 +293,14 @@ async def list_documents(
     Returns document metadata including title, summary, and status.
     Most recent documents first.
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
         documents = await document_service.list_documents(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             limit=limit,
             offset=offset,
         )
@@ -308,7 +318,7 @@ async def list_documents(
 @router.get("/{document_id}", response_model=DocumentDetailResponse)
 async def get_document(
     request: Request,
-    document_id: str,
+    document_id: int,
 ):
     """
     Get detailed information about a specific document.
@@ -316,13 +326,14 @@ async def get_document(
     Returns full metadata including summary, key points, and optionally
     the extracted text.
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
         document = await document_service.get_document(
-            user_id=str(user_id),
+            user_id=tiger_user_id,
             document_id=document_id,
         )
         
@@ -330,18 +341,18 @@ async def get_document(
             raise HTTPException(status_code=404, detail="Document not found")
         
         return DocumentDetailResponse(
-            id=document["id"],
+            id=document["doc_id"],
             title=document.get("title", "Untitled"),
-            filename=document.get("filename"),
-            source_type=document.get("source_type", "upload"),
+            filename=document.get("file_name"),
+            source_type=document.get("upload_source", "upload"),
             source_url=document.get("source_url"),
             summary=document.get("summary"),
             key_points=document.get("key_points", []),
             full_text=document.get("full_text"),
             page_count=document.get("page_count"),
             word_count=document.get("word_count"),
-            status=document.get("status", "unknown"),
-            created_at=document.get("created_at"),
+            status="completed",
+            created_at=document["created_at"].isoformat() if document.get("created_at") else None,
         )
         
     except HTTPException:
@@ -352,13 +363,13 @@ async def get_document(
 
 
 # =============================================================================
-# DELETE ENDPOINT
+# DELETE ENDPOINT (Tiger Native)
 # =============================================================================
 
 @router.delete("/{document_id}")
 async def delete_document(
     request: Request,
-    document_id: str,
+    document_id: int,
 ):
     """
     Delete a document and all its chunks.
@@ -366,36 +377,38 @@ async def delete_document(
     This will remove the document from the database and vector store.
     Memories created from the document will remain.
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
+    tiger_user_id = get_current_tiger_user_id(request)
+    
+    if tiger_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
-    from app.database import get_supabase
-    
-    supabase = get_supabase()
-    if not supabase:
-        raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
         # Verify ownership
-        check = supabase.table("document_repository").select("id").eq(
-            "id", document_id
-        ).eq("user_id", user_id).single().execute()
+        doc_row = await db.fetchrow(
+            """
+            SELECT doc_id FROM document_repository
+            WHERE doc_id = $1 AND user_id = $2
+            """,
+            document_id,
+            tiger_user_id,
+        )
         
-        if not check.data:
+        if not doc_row:
             raise HTTPException(status_code=404, detail="Document not found")
         
         # Delete chunks first (foreign key)
-        supabase.table("document_chunks").delete().eq(
-            "document_id", document_id
-        ).execute()
+        await db.execute(
+            "DELETE FROM document_chunks WHERE doc_id = $1",
+            document_id,
+        )
         
         # Delete document
-        supabase.table("document_repository").delete().eq(
-            "id", document_id
-        ).execute()
+        await db.execute(
+            "DELETE FROM document_repository WHERE doc_id = $1",
+            document_id,
+        )
         
-        logger.info(f"[DOCUMENTS] Deleted {document_id} for user {user_id[:8]}...")
+        logger.info(f"[DOCUMENTS] Deleted {document_id} for user {tiger_user_id}")
         
         return {"success": True, "message": "Document deleted"}
         
@@ -404,4 +417,3 @@ async def delete_document(
     except Exception as e:
         logger.error(f"[DOCUMENTS] Delete failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete document")
-

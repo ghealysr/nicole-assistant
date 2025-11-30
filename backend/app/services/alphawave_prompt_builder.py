@@ -13,7 +13,6 @@ import logging
 import os
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from uuid import UUID
 
 from app.config import settings
 from app.services.alphawave_memory_service import memory_service
@@ -157,14 +156,20 @@ Remember to stay in character and use the context above to inform your response.
     
     async def _get_relevant_memories(
         self,
-        user_id: UUID,
+        user_id: Any,
         query: str,
         max_results: int = 5
     ) -> List[Dict[str, Any]]:
         """Fetch relevant memories for the current context."""
         try:
+            try:
+                tiger_user_id = int(user_id)
+            except (TypeError, ValueError):
+                logger.debug("[PROMPT BUILDER] Cannot convert user_id to tiger id; skipping memory search")
+                return []
+
             memories = await memory_service.search_memory(
-                user_id=user_id,
+                user_id=tiger_user_id,
                 query=query,
                 limit=max_results,
                 min_confidence=0.3

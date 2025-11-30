@@ -91,6 +91,7 @@ class AlphawaveLinkProcessor:
         user_id: str,
         message: str,
         conversation_id: Optional[str] = None,
+        tiger_user_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Process all URLs found in a message.
@@ -117,6 +118,7 @@ class AlphawaveLinkProcessor:
                     user_id=user_id,
                     url=url,
                     conversation_id=conversation_id,
+                    tiger_user_id=tiger_user_id,
                 )
                 results.append(result)
                 
