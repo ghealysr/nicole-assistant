@@ -1397,7 +1397,12 @@ Consolidated memory:"""
         filtered = []
 
         for r in results:
-            if float(r.get("confidence_score", 0)) < min_confidence:
+            # Use confidence_score if available, otherwise use score (from vector search)
+            # Default to 1.0 (full confidence) if neither is present
+            confidence = float(r.get("confidence_score") or r.get("score") or 1.0)
+            
+            if confidence < min_confidence:
+                print(f"[MEMORY FILTER] Skipping memory (confidence {confidence:.2f} < {min_confidence}): {r.get('content', '')[:40]}...")
                 continue
             if memory_types and r.get("memory_type") not in memory_types:
                 continue
@@ -1406,7 +1411,9 @@ Consolidated memory:"""
             if not include_archived and r.get("archived_at"):
                 continue
             filtered.append(r)
+            print(f"[MEMORY FILTER] ✅ Keeping memory (confidence {confidence:.2f}): {r.get('content', '')[:40]}...")
 
+        print(f"[MEMORY FILTER] Filtered {len(results)} -> {len(filtered)} results")
         return filtered
 
     async def _update_hot_cache(self, user_id: str, memory: Dict[str, Any]) -> None:
