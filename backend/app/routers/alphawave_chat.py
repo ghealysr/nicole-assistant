@@ -513,13 +513,16 @@ async def send_message(
             relevant_memories = []
             memory_context = ""
             
+            print(f"[MEMORY RETRIEVAL] Starting memory search for user...")
+            
             try:
                 # Ensure user_id is a string (UUID objects need conversion)
                 user_id_str = str(user_id) if user_id else None
                 if not user_id_str:
-                    logger.warning("[MEMORY] No user_id available for memory search")
+                    print("[MEMORY RETRIEVAL] No user_id available for memory search")
                     memories = []
                 else:
+                    print(f"[MEMORY RETRIEVAL] Searching for user {user_id_str[:8]}...")
                     # Search for memories related to the user's message
                     memories = await memory_service.search_memory(
                         user_id=user_id_str,
@@ -527,10 +530,11 @@ async def send_message(
                         limit=10,
                         min_confidence=0.3
                     )
+                    print(f"[MEMORY RETRIEVAL] Search returned {len(memories) if memories else 0} memories")
                 
                 if memories:
                     relevant_memories = memories
-                    logger.info(f"[MEMORY] Found {len(memories)} relevant memories for user {user_id_str[:8]}...")
+                    print(f"[MEMORY RETRIEVAL] ✅ Found {len(memories)} relevant memories!")
                     
                     # Build memory context for the system prompt
                     memory_items = []
@@ -556,10 +560,12 @@ async def send_message(
                             except Exception as bump_err:
                                 logger.debug(f"[MEMORY] Could not bump confidence: {bump_err}")
                 else:
-                    logger.info(f"[MEMORY] No relevant memories found for query '{chat_request.text[:50]}...'")
+                    print(f"[MEMORY RETRIEVAL] ❌ No memories found for query '{chat_request.text[:50]}...'")
                     
             except Exception as mem_err:
-                logger.error(f"[MEMORY] Error searching memories: {mem_err}", exc_info=True)
+                print(f"[MEMORY RETRIEVAL] ❌ ERROR: {mem_err}")
+                import traceback
+                traceback.print_exc()
                 # Continue without memory context - don't fail the request
             
             # ================================================================

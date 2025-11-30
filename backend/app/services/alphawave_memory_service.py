@@ -88,10 +88,10 @@ class MemoryService:
         """
         user_id_str = str(user_id) if user_id else None
         if not user_id_str:
-            logger.warning("[MEMORY] Cannot search: user_id is None")
+            print("[MEMORY] Cannot search: user_id is None")
             return []
 
-        logger.info(f"[MEMORY] Searching for user {user_id_str[:8]}...: '{query[:50]}...'")
+        print(f"[MEMORY] Searching for user {user_id_str[:8]}...: '{query[:50]}...'")
 
         # Check Redis hot cache first
         cache_key = f"memory:{user_id_str}:{hash(query) % 10000}"
@@ -113,13 +113,18 @@ class MemoryService:
                 logger.debug(f"[MEMORY] Cache check failed: {e}")
 
         # Perform hybrid search
+        print(f"[MEMORY] Starting vector search...")
         vector_results = await self._vector_search(user_id_str, query, limit * 2)
+        print(f"[MEMORY] Vector search returned {len(vector_results)} results")
+        
+        print(f"[MEMORY] Starting structured search...")
         structured_results = await self._structured_search(
             user_id_str, query, limit * 2, memory_types,
             knowledge_base_id, include_shared, include_archived
         )
+        print(f"[MEMORY] Structured search returned {len(structured_results)} results")
 
-        logger.info(f"[MEMORY] Results: {len(vector_results)} vector, {len(structured_results)} structured")
+        print(f"[MEMORY] Results: {len(vector_results)} vector, {len(structured_results)} structured")
 
         # Combine and re-rank
         combined = self._rerank_results(vector_results, structured_results, query)
@@ -1257,7 +1262,7 @@ Consolidated memory:"""
                 logger.warning("[MEMORY] Supabase unavailable for structured search")
                 return []
 
-            logger.info(f"[MEMORY] Structured search: user={user_id[:8]}..., query='{query[:30]}...'")
+            print(f"[MEMORY] Structured search: user={user_id[:8]}..., query='{query[:30]}...'")
 
             # Simpler query - just get user's memories directly
             query_builder = (
@@ -1280,7 +1285,7 @@ Consolidated memory:"""
             result = query_builder.execute()
             
             all_memories = result.data or []
-            logger.info(f"[MEMORY] Found {len(all_memories)} total memories for user")
+            print(f"[MEMORY] Found {len(all_memories)} total memories for user")
 
             if not all_memories:
                 return []
@@ -1309,7 +1314,7 @@ Consolidated memory:"""
 
             # If no keyword matches, return ALL memories as fallback (user has few memories)
             if not scored and len(all_memories) <= 20:
-                logger.info(f"[MEMORY] No keyword matches, returning all {len(all_memories)} memories as context")
+                print(f"[MEMORY] No keyword matches, returning all {len(all_memories)} memories as context")
                 for m in all_memories:
                     conf = float(m.get("confidence_score", 0.5) or 0.5)
                     scored.append({
@@ -1319,11 +1324,13 @@ Consolidated memory:"""
                     })
 
             scored.sort(key=lambda x: x["score"], reverse=True)
-            logger.info(f"[MEMORY] Returning {min(limit, len(scored))} scored memories")
+            print(f"[MEMORY] Returning {min(limit, len(scored))} scored memories")
             return scored[:limit]
 
         except Exception as e:
-            logger.error(f"[MEMORY] Structured search error: {e}", exc_info=True)
+            print(f"[MEMORY] Structured search error: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     def _rerank_results(
