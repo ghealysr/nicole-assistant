@@ -31,21 +31,21 @@ class Settings(BaseSettings):
     REPLICATE_API_TOKEN: str = ""
 
     # Azure AI
-    AZURE_DOCUMENT_ENDPOINT: str
-    AZURE_DOCUMENT_KEY: str
+    AZURE_DOCUMENT_ENDPOINT: str = ""
+    AZURE_DOCUMENT_KEY: str = ""
     AZURE_VISION_ENDPOINT: str = ""
     AZURE_VISION_KEY: str = ""
 
     # ElevenLabs Voice
-    ELEVENLABS_API_KEY: str
-    NICOLE_VOICE_ID: str
+    ELEVENLABS_API_KEY: str = ""
+    NICOLE_VOICE_ID: str = ""
 
     # File Storage
-    DO_SPACES_ENDPOINT: str
-    DO_SPACES_BUCKET: str
+    DO_SPACES_ENDPOINT: str = ""
+    DO_SPACES_BUCKET: str = ""
     DO_SPACES_BACKUP_BUCKET: str = ""
-    DO_SPACES_ACCESS_KEY: str
-    DO_SPACES_SECRET_KEY: str
+    DO_SPACES_ACCESS_KEY: str = ""
+    DO_SPACES_SECRET_KEY: str = ""
 
     # UploadThing
     UPLOADTHING_APP_ID: str = ""
@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
 
     # Security
-    JWT_SECRET_KEY: str
-    SESSION_SECRET: str
+    JWT_SECRET_KEY: str = ""
+    SESSION_SECRET: str = ""
     ALLOWED_USERS: str = ""
 
     # Safety Configuration
