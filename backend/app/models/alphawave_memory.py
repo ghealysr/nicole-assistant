@@ -66,7 +66,7 @@ class AlphawaveMemoryEntry(BaseModel):
     
     # Computed/expanded fields (populated by service)
     tags: List[str] = Field(default_factory=list)
-    related_memory_ids: List[UUID] = Field(default_factory=list)
+    related_memory_ids: List[int] = Field(default_factory=list)
     knowledge_base_name: Optional[str] = None
     
     class Config:
