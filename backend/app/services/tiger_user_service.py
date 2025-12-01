@@ -33,27 +33,35 @@ class TigerUserService:
             if existing:
                 return dict(existing)
 
-            full_name = full_name or email.split("@")[0].replace(".", " ").title()
-            role = role or "standard"
-            relationship = relationship or "friend"
+            # Use full_name or generate from email
+            name = full_name or email.split("@")[0].replace(".", " ").title()
+            
+            # Map role to enum value
+            role_mapping = {
+                "admin": "admin",
+                "standard": "user",
+                "user": "user",
+                "family": "family_member",
+                "family_member": "family_member",
+                "child": "child",
+            }
+            db_role = role_mapping.get(role or "user", "user")
 
             result = await conn.fetchrow(
                 """
                 INSERT INTO users (
                     email,
-                    full_name,
-                    role,
-                    relationship,
+                    name,
+                    user_role,
                     preferences,
                     created_at,
-                    last_active
-                ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+                    updated_at
+                ) VALUES ($1, $2, $3::user_role_enum, $4, NOW(), NOW())
                 RETURNING *
                 """,
                 email,
-                full_name,
-                role,
-                relationship,
+                name,
+                db_role,
                 {},
             )
             return dict(result)
@@ -61,11 +69,10 @@ class TigerUserService:
     async def touch_user_activity(self, user_id: int) -> None:
         async with db.acquire() as conn:
             await conn.execute(
-                "UPDATE users SET last_active = $1 WHERE user_id = $2",
+                "UPDATE users SET updated_at = $1 WHERE user_id = $2",
                 datetime.utcnow(),
                 user_id,
             )
 
 
 tiger_user_service = TigerUserService()
-
