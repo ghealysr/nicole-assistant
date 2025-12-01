@@ -207,13 +207,16 @@ class MemoryService:
             # Generate embedding for query
             embedding = await openai_client.generate_embedding(query)
             
+            # Format embedding as string for PostgreSQL vector type
+            embedding_str = f'[{",".join(map(str, embedding))}]'
+            
             # Call hybrid search function
             rows = await db.fetch(
                 """
-                SELECT * FROM search_memories_hybrid($1, $2, $3, $4, $5)
+                SELECT * FROM search_memories_hybrid($1, $2::vector, $3, $4, $5)
                 """,
                 user_id_int,
-                embedding,
+                embedding_str,
                 query,
                 limit * 2,  # Get extra for filtering
                 Decimal(str(min_confidence)),
@@ -320,11 +323,13 @@ class MemoryService:
             return None
         
         # Generate embedding
+        embedding_str = None
         try:
             embedding = await openai_client.generate_embedding(content)
+            # Format as string for PostgreSQL vector type
+            embedding_str = f'[{",".join(map(str, embedding))}]'
         except Exception as e:
             logger.error(f"[MEMORY] Embedding generation failed: {e}")
-            embedding = None
         
         # Map memory_type to enum value
         type_mapping = {
@@ -355,13 +360,13 @@ class MemoryService:
                     created_by,
                     created_at,
                     updated_at
-                ) VALUES ($1, $2, $3::memory_type_enum, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                ) VALUES ($1, $2, $3::memory_type_enum, $4::vector, $5, $6, $7, $8, $9, NOW(), NOW())
                 RETURNING *
                 """,
                 user_id_int,
                 content,
                 db_memory_type,
-                embedding,
+                embedding_str,
                 context,
                 Decimal("1.0"),  # Start with full confidence
                 Decimal(str(importance)),
