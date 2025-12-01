@@ -58,8 +58,10 @@ router = APIRouter()
 MEMORY_PATTERNS = {
     "preference": [
         r"i (?:like|love|prefer|enjoy|hate|dislike|can't stand)\s+(.+)",
+        r"my favorite\s+\w+\s+(?:is|are)\s+(.+)",
         r"my favorite (?:is|are)\s+(.+)",
         r"i always (?:want|need|like)\s+(.+)",
+        r"favorite\s+(?:color|food|movie|book|song|team|sport)\s+(?:is|are)\s+(.+)",
     ],
     "fact": [
         r"my (?:name|birthday|age|job|work|home|address|phone)\s+(?:is|are)\s+(.+)",
@@ -587,14 +589,16 @@ Be natural, warm, and helpful. You have perfect memory - use it to provide deepl
             # ================================================================
             
             try:
+                logger.info(f"[MEMORY] Starting extraction for user {tiger_user_id}")
                 await extract_and_save_memories(
                     tiger_user_id=tiger_user_id,
                     user_message=chat_request.text,
                     assistant_response=full_response,
                     conversation_id=conversation_id,
                 )
+                logger.info(f"[MEMORY] Extraction complete")
             except Exception as mem_save_err:
-                logger.warning(f"[MEMORY] Error extracting memories: {mem_save_err}")
+                logger.error(f"[MEMORY] Error extracting memories: {mem_save_err}", exc_info=True)
             
             # Send done event
             yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation_id})}\n\n"
