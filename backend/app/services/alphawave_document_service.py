@@ -771,6 +771,8 @@ KEY_POINTS:
         try:
             # Generate query embedding
             query_embedding = await openai_client.generate_embedding(query)
+            # Format as string for PostgreSQL vector type
+            embedding_str = f'[{",".join(map(str, query_embedding))}]'
             
             # Vector search in Tiger
             rows = await db.fetch(
@@ -780,15 +782,15 @@ KEY_POINTS:
                     dc.doc_id,
                     dc.content,
                     dr.title,
-                    1 - (dc.embedding <=> $1) AS score
+                    1 - (dc.embedding <=> $1::vector) AS score
                 FROM document_chunks dc
                 JOIN document_repository dr ON dr.doc_id = dc.doc_id
                 WHERE dr.user_id = $2
                   AND dc.embedding IS NOT NULL
-                ORDER BY dc.embedding <=> $1
+                ORDER BY dc.embedding <=> $1::vector
                 LIMIT $3
                 """,
-                query_embedding,
+                embedding_str,
                 user_id_int,
                 limit,
             )
