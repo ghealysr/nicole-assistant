@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { AlphawaveChatInput, type FileAttachment } from './AlphawaveChatInput';
 import { AlphawaveDashPanel } from './AlphawaveDashPanel';
@@ -8,6 +8,7 @@ import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
 import { useChat } from '@/lib/hooks/alphawave_use_chat';
 import { useToast } from '@/components/ui/alphawave_toast';
 import { useConversation } from '@/lib/context/ConversationContext';
+import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 
 interface Message {
   id: string;
@@ -41,12 +42,13 @@ function ThinkingIndicator() {
 
 /**
  * Empty state component - shown when there are no messages
+ * Features dynamic time-based greetings from Nicole
  */
-function EmptyState() {
+function EmptyState({ greeting, date }: { greeting: string; date: string }) {
   return (
     <div className="empty-state">
       <div className="text-center">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 animate-spin-slow">
+        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5">
           <Image 
             src="/images/nicole-thinking-avatar.png" 
             alt="Nicole" 
@@ -55,8 +57,8 @@ function EmptyState() {
             className="rounded-full"
           />
         </div>
-        <h2 className="empty-title">How can I help you today?</h2>
-        <p className="empty-subtitle">Ask me anything, I&apos;m here for you.</p>
+        <h2 className="empty-title">{greeting}</h2>
+        <p className="empty-subtitle">{date}</p>
       </div>
     </div>
   );
@@ -291,6 +293,10 @@ export function AlphawaveChatContainer() {
     }
   }, [error, showToast, clearError]);
 
+  // Generate greeting once per session/new chat (memoized)
+  const greeting = useMemo(() => getDynamicGreeting(), [currentConversationId]);
+  const formattedDate = useMemo(() => getFormattedDate(), []);
+
   const hasMessages = messages.length > 0;
 
   return (
@@ -313,7 +319,7 @@ export function AlphawaveChatContainer() {
               {isLoading && <ThinkingIndicator />}
             </div>
           ) : (
-            <EmptyState />
+            <EmptyState greeting={greeting} date={formattedDate} />
           )}
           
           {/* Input area - now passes attachments */}

@@ -74,7 +74,7 @@ export const ENDPOINTS = {
 
 // Request Configuration
 export const REQUEST_CONFIG = {
-  timeout: 30000, // 30 seconds
+  timeout: 120000, // 120 seconds - longer for AI responses
   retries: 2,
   retryDelay: 1000, // 1 second between retries
 };
