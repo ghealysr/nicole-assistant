@@ -36,6 +36,7 @@ from app.routers import (
     alphawave_webhooks,
     alphawave_widgets,
     alphawave_dashboards,
+    alphawave_workflows,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ async def lifespan(app: FastAPI):
     Handles:
     - Database connection pool startup/shutdown
     - Background scheduler startup/shutdown
+    - Workflow scheduler initialization
     """
     # Startup
     logger.info("[STARTUP] Initializing Nicole V7 API...")
@@ -96,12 +98,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Scheduler failed to start (non-critical): {e}")
     
+    # Initialize workflow scheduler (agent architecture)
+    try:
+        from app.services.workflow_scheduler import workflow_scheduler
+        await workflow_scheduler.initialize()
+        logger.info("[STARTUP] Workflow scheduler initialized")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Workflow scheduler failed to initialize (non-critical): {e}")
+    
     logger.info("[STARTUP] Nicole V7 API ready")
     
     yield  # Application runs here
     
     # Shutdown
     logger.info("[SHUTDOWN] Shutting down Nicole V7 API...")
+    
+    # Stop workflow scheduler
+    try:
+        from app.services.workflow_scheduler import workflow_scheduler
+        await workflow_scheduler.shutdown()
+        logger.info("[SHUTDOWN] Workflow scheduler stopped")
+    except Exception as e:
+        logger.debug(f"[SHUTDOWN] Workflow scheduler shutdown: {e}")
     
     # Stop scheduler
     if scheduler.running:
@@ -143,6 +161,7 @@ app.include_router(alphawave_voice.router, prefix="/voice", tags=["Voice"])
 app.include_router(alphawave_webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 app.include_router(alphawave_widgets.router, prefix="/widgets", tags=["Widgets"])
 app.include_router(alphawave_dashboards.router, prefix="/dashboards", tags=["Dashboards"])
+app.include_router(alphawave_workflows.router, prefix="/workflows", tags=["Workflows"])
 
 
 @app.get("/healthz")

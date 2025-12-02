@@ -51,8 +51,17 @@ from app.prompts.nicole_system_prompt import (
     build_document_context,
 )
 from app.config import settings
+from app.services.agent_orchestrator import agent_orchestrator
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# AGENT CONFIGURATION
+# ============================================================================
+
+# Feature flag: Enable agent tools (Think Tool, Tool Search, etc.)
+ENABLE_AGENT_TOOLS = True
 
 router = APIRouter()
 
@@ -573,21 +582,90 @@ async def send_message(
                 yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conversation_id})}\n\n"
             
             try:
-                ai_generator = claude_client.generate_streaming_response(
-                    messages=messages,
-                    system_prompt=system_prompt,
-                    model=None,
-                    max_tokens=4096,
-                    temperature=0.7,
-                )
+                # ============================================================
+                # AGENT TOOLS INTEGRATION
+                # ============================================================
+                if ENABLE_AGENT_TOOLS:
+                    # Start agent session for tracking
+                    session_id = f"chat_{conversation_id}_{datetime.utcnow().timestamp()}"
+                    agent_orchestrator.start_session(
+                        session_id=session_id,
+                        user_id=tiger_user_id,
+                        conversation_id=conversation_id
+                    )
+                    
+                    # Get core tools (Think, Tool Search, Memory, Document)
+                    tools = agent_orchestrator.get_core_tools()
+                    
+                    # Get tool executor bound to this user/session
+                    tool_executor = agent_orchestrator.get_tool_executor(
+                        user_id=tiger_user_id,
+                        session_id=session_id
+                    )
+                    
+                    logger.info(f"[STREAM] Using agent tools: {[t['name'] for t in tools]}")
+                    
+                    # Use streaming with tools
+                    chunk_count = 0
+                    async for event in claude_client.generate_streaming_response_with_tools(
+                        messages=messages,
+                        tools=tools,
+                        tool_executor=tool_executor,
+                        system_prompt=system_prompt,
+                        model=None,
+                        max_tokens=4096,
+                        temperature=0.7,
+                    ):
+                        event_type = event.get("type", "")
+                        
+                        if event_type == "text":
+                            content = event.get("content", "")
+                            chunk_count += 1
+                            full_response += content
+                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                        
+                        elif event_type == "thinking":
+                            # Emit thinking step for frontend
+                            yield f"data: {json.dumps({'type': 'thinking_step', 'description': event.get('thought', '')[:200], 'category': event.get('category', ''), 'status': 'complete'})}\n\n"
+                        
+                        elif event_type == "tool_use_start":
+                            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': event.get('tool_name', '')})}\n\n"
+                        
+                        elif event_type == "tool_use_complete":
+                            yield f"data: {json.dumps({'type': 'tool_complete', 'tool_name': event.get('tool_name', ''), 'success': event.get('success', True)})}\n\n"
+                        
+                        elif event_type == "error":
+                            logger.error(f"[STREAM] Agent error: {event.get('message', '')}")
+                            yield f"data: {json.dumps({'type': 'error', 'message': event.get('message', 'An error occurred')})}\n\n"
+                            return
+                        
+                        elif event_type == "done":
+                            break
+                    
+                    # End agent session
+                    session_summary = agent_orchestrator.end_session(session_id)
+                    if session_summary:
+                        logger.info(f"[STREAM] Session had {len(session_summary.get('tool_calls', []))} tool calls, {len(session_summary.get('thinking_steps', []))} thinking steps")
+                    
+                    logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
                 
-                chunk_count = 0
-                async for chunk in ai_generator:
-                    chunk_count += 1
-                    full_response += chunk
-                    yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                
-                logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
+                else:
+                    # Fallback: Simple streaming without tools
+                    ai_generator = claude_client.generate_streaming_response(
+                        messages=messages,
+                        system_prompt=system_prompt,
+                        model=None,
+                        max_tokens=4096,
+                        temperature=0.7,
+                    )
+                    
+                    chunk_count = 0
+                    async for chunk in ai_generator:
+                        chunk_count += 1
+                        full_response += chunk
+                        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                    
+                    logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
                 
             except Exception as claude_error:
                 logger.error(f"[STREAM] Claude error: {claude_error}")

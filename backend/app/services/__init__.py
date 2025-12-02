@@ -5,7 +5,8 @@ Core services for Nicole's functionality including:
 - Memory management
 - Document processing
 - AI integrations
-- Tool orchestration (NEW: Think Tool, Tool Search, Workflows)
+- Tool orchestration (Think Tool, Tool Search, Workflows)
+- Agent Orchestration
 """
 
 # Core services
@@ -23,11 +24,17 @@ from app.services.alphawave_correction_service import correction_service
 from app.services.alphawave_file_processor import file_processor
 from app.services.alphawave_link_processor import link_processor
 
-# NEW: Agent Architecture Services (Anthropic Patterns)
+# Agent Architecture Services (Anthropic Patterns)
 from app.services.think_tool import think_tool_service, ThinkingStep, ThinkingSession
 from app.services.tool_search_service import tool_search_service, ToolCategory
 from app.services.tool_examples import tool_examples_service
 from app.services.workflow_engine import workflow_engine, WorkflowExecution
+
+# Agent Orchestration (Integration Layer)
+from app.services.agent_orchestrator import agent_orchestrator
+
+# Workflow Scheduling
+from app.services.workflow_scheduler import workflow_scheduler
 
 __all__ = [
     # Core
@@ -45,7 +52,7 @@ __all__ = [
     "file_processor",
     "link_processor",
     
-    # Agent Architecture (NEW)
+    # Agent Architecture
     "think_tool_service",
     "ThinkingStep",
     "ThinkingSession",
@@ -54,5 +61,9 @@ __all__ = [
     "tool_examples_service",
     "workflow_engine",
     "WorkflowExecution",
+    
+    # Orchestration
+    "agent_orchestrator",
+    "workflow_scheduler",
 ]
 
