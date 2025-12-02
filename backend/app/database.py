@@ -366,3 +366,52 @@ def get_redis() -> Optional[SyncRedis]:
     This is a compatibility function - prefer db.redis for async operations.
     """
     return get_redis_sync()
+
+
+# =============================================================================
+# LEGACY COMPATIBILITY FUNCTIONS
+# =============================================================================
+# These functions maintain backward compatibility with code that still uses
+# Supabase and Qdrant. They return None when not configured, allowing
+# graceful degradation.
+
+_supabase_client = None
+_qdrant_client = None
+
+
+def get_supabase():
+    """
+    Get Supabase client for legacy code compatibility.
+    
+    Returns None if Supabase is not configured, allowing graceful fallback.
+    New code should use Tiger Postgres directly via `db`.
+    """
+    global _supabase_client
+    
+    if _supabase_client is not None:
+        return _supabase_client
+    
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    
+    try:
+        from supabase import create_client
+        _supabase_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY
+        )
+        return _supabase_client
+    except Exception as e:
+        logger.warning(f"[Supabase] Client creation failed: {e}")
+        return None
+
+
+def get_qdrant():
+    """
+    Get Qdrant client for legacy code compatibility.
+    
+    Returns None - Qdrant has been replaced by pgvectorscale in Tiger Postgres.
+    This function exists only for backward compatibility.
+    """
+    # Qdrant is no longer used - vector operations are now in Tiger Postgres
+    return None
