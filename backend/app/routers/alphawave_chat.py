@@ -691,7 +691,7 @@ async def get_chat_history(
     # Fetch messages
     message_rows = await db.fetch(
         """
-        SELECT message_id, message_role, content, emotion, created_at
+        SELECT message_id, message_role, content, created_at
         FROM messages
         WHERE conversation_id = $1
         ORDER BY created_at ASC
@@ -704,7 +704,6 @@ async def get_chat_history(
             "id": row["message_id"],
             "role": row["message_role"],
             "content": row["content"],
-            "emotion": row["emotion"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
         for row in message_rows
