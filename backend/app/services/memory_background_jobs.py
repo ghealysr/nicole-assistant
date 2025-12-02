@@ -618,20 +618,53 @@ async def _log_job_action(
     target_id: int,
     reason: str,
 ) -> None:
-    """Log a background job action."""
+    """
+    Log a background job action to nicole_actions.
+    
+    nicole_actions schema:
+    - action_id, action_type (enum), target_type (enum), target_id, user_id,
+    - reason, context (jsonb), success, error_message, processing_time_ms,
+    - tokens_used, created_at
+    """
+    import json
+    
+    # Map action_type to valid enum values
+    action_map = {
+        "decay_applied": "decay_applied",
+        "self_reflection": "self_reflection",
+        "consolidate": "consolidate",
+        "link_memories": "link_memories",
+        "organize_memories": "organize_memories",
+        "create_kb": "create_kb",
+        "archive_memory": "archive_memory",
+        "boost_confidence": "boost_confidence",
+        "pattern_detected": "pattern_detected",
+    }
+    db_action_type = action_map.get(action_type, "decay_applied")
+    
+    # Map target_type to valid enum values
+    target_map = {
+        "memory": "memory",
+        "knowledge_base": "knowledge_base",
+        "tag": "tag",
+        "link": "link",
+        "user": "user",
+    }
+    db_target_type = target_map.get(target_type, "memory")
+    
     try:
         await db.execute(
             """
             INSERT INTO nicole_actions (
-                action_type, target_type, target_id, user_id, reason, context
-            ) VALUES ($1::nicole_action_type_enum, $2::target_type_enum, $3, $4, $5, $6)
+                action_type, target_type, target_id, user_id, reason, context, success, created_at
+            ) VALUES ($1::nicole_action_type_enum, $2::target_type_enum, $3, $4, $5, $6, TRUE, NOW())
             """,
-            action_type,
-            target_type,
+            db_action_type,
+            db_target_type,
             target_id,
             user_id,
             reason,
-            '{"source": "background_job"}'
+            json.dumps({"source": "background_job"})
         )
     except Exception as e:
         logger.debug(f"[MEMORY JOB] Failed to log action: {e}")

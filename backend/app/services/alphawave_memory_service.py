@@ -116,26 +116,83 @@ class MemoryService:
         memory_id: Optional[int] = None,
         reason: Optional[str] = None,
         triggered_by: str = "nicole",
+        target_type: str = "memory",
+        context: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log a memory action for audit trail."""
+        """
+        Log a memory action to nicole_actions for audit trail.
+        
+        Args:
+            user_id: User ID
+            action_type: Type of action (create_memory, update_memory, archive_memory, etc.)
+            memory_id: Target memory ID (if applicable)
+            reason: Reason for the action
+            triggered_by: Who triggered (nicole, user, system, decay_job)
+            target_type: Type of target (memory, knowledge_base, tag, link, user)
+            context: Additional context as JSON
+        """
+        import json
+        
+        # Map triggered_by to valid values
+        triggered_by_map = {
+            "nicole": "nicole",
+            "user": "user", 
+            "system": "system",
+            "decay_job": "system",
+        }
+        source = triggered_by_map.get(triggered_by, "nicole")
+        
+        # Map action_type to valid enum values
+        action_map = {
+            "create": "create_memory",
+            "update": "update_memory",
+            "archive": "archive_memory",
+            "delete": "archive_memory",
+            "create_memory": "create_memory",
+            "update_memory": "update_memory",
+            "archive_memory": "archive_memory",
+            "create_kb": "create_kb",
+            "organize_memories": "organize_memories",
+            "consolidate": "consolidate",
+            "create_tag": "create_tag",
+            "tag_memory": "tag_memory",
+            "link_memories": "link_memories",
+            "boost_confidence": "boost_confidence",
+            "decay_applied": "decay_applied",
+            "self_reflection": "self_reflection",
+            "pattern_detected": "pattern_detected",
+        }
+        db_action_type = action_map.get(action_type, "create_memory")
+        
         try:
             await db.execute(
                 """
-                INSERT INTO corrections (
+                INSERT INTO nicole_actions (
+                    action_type,
+                    target_type,
+                    target_id,
                     user_id,
-                    memory_id,
-                    old_content,
-                    new_content,
-                    correction_status,
-                    created_at,
-                    created_by
-                ) VALUES ($1, $2, $3, $4, 'approved', NOW(), $5)
+                    reason,
+                    context,
+                    success,
+                    created_at
+                ) VALUES (
+                    $1::nicole_action_type_enum,
+                    $2::target_type_enum,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    TRUE,
+                    NOW()
+                )
                 """,
+                db_action_type,
+                target_type,
+                memory_id or 0,
                 user_id,
-                memory_id,
-                action_type,  # Using old_content to store action type
-                reason or "",
-                triggered_by,
+                reason or f"Action: {action_type}",
+                json.dumps(context) if context else json.dumps({"triggered_by": source}),
             )
         except Exception as e:
             logger.debug(f"[MEMORY] Action log failed (non-critical): {e}")
@@ -663,7 +720,7 @@ class MemoryService:
         }
     
     # =========================================================================
-    # KNOWLEDGE BASES (Simplified - using category field)
+    # KNOWLEDGE BASES - Full database implementation
     # =========================================================================
     
     async def get_knowledge_bases(
@@ -672,58 +729,199 @@ class MemoryService:
         include_shared: bool = True,
         kb_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Get distinct categories as knowledge bases."""
+        """
+        Get knowledge bases from the knowledge_bases table.
+        
+        Args:
+            user_id: User identifier
+            include_shared: Include KBs shared with this user
+            kb_type: Filter by KB type (project, topic, client, personal, family, health, financial, system)
+            
+        Returns:
+            List of knowledge base dicts
+        """
         user_id_int = self._normalize_id(user_id)
         
-        rows = await db.fetch(
-            """
-            SELECT 
-                category AS name,
-                category AS id,
-                COUNT(*) AS memory_count,
-                MAX(created_at) AS last_memory_at
-            FROM memory_entries
-            WHERE user_id = $1 
-              AND archived_at IS NULL
-              AND category IS NOT NULL
-            GROUP BY category
-            ORDER BY memory_count DESC
-            """,
-            user_id_int,
-        )
+        conditions = ["kb.user_id = $1", "kb.archived_at IS NULL"]
+        params: List[Any] = [user_id_int]
+        param_idx = 2
         
-        return [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "memory_count": row["memory_count"],
-                "last_memory_at": row["last_memory_at"].isoformat() if row["last_memory_at"] else None,
-            }
-            for row in rows
-        ]
+        if kb_type:
+            conditions.append(f"kb.kb_type = ${param_idx}::kb_type_enum")
+            params.append(kb_type)
+            param_idx += 1
+        
+        # Build query - include shared KBs if requested
+        if include_shared:
+            query = f"""
+                SELECT 
+                    kb.kb_id AS id,
+                    kb.name,
+                    kb.description,
+                    kb.icon,
+                    kb.color,
+                    kb.parent_id,
+                    kb.kb_type,
+                    kb.is_shared,
+                    kb.shared_with,
+                    kb.memory_count,
+                    kb.last_memory_at,
+                    kb.created_at,
+                    kb.updated_at
+                FROM knowledge_bases kb
+                WHERE ({' AND '.join(conditions)})
+                   OR (kb.is_shared = TRUE AND $1 = ANY(kb.shared_with))
+                ORDER BY kb.memory_count DESC, kb.name ASC
+            """
+        else:
+            query = f"""
+                SELECT 
+                    kb.kb_id AS id,
+                    kb.name,
+                    kb.description,
+                    kb.icon,
+                    kb.color,
+                    kb.parent_id,
+                    kb.kb_type,
+                    kb.is_shared,
+                    kb.shared_with,
+                    kb.memory_count,
+                    kb.last_memory_at,
+                    kb.created_at,
+                    kb.updated_at
+                FROM knowledge_bases kb
+                WHERE {' AND '.join(conditions)}
+                ORDER BY kb.memory_count DESC, kb.name ASC
+            """
+        
+        try:
+            rows = await db.fetch(query, *params)
+            
+            return [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "icon": row["icon"],
+                    "color": row["color"],
+                    "parent_id": row["parent_id"],
+                    "kb_type": str(row["kb_type"]) if row["kb_type"] else "topic",
+                    "is_shared": row["is_shared"],
+                    "shared_with": row["shared_with"] or [],
+                    "memory_count": row["memory_count"] or 0,
+                    "last_memory_at": row["last_memory_at"].isoformat() if row["last_memory_at"] else None,
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"[MEMORY] Failed to get knowledge bases: {e}")
+            return []
     
     async def get_knowledge_base_tree(self, user_id: Any) -> Dict[str, Any]:
-        """Get knowledge bases as a tree structure."""
+        """
+        Get knowledge bases as a hierarchical tree structure.
+        
+        Returns nested structure based on parent_id relationships.
+        """
         kbs = await self.get_knowledge_bases(user_id)
-        return {"items": kbs}
+        
+        # Build tree from flat list
+        kb_map = {kb["id"]: {**kb, "children": []} for kb in kbs}
+        roots = []
+        
+        for kb in kbs:
+            if kb["parent_id"] and kb["parent_id"] in kb_map:
+                kb_map[kb["parent_id"]]["children"].append(kb_map[kb["id"]])
+            else:
+                roots.append(kb_map[kb["id"]])
+        
+        return {"items": roots, "total": len(kbs)}
     
     async def create_knowledge_base(
         self,
         user_id: Any,
         kb_data: Any,
     ) -> Optional[Dict[str, Any]]:
-        """Create a knowledge base (category)."""
+        """
+        Create a new knowledge base in the database.
+        
+        Args:
+            user_id: User identifier
+            kb_data: KB creation data (name, description, kb_type, parent_id, etc.)
+            
+        Returns:
+            Created KB dict or None if failed
+        """
+        user_id_int = self._normalize_id(user_id)
+        
+        # Extract fields from kb_data (handle both Pydantic models and dicts)
         name = getattr(kb_data, "name", None) or kb_data.get("name")
         description = getattr(kb_data, "description", None) or kb_data.get("description")
+        icon = getattr(kb_data, "icon", "📁") or kb_data.get("icon", "📁")
+        color = getattr(kb_data, "color", "#B8A8D4") or kb_data.get("color", "#B8A8D4")
+        parent_id = self._safe_id(getattr(kb_data, "parent_id", None) or kb_data.get("parent_id"))
+        kb_type = getattr(kb_data, "kb_type", "topic") or kb_data.get("kb_type", "topic")
+        is_shared = getattr(kb_data, "is_shared", False) or kb_data.get("is_shared", False)
+        shared_with_raw = getattr(kb_data, "shared_with", []) or kb_data.get("shared_with", [])
+        shared_with = [self._normalize_id(uid) for uid in shared_with_raw if uid]
         
-        # Knowledge bases are implemented as categories in this schema
-        return {
-            "id": name,
-            "name": name,
-            "description": description,
-            "memory_count": 0,
-            "created_at": datetime.utcnow().isoformat(),
-        }
+        try:
+            row = await db.fetchrow(
+                """
+                INSERT INTO knowledge_bases (
+                    user_id, name, description, icon, color, parent_id, 
+                    kb_type, is_shared, shared_with, created_by, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, 
+                    $7::kb_type_enum, $8, $9, 'user', NOW(), NOW()
+                )
+                ON CONFLICT (user_id, name) WHERE parent_id IS NULL 
+                DO UPDATE SET description = EXCLUDED.description, updated_at = NOW()
+                RETURNING kb_id, name, description, icon, color, parent_id, kb_type, 
+                          is_shared, shared_with, memory_count, created_at
+                """,
+                user_id_int,
+                name,
+                description,
+                icon,
+                color,
+                parent_id,
+                kb_type,
+                is_shared,
+                shared_with or [],
+            )
+            
+            if row:
+                # Log the action
+                await self._log_action(
+                    user_id_int, 
+                    "create_kb", 
+                    row["kb_id"],
+                    f"Created knowledge base: {name}",
+                    "user",
+                    "knowledge_base"
+                )
+                
+                return {
+                    "id": row["kb_id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "icon": row["icon"],
+                    "color": row["color"],
+                    "parent_id": row["parent_id"],
+                    "kb_type": str(row["kb_type"]),
+                    "is_shared": row["is_shared"],
+                    "shared_with": row["shared_with"] or [],
+                    "memory_count": row["memory_count"] or 0,
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"[MEMORY] Failed to create knowledge base: {e}")
+            return None
     
     async def organize_memories_into_kb(
         self,
@@ -732,27 +930,66 @@ class MemoryService:
         knowledge_base_id: Any,
         organized_by: str = "user",
     ) -> int:
-        """Organize memories into a knowledge base (set category)."""
+        """
+        Organize memories into a knowledge base by setting knowledge_base_id.
+        
+        Args:
+            user_id: User identifier
+            memory_ids: List of memory IDs to organize
+            knowledge_base_id: Target KB ID
+            organized_by: Who organized (user, nicole, system)
+            
+        Returns:
+            Number of memories organized
+        """
         user_id_int = self._normalize_id(user_id)
-        category_name = str(knowledge_base_id)
+        kb_id_int = self._normalize_id(knowledge_base_id)
         
         count = 0
         for mid in memory_ids:
             try:
                 memory_id_int = self._normalize_id(mid)
-                await db.execute(
+                result = await db.execute(
                     """
                     UPDATE memory_entries
-                    SET category = $1, updated_at = NOW()
-                    WHERE memory_id = $2 AND user_id = $3
+                    SET knowledge_base_id = $1, updated_at = NOW()
+                    WHERE memory_id = $2 AND user_id = $3 AND archived_at IS NULL
                     """,
-                    category_name,
+                    kb_id_int,
                     memory_id_int,
                     user_id_int,
                 )
-                count += 1
+                if result and "UPDATE 1" in result:
+                    count += 1
             except Exception as e:
                 logger.warning(f"[MEMORY] Failed to organize memory {mid}: {e}")
+        
+        # Update KB memory count
+        if count > 0:
+            await db.execute(
+                """
+                UPDATE knowledge_bases 
+                SET memory_count = (
+                    SELECT COUNT(*) FROM memory_entries 
+                    WHERE knowledge_base_id = $1 AND archived_at IS NULL
+                ),
+                last_memory_at = NOW(),
+                updated_at = NOW()
+                WHERE kb_id = $1
+                """,
+                kb_id_int,
+            )
+            
+            # Log the action
+            await self._log_action(
+                user_id_int,
+                "organize_memories",
+                kb_id_int,
+                f"Organized {count} memories into KB",
+                organized_by,
+                "knowledge_base",
+                {"memory_ids": [self._normalize_id(m) for m in memory_ids[:10]]}
+            )
         
         return count
     
@@ -824,7 +1061,13 @@ class MemoryService:
         user_id: Any,
         tag_data: Any,
     ) -> Optional[Dict[str, Any]]:
-        """Create a custom tag for a user."""
+        """
+        Create a custom tag for a user.
+        
+        memory_tags schema: tag_id, user_id, name, description, color, icon,
+        tag_type (enum: system, custom, auto, emotion, temporal, entity),
+        auto_criteria, confidence_threshold, usage_count, last_used_at, created_at
+        """
         user_id_int = self._normalize_id(user_id)
         name = getattr(tag_data, "name", None) or tag_data.get("name")
         color = getattr(tag_data, "color", None) or tag_data.get("color", "#6366f1")
@@ -834,10 +1077,13 @@ class MemoryService:
         try:
             row = await db.fetchrow(
                 """
-                INSERT INTO memory_tags (user_id, name, description, color, icon, tag_type)
-                VALUES ($1, $2, $3, $4, $5, 'custom')
-                ON CONFLICT (user_id, name) DO UPDATE SET color = $4, description = $3
-                RETURNING tag_id, name, description, color, icon, tag_type, created_at
+                INSERT INTO memory_tags (user_id, name, description, color, icon, tag_type, created_at)
+                VALUES ($1, $2, $3, $4, $5, 'custom'::tag_type_enum, NOW())
+                ON CONFLICT (user_id, name) DO UPDATE SET 
+                    color = EXCLUDED.color, 
+                    description = EXCLUDED.description,
+                    icon = EXCLUDED.icon
+                RETURNING tag_id, name, description, color, icon, tag_type, usage_count, created_at
                 """,
                 user_id_int,
                 name,
@@ -847,13 +1093,24 @@ class MemoryService:
             )
             
             if row:
+                # Log the action
+                await self._log_action(
+                    user_id_int,
+                    "create_tag",
+                    row["tag_id"],
+                    f"Created tag: {name}",
+                    "user",
+                    "tag"
+                )
+                
                 return {
                     "id": row["tag_id"],
                     "name": row["name"],
                     "description": row["description"],
                     "color": row["color"],
                     "icon": row["icon"],
-                    "tag_type": "custom",
+                    "tag_type": str(row["tag_type"]) if row["tag_type"] else "custom",
+                    "usage_count": row["usage_count"] or 0,
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 }
             return None
@@ -958,7 +1215,7 @@ class MemoryService:
         Create a relationship between two memories.
         
         Args:
-            user_id: User ID (for validation)
+            user_id: User ID (for validation and logging)
             source_memory_id: Source memory ID
             target_memory_id: Target memory ID
             relationship_type: Type of relationship (related_to, contradicts, elaborates, etc.)
@@ -969,10 +1226,12 @@ class MemoryService:
         Returns:
             Created relationship dict
         """
+        user_id_int = self._normalize_id(user_id)
         source_id = self._normalize_id(source_memory_id)
         target_id = self._normalize_id(target_memory_id)
         
-        # Map common variations to enum values
+        # Map common variations to valid values
+        # NOTE: memory_links.relationship_type is TEXT in the DB, not an enum
         type_mapping = {
             "related": "related_to",
             "related_to": "related_to",
@@ -988,6 +1247,8 @@ class MemoryService:
         db_rel_type = type_mapping.get(relationship_type, "related_to")
         
         try:
+            # Note: relationship_type is TEXT, not enum in memory_links table
+            # The reasoning column doesn't exist, so we won't include it
             row = await db.fetchrow(
                 """
                 INSERT INTO memory_links (
@@ -996,22 +1257,31 @@ class MemoryService:
                     relationship_type,
                     weight,
                     created_by,
-                    reasoning,
                     created_at
-                ) VALUES ($1, $2, $3::relationship_type_enum, $4, $5, $6, NOW())
+                ) VALUES ($1, $2, $3, $4, $5, NOW())
                 ON CONFLICT (source_memory_id, target_memory_id, relationship_type) 
-                DO UPDATE SET weight = $4, reasoning = $6
-                RETURNING link_id, source_memory_id, target_memory_id, relationship_type, weight, created_by, reasoning
+                DO UPDATE SET weight = $4
+                RETURNING link_id, source_memory_id, target_memory_id, relationship_type, weight, created_by
                 """,
                 source_id,
                 target_id,
                 db_rel_type,
                 Decimal(str(strength)),
                 created_by,
-                reasoning,
             )
             
             if row:
+                # Log the action
+                await self._log_action(
+                    user_id_int,
+                    "link_memories",
+                    source_id,
+                    reasoning or f"Linked to memory {target_id} as {db_rel_type}",
+                    created_by,
+                    "link",
+                    {"target_memory_id": target_id, "relationship_type": db_rel_type}
+                )
+                
                 return {
                     "id": row["link_id"],
                     "source_memory_id": row["source_memory_id"],
@@ -1019,7 +1289,7 @@ class MemoryService:
                     "relationship_type": str(row["relationship_type"]),
                     "weight": float(row["weight"]),
                     "created_by": row["created_by"],
-                    "reasoning": row["reasoning"],
+                    "reasoning": reasoning,  # Return the reasoning even though it's not stored
                 }
             return {}
         except Exception as e:

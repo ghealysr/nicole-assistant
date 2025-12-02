@@ -1,9 +1,20 @@
 """
 Nicole V7 - FastAPI Main Application
 Built according to Agent 1 specifications for production-quality backend.
+
+Includes:
+- Database lifecycle management
+- Background job scheduler (APScheduler)
+- Middleware stack (CORS, logging, auth, rate limiting)
+- All API routers
 """
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from app.config import settings
 from app.middleware.alphawave_cors import configure_cors
@@ -27,6 +38,80 @@ from app.routers import (
     alphawave_dashboards,
 )
 
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# BACKGROUND JOB SCHEDULER
+# =============================================================================
+
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+
+def setup_scheduled_jobs():
+    """
+    Configure scheduled background jobs for memory maintenance.
+    
+    Jobs run during low-activity hours (3 AM UTC) to minimize impact.
+    """
+    from app.services.memory_background_jobs import run_all_memory_jobs
+    
+    # Run all memory maintenance jobs daily at 3 AM UTC
+    scheduler.add_job(
+        run_all_memory_jobs,
+        CronTrigger(hour=3, minute=0),
+        id="memory_maintenance",
+        name="Daily Memory Maintenance",
+        replace_existing=True,
+        misfire_grace_time=3600,  # Allow 1 hour grace period
+    )
+    
+    logger.info("[SCHEDULER] Background jobs configured")
+
+
+# =============================================================================
+# APPLICATION LIFECYCLE
+# =============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan manager.
+    
+    Handles:
+    - Database connection pool startup/shutdown
+    - Background scheduler startup/shutdown
+    """
+    # Startup
+    logger.info("[STARTUP] Initializing Nicole V7 API...")
+    
+    # Initialize database connections
+    await startup_db()
+    logger.info("[STARTUP] Database connections established")
+    
+    # Setup and start scheduler
+    try:
+        setup_scheduled_jobs()
+        scheduler.start()
+        logger.info("[STARTUP] Background scheduler started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Scheduler failed to start (non-critical): {e}")
+    
+    logger.info("[STARTUP] Nicole V7 API ready")
+    
+    yield  # Application runs here
+    
+    # Shutdown
+    logger.info("[SHUTDOWN] Shutting down Nicole V7 API...")
+    
+    # Stop scheduler
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("[SHUTDOWN] Background scheduler stopped")
+    
+    # Close database connections
+    await shutdown_db()
+    logger.info("[SHUTDOWN] Database connections closed")
+
 
 app = FastAPI(
     title="Nicole V7 API",
@@ -34,16 +119,8 @@ app = FastAPI(
     version="7.0.0",
     docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+    lifespan=lifespan,
 )
-
-@app.on_event("startup")
-async def on_startup():
-    await startup_db()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await shutdown_db()
 # CORS middleware (custom implementation as per Agent 1 spec)
 configure_cors(app)
 

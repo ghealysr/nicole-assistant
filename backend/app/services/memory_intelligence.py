@@ -440,7 +440,13 @@ GUIDELINES:
         tag_name: str,
         content: str,
     ) -> Optional[Dict[str, Any]]:
-        """Create an auto-generated tag for a user."""
+        """
+        Create an auto-generated tag for a user.
+        
+        memory_tags schema: tag_id, user_id, name, description, color, icon,
+        tag_type (enum), auto_criteria, confidence_threshold, usage_count,
+        last_used_at, created_at
+        """
         try:
             # Generate a color based on the tag name hash
             colors = ["#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#8B5CF6", "#EC4899", "#06B6D4"]
@@ -448,8 +454,8 @@ GUIDELINES:
             
             row = await db.fetchrow(
                 """
-                INSERT INTO memory_tags (user_id, name, tag_type, color, auto_criteria)
-                VALUES ($1, $2, 'auto', $3, $4)
+                INSERT INTO memory_tags (user_id, name, tag_type, color, auto_criteria, created_at)
+                VALUES ($1, $2, 'auto'::tag_type_enum, $3, $4, NOW())
                 ON CONFLICT (user_id, name) DO UPDATE SET last_used_at = NOW()
                 RETURNING tag_id, name
                 """,
@@ -621,28 +627,50 @@ GUIDELINES:
         user_id: int,
         relationships: List[RelationshipCandidate],
     ) -> int:
-        """Save relationship candidates to the database."""
+        """
+        Save relationship candidates to the database.
+        
+        Note: memory_links table has relationship_type as TEXT (not enum),
+        and does not have bidirectional or reasoning columns.
+        """
         saved_count = 0
         
         for rel in relationships:
             try:
+                # memory_links schema: link_id, source_memory_id, target_memory_id, 
+                # relationship_type (TEXT), weight, created_at, created_by
                 await db.execute(
                     """
                     INSERT INTO memory_links (
                         source_memory_id, target_memory_id, relationship_type,
-                        weight, bidirectional, reasoning, created_by
-                    ) VALUES ($1, $2, $3::relationship_type_enum, $4, $5, $6, 'nicole')
+                        weight, created_by, created_at
+                    ) VALUES ($1, $2, $3, $4, 'nicole', NOW())
                     ON CONFLICT (source_memory_id, target_memory_id, relationship_type) 
-                    DO UPDATE SET weight = $4, reasoning = $6
+                    DO UPDATE SET weight = $4
                     """,
                     rel.source_id,
                     rel.target_id,
-                    rel.relationship_type,
+                    rel.relationship_type,  # TEXT column, no enum cast
                     Decimal(str(rel.weight)),
-                    rel.bidirectional,
-                    rel.reasoning
                 )
                 saved_count += 1
+                
+                # Create reverse link if bidirectional
+                if rel.bidirectional:
+                    await db.execute(
+                        """
+                        INSERT INTO memory_links (
+                            source_memory_id, target_memory_id, relationship_type,
+                            weight, created_by, created_at
+                        ) VALUES ($1, $2, $3, $4, 'nicole', NOW())
+                        ON CONFLICT (source_memory_id, target_memory_id, relationship_type) 
+                        DO UPDATE SET weight = $4
+                        """,
+                        rel.target_id,  # Reversed
+                        rel.source_id,  # Reversed
+                        rel.relationship_type,
+                        Decimal(str(rel.weight)),
+                    )
                 
                 # Log the action
                 await self._log_nicole_action(
@@ -651,7 +679,12 @@ GUIDELINES:
                     target_type="link",
                     target_id=rel.source_id,
                     reason=rel.reasoning,
-                    context={"target_memory_id": rel.target_id, "type": rel.relationship_type}
+                    context={
+                        "target_memory_id": rel.target_id, 
+                        "type": rel.relationship_type,
+                        "bidirectional": rel.bidirectional,
+                        "reasoning": rel.reasoning
+                    }
                 )
                 
             except Exception as e:
@@ -671,39 +704,96 @@ GUIDELINES:
         """
         Find pairs of memories that should be consolidated.
         
+        Uses vector similarity to find memories that are semantically similar
+        and could potentially be merged.
+        
         Returns list of tuples: (memory_id_1, memory_id_2, similarity, reason)
         """
-        # Use the SQL function to find similar memories
+        candidates = []
+        
         try:
-            rows = await db.fetch(
+            # Get recent memories with embeddings
+            memories = await db.fetch(
                 """
-                SELECT * FROM find_similar_memories($1, $2, $3)
+                SELECT memory_id, content, embedding
+                FROM memory_entries
+                WHERE user_id = $1
+                  AND archived_at IS NULL
+                  AND embedding IS NOT NULL
+                  AND created_at > NOW() - INTERVAL '90 days'
+                ORDER BY created_at DESC
+                LIMIT 100
                 """,
-                user_id,
-                Decimal(str(self._similarity_threshold)),
-                limit
+                user_id
             )
             
-            candidates = []
-            for row in rows:
-                # Analyze why these should be consolidated
-                reason = self._analyze_consolidation_reason(
-                    row["content_1"],
-                    row["content_2"],
-                    float(row["similarity_score"])
+            if len(memories) < 2:
+                return []
+            
+            # For each memory, find similar ones using vector search
+            processed_pairs = set()
+            
+            for mem in memories[:20]:  # Limit to avoid O(n^2) explosion
+                # Find similar memories
+                similar = await db.fetch(
+                    """
+                    SELECT 
+                        memory_id,
+                        content,
+                        1 - (embedding <=> $1::vector) AS similarity
+                    FROM memory_entries
+                    WHERE user_id = $2
+                      AND memory_id != $3
+                      AND archived_at IS NULL
+                      AND embedding IS NOT NULL
+                    ORDER BY embedding <=> $1::vector
+                    LIMIT 5
+                    """,
+                    str(mem["embedding"]) if mem["embedding"] else None,
+                    user_id,
+                    mem["memory_id"]
                 )
                 
-                candidates.append((
-                    row["memory_id_1"],
-                    row["memory_id_2"],
-                    float(row["similarity_score"]),
-                    reason
-                ))
+                for sim_mem in similar:
+                    similarity = float(sim_mem["similarity"])
+                    
+                    # Only consider high similarity pairs
+                    if similarity < self._similarity_threshold:
+                        continue
+                    
+                    # Create a consistent pair key to avoid duplicates
+                    pair_key = tuple(sorted([mem["memory_id"], sim_mem["memory_id"]]))
+                    if pair_key in processed_pairs:
+                        continue
+                    
+                    processed_pairs.add(pair_key)
+                    
+                    # Analyze why these should be consolidated
+                    reason = self._analyze_consolidation_reason(
+                        mem["content"],
+                        sim_mem["content"],
+                        similarity
+                    )
+                    
+                    candidates.append((
+                        mem["memory_id"],
+                        sim_mem["memory_id"],
+                        similarity,
+                        reason
+                    ))
+                    
+                    if len(candidates) >= limit:
+                        break
+                
+                if len(candidates) >= limit:
+                    break
             
-            return candidates
+            # Sort by similarity (highest first)
+            candidates.sort(key=lambda x: x[2], reverse=True)
+            return candidates[:limit]
             
         except Exception as e:
-            logger.warning(f"[MEMORY INTEL] find_similar_memories not available: {e}")
+            logger.warning(f"[MEMORY INTEL] find_consolidation_candidates failed: {e}")
             return []
     
     def _analyze_consolidation_reason(
@@ -811,18 +901,22 @@ Respond with ONLY the consolidated memory text (no explanations)."""
             new_memory_id = new_memory["memory_id"]
             
             # Record the consolidation
+            # memory_consolidations schema: consolidation_id, result_memory_id, source_memory_ids (ARRAY),
+            # consolidation_type (enum), reason, model_used, similarity_score, confidence, created_at
             await db.execute(
                 """
                 INSERT INTO memory_consolidations (
                     result_memory_id, source_memory_ids, consolidation_type,
-                    reason, similarity_score
-                ) VALUES ($1, $2, $3::consolidation_type_enum, $4, $5)
+                    reason, model_used, similarity_score, confidence, created_at
+                ) VALUES ($1, $2, $3::consolidation_type_enum, $4, $5, $6, $7, NOW())
                 """,
                 new_memory_id,
                 memory_ids,
                 consolidation_type,
                 f"Consolidated {len(memories)} similar memories",
+                "claude-sonnet",  # model_used
                 Decimal(str(self._similarity_threshold)),
+                Decimal("0.9"),  # confidence
             )
             
             # Archive the source memories
@@ -898,13 +992,20 @@ Respond with ONLY the consolidated memory text (no explanations)."""
         kb_type: str = "topic",
         description: Optional[str] = None,
     ) -> Optional[int]:
-        """Create a new knowledge base."""
+        """
+        Create a new knowledge base.
+        
+        knowledge_bases schema: kb_id, user_id, name, description, icon, color,
+        parent_id, kb_type (enum), is_shared, shared_with, memory_count, 
+        last_memory_at, created_at, updated_at, archived_at, created_by
+        """
         try:
             row = await db.fetchrow(
                 """
-                INSERT INTO knowledge_bases (user_id, name, description, kb_type, created_by)
-                VALUES ($1, $2, $3, $4::kb_type_enum, 'nicole')
-                ON CONFLICT (user_id, name) DO NOTHING
+                INSERT INTO knowledge_bases (
+                    user_id, name, description, kb_type, created_by, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4::kb_type_enum, 'nicole', NOW(), NOW())
+                ON CONFLICT (user_id, name) WHERE parent_id IS NULL DO NOTHING
                 RETURNING kb_id
                 """,
                 user_id,
@@ -1090,16 +1191,60 @@ Respond with ONLY the consolidated memory text (no explanations)."""
         reason: str,
         context: Optional[Dict] = None,
     ) -> None:
-        """Log an action taken by Nicole."""
+        """
+        Log an action taken by Nicole to the nicole_actions audit table.
+        
+        nicole_actions schema:
+        - action_id (bigint)
+        - action_type (nicole_action_type_enum)
+        - target_type (target_type_enum)
+        - target_id (bigint)
+        - user_id (bigint)
+        - reason (text)
+        - context (jsonb)
+        - success (boolean)
+        - error_message (text)
+        - processing_time_ms (integer)
+        - tokens_used (integer)
+        - created_at (timestamptz)
+        """
+        # Map action_type to valid enum values
+        action_map = {
+            "create_memory": "create_memory",
+            "update_memory": "update_memory",
+            "archive_memory": "archive_memory",
+            "create_kb": "create_kb",
+            "organize_memories": "organize_memories",
+            "consolidate": "consolidate",
+            "create_tag": "create_tag",
+            "tag_memory": "tag_memory",
+            "link_memories": "link_memories",
+            "boost_confidence": "boost_confidence",
+            "decay_applied": "decay_applied",
+            "self_reflection": "self_reflection",
+            "pattern_detected": "pattern_detected",
+        }
+        db_action_type = action_map.get(action_type, "create_memory")
+        
+        # Map target_type to valid enum values
+        target_map = {
+            "memory": "memory",
+            "knowledge_base": "knowledge_base",
+            "tag": "tag",
+            "link": "link",
+            "user": "user",
+        }
+        db_target_type = target_map.get(target_type, "memory")
+        
         try:
             await db.execute(
                 """
                 INSERT INTO nicole_actions (
-                    action_type, target_type, target_id, user_id, reason, context
-                ) VALUES ($1::nicole_action_type_enum, $2::target_type_enum, $3, $4, $5, $6)
+                    action_type, target_type, target_id, user_id, reason, context, success, created_at
+                ) VALUES ($1::nicole_action_type_enum, $2::target_type_enum, $3, $4, $5, $6, TRUE, NOW())
                 """,
-                action_type,
-                target_type,
+                db_action_type,
+                db_target_type,
                 target_id,
                 user_id,
                 reason,
