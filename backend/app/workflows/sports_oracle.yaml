@@ -1,0 +1,195 @@
+# Sports Oracle Daily Workflow
+# ============================
+# 
+# This workflow runs daily to collect sports data, generate predictions,
+# and provide Glen with betting insights and game analysis.
+#
+# Schedule: 6 AM daily (before games start)
+# Duration: ~2-3 minutes
+# 
+# Author: Nicole V7 Workflow Engine
+
+name: sports_oracle_daily
+description: "Daily sports predictions and analysis for NFL, NBA, and college games"
+version: "1.0.0"
+schedule: "0 6 * * *"  # Daily at 6 AM
+
+# Configuration
+config:
+  max_retries: 3
+  timeout_seconds: 300
+  notify_on_failure: true
+  notification_channel: "memory"  # Store failures as memories
+
+# Variables accessible to all steps
+variables:
+  date: "{{now.date}}"
+  sports: ["nfl", "nba", "ncaaf", "ncaab"]
+
+steps:
+  # Step 1: Collect NFL Data
+  - name: collect_nfl_data
+    type: tool
+    tool: espn_nfl_api
+    params:
+      endpoint: scoreboard
+      date: "{{date}}"
+    max_retries: 2
+    
+  # Step 2: Collect NBA Data
+  - name: collect_nba_data
+    type: tool
+    tool: espn_nba_api
+    params:
+      endpoint: scoreboard
+      date: "{{date}}"
+    max_retries: 2
+    
+  # Step 3: Collect College Football Data (seasonal)
+  - name: collect_ncaaf_data
+    type: tool
+    tool: espn_ncaaf_api
+    params:
+      endpoint: scoreboard
+      date: "{{date}}"
+    max_retries: 2
+    
+  # Step 4: Collect College Basketball Data
+  - name: collect_ncaab_data
+    type: tool
+    tool: espn_ncaab_api
+    params:
+      endpoint: scoreboard
+      date: "{{date}}"
+    max_retries: 2
+
+  # Step 5: Get Historical Prediction Accuracy
+  - name: get_prediction_history
+    type: tool
+    tool: memory_search
+    params:
+      query: "sports predictions accuracy performance"
+      memory_type: "prediction"
+      limit: 20
+      
+  # Step 6: Get Team Injury Reports
+  - name: get_injury_data
+    type: parallel
+    steps:
+      - name: nfl_injuries
+        type: tool
+        tool: espn_injuries
+        params:
+          sport: "nfl"
+      - name: nba_injuries
+        type: tool
+        tool: espn_injuries
+        params:
+          sport: "nba"
+
+  # Step 7: Analyze and Generate Predictions
+  - name: analyze_games
+    type: agent
+    agent: nicole_core
+    depends_on: 
+      - collect_nfl_data
+      - collect_nba_data
+      - collect_ncaaf_data
+      - collect_ncaab_data
+      - get_prediction_history
+      - get_injury_data
+    prompt: |
+      Analyze today's games and generate predictions with confidence levels.
+      
+      ## Today's Date: {{date}}
+      
+      ## NFL Games
+      {{steps.collect_nfl_data.result}}
+      
+      ## NBA Games
+      {{steps.collect_nba_data.result}}
+      
+      ## College Football
+      {{steps.collect_ncaaf_data.result}}
+      
+      ## College Basketball
+      {{steps.collect_ncaab_data.result}}
+      
+      ## Injury Reports
+      NFL: {{steps.get_injury_data.result.nfl_injuries}}
+      NBA: {{steps.get_injury_data.result.nba_injuries}}
+      
+      ## Historical Accuracy
+      {{steps.get_prediction_history.result}}
+      
+      For each game:
+      1. Analyze team matchups and recent performance
+      2. Consider injury impacts
+      3. Factor in historical prediction accuracy for similar scenarios
+      4. Provide:
+         - Predicted winner
+         - Confidence level (1-10)
+         - Key factors
+         - Betting recommendation (if confidence > 7)
+      
+      Format as structured data for easy parsing.
+
+  # Step 8: Store Predictions in Memory
+  - name: store_predictions
+    type: tool
+    tool: memory_store
+    depends_on: [analyze_games]
+    params:
+      content: "{{steps.analyze_games.result}}"
+      memory_type: "prediction"
+      importance: "high"
+      tags: ["sports", "oracle", "prediction", "{{date}}"]
+      
+  # Step 9: Generate Glen's Briefing
+  - name: generate_briefing
+    type: agent
+    agent: nicole_core
+    depends_on: [analyze_games]
+    prompt: |
+      Create a casual morning sports briefing for Glen.
+      
+      Today's Predictions:
+      {{steps.analyze_games.result}}
+      
+      Make it conversational and fun, like I'm his friend giving him the inside scoop.
+      Highlight:
+      - Best bets of the day (high confidence picks)
+      - Games to watch
+      - Any upsets I'm predicting
+      - My reasoning in plain English
+      
+      Keep it to 2-3 paragraphs max.
+
+  # Step 10: Notify (store briefing for morning)
+  - name: store_briefing
+    type: tool
+    tool: memory_store
+    depends_on: [generate_briefing]
+    params:
+      content: "{{steps.generate_briefing.result}}"
+      memory_type: "notification"
+      importance: "high"
+      tags: ["sports", "briefing", "morning", "{{date}}"]
+      
+# Post-workflow hooks
+on_success:
+  - type: notify
+    channel: log
+    message: "Sports Oracle completed successfully for {{date}}"
+    
+on_failure:
+  - type: notify
+    channel: log
+    message: "Sports Oracle failed: {{error}}"
+  - type: tool
+    tool: memory_store
+    params:
+      content: "Sports Oracle workflow failed on {{date}}: {{error}}"
+      memory_type: "error"
+      tags: ["workflow", "error", "sports_oracle"]
+

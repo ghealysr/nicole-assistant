@@ -1,0 +1,124 @@
+# Morning Briefing Workflow
+# =========================
+# 
+# This workflow runs every morning to prepare a personalized briefing for Glen.
+# Combines weather, calendar, tasks, and family context for a warm morning update.
+#
+# Schedule: 7 AM daily
+# Duration: ~1 minute
+# 
+# Author: Nicole V7 Workflow Engine
+
+name: morning_briefing
+description: "Personalized morning briefing with weather, calendar, and reminders"
+version: "1.0.0"
+schedule: "0 7 * * *"  # Daily at 7 AM
+
+config:
+  max_retries: 2
+  timeout_seconds: 120
+  notify_on_failure: false  # Silent failure - don't spam if weather API is down
+
+variables:
+  date: "{{now.date}}"
+  user_name: "Glen"
+  location: "{{user.location}}"
+
+steps:
+  # Step 1: Get Weather
+  - name: get_weather
+    type: tool
+    tool: weather_api
+    params:
+      location: "{{location}}"
+      include_forecast: true
+    
+  # Step 2: Get Today's Calendar
+  - name: get_calendar
+    type: tool
+    tool: google_calendar_today
+    params:
+      include_tomorrow_preview: true
+      
+  # Step 3: Search for Active Tasks and Reminders
+  - name: get_tasks
+    type: tool
+    tool: memory_search
+    params:
+      query: "task reminder due today urgent"
+      memory_type: "task"
+      limit: 10
+      
+  # Step 4: Get Family Context (birthdays, events)
+  - name: get_family_context
+    type: tool
+    tool: memory_search
+    params:
+      query: "family birthday event anniversary today this week"
+      memory_type: "event"
+      limit: 5
+      
+  # Step 5: Check for Important Pending Items
+  - name: get_pending_items
+    type: tool
+    tool: memory_search
+    params:
+      query: "pending waiting follow-up action needed"
+      limit: 5
+
+  # Step 6: Generate the Briefing
+  - name: generate_briefing
+    type: agent
+    agent: nicole_core
+    depends_on:
+      - get_weather
+      - get_calendar
+      - get_tasks
+      - get_family_context
+      - get_pending_items
+    prompt: |
+      Create a warm, personalized morning briefing for Glen.
+      
+      ## Today: {{date}}
+      
+      ## Weather
+      {{steps.get_weather.result}}
+      
+      ## Calendar
+      {{steps.get_calendar.result}}
+      
+      ## Tasks & Reminders
+      {{steps.get_tasks.result}}
+      
+      ## Family Events
+      {{steps.get_family_context.result}}
+      
+      ## Pending Items
+      {{steps.get_pending_items.result}}
+      
+      Write this like a best friend giving him a morning update:
+      - Start with a warm greeting based on the day/weather
+      - Highlight the most important things for today
+      - Mention any family stuff coming up
+      - Be encouraging about the day ahead
+      - Keep it concise but personal
+      
+      Don't sound like a robot reading a list. Sound like Nicole.
+
+  # Step 7: Store for Morning Display
+  - name: store_briefing
+    type: tool
+    tool: memory_store
+    depends_on: [generate_briefing]
+    params:
+      content: "{{steps.generate_briefing.result}}"
+      memory_type: "briefing"
+      importance: "high"
+      tags: ["morning", "briefing", "{{date}}"]
+      expires_in_hours: 12  # Auto-archive after 12 hours
+
+on_success:
+  - type: notify
+    channel: log
+    message: "Morning briefing ready for {{date}}"
+
