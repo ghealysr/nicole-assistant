@@ -550,9 +550,10 @@ async def send_message(
             # SYSTEM PROMPT - Nicole's Complete Personality & Memory System
             # ================================================================
             
-            # Build formatted memory and document context
+            # Build formatted memory context (document context already built above)
             formatted_memory_context = build_memory_context(relevant_memories) if relevant_memories else ""
-            formatted_document_context = build_document_context(relevant_docs) if relevant_docs else ""
+            # Use document_context that was already built in the DOCUMENT SEARCH section
+            formatted_document_context = document_context
             
             # Build the complete system prompt
             system_prompt = build_nicole_system_prompt(
