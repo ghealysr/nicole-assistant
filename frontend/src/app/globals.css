@@ -158,6 +158,70 @@ button:focus {
   color: #374151;
 }
 
+.nicole-message-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.7;
+  font-size: 15px;
+  color: #374151;
+}
+
+/* Nicole's inline code styling */
+.nicole-inline-code {
+  background-color: #E8E0F0;
+  color: #9B8AB8;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+/* Nicole's list styling */
+.nicole-list {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.nicole-list li {
+  margin-bottom: 0.5em;
+  line-height: 1.6;
+}
+
+.nicole-list li::marker {
+  color: #B8A8D4;
+}
+
+.nicole-list-ordered li::marker {
+  color: #9B8AB8;
+  font-weight: 500;
+}
+
+/* Nicole's headers */
+.nicole-h1 {
+  font-size: 1.5em;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 1em 0 0.5em;
+}
+
+.nicole-h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 1em 0 0.5em;
+}
+
+.nicole-h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0.75em 0 0.5em;
+}
+
+/* Lavender background color class */
+.bg-lavender {
+  background-color: #B8A8D4;
+}
+
 /* Prose styling for AI responses */
 .nicole-message p {
   margin-bottom: 1em;

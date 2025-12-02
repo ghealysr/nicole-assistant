@@ -14,6 +14,12 @@ import { supabase } from '@/lib/alphawave_supabase';
 import { ENDPOINTS, REQUEST_CONFIG } from '@/lib/alphawave_config';
 import type { FileAttachment } from '@/components/chat/AlphawaveChatInput';
 
+export interface ThinkingStep {
+  description: string;
+  status: 'complete' | 'running' | 'pending';
+  file?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -21,6 +27,8 @@ export interface ChatMessage {
   timestamp: Date;
   status?: 'sending' | 'sent' | 'error';
   attachments?: FileAttachment[];  // Claude-style file attachments
+  thinkingSteps?: ThinkingStep[];  // Sequential thinking steps
+  thinkingSummary?: string;        // Summary after thinking completes
 }
 
 export interface UseChatOptions {
@@ -226,6 +234,50 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                       ? { ...m, content: m.content + textContent }
                       : m
                   )
+                );
+              } else if (data.type === 'thinking_step') {
+                // Add or update thinking step
+                const step: ThinkingStep = {
+                  description: data.description || data.step || '',
+                  status: data.status || 'running',
+                  file: data.file,
+                };
+                
+                setMessages((prev) => 
+                  prev.map((m) => {
+                    if (m.id === assistantMessageId) {
+                      const existingSteps = m.thinkingSteps || [];
+                      // Check if this step already exists (by description)
+                      const existingIndex = existingSteps.findIndex(
+                        s => s.description === step.description
+                      );
+                      
+                      if (existingIndex >= 0) {
+                        // Update existing step
+                        const updatedSteps = [...existingSteps];
+                        updatedSteps[existingIndex] = step;
+                        return { ...m, thinkingSteps: updatedSteps };
+                      } else {
+                        // Add new step
+                        return { ...m, thinkingSteps: [...existingSteps, step] };
+                      }
+                    }
+                    return m;
+                  })
+                );
+              } else if (data.type === 'thinking_complete') {
+                // Mark all thinking steps as complete and add summary
+                setMessages((prev) => 
+                  prev.map((m) => {
+                    if (m.id === assistantMessageId && m.thinkingSteps) {
+                      return {
+                        ...m,
+                        thinkingSteps: m.thinkingSteps.map(s => ({ ...s, status: 'complete' as const })),
+                        thinkingSummary: data.summary,
+                      };
+                    }
+                    return m;
+                  })
                 );
               } else if (data.type === 'conversation_id' && data.conversation_id) {
                 // Capture conversation ID from backend for new conversations

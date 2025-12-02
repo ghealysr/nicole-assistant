@@ -11,6 +11,9 @@ export type { FileAttachment } from './AlphawaveChatInput';
 export { AlphawaveDashPanel } from './AlphawaveDashPanel';
 export { AlphawaveChatsPanel } from './AlphawaveChatsPanel';
 
+// Nicole's Message Renderer (enhanced markdown + components)
+export { NicoleMessageRenderer } from './NicoleMessageRenderer';
+
 // Nicole's Thinking UI Components
 export {
   // Main components

@@ -9,6 +9,8 @@ import { useChat } from '@/lib/hooks/alphawave_use_chat';
 import { useToast } from '@/components/ui/alphawave_toast';
 import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
+import { NicoleMessageRenderer } from './NicoleMessageRenderer';
+import { ThinkingBox, type ThinkingStep } from './NicoleThinkingUI';
 
 interface Message {
   id: string;
@@ -17,12 +19,35 @@ interface Message {
   timestamp: Date;
   status?: 'sending' | 'sent' | 'error';
   attachments?: FileAttachment[];
+  thinkingSteps?: ThinkingStep[];
+  thinkingSummary?: string;
 }
 
 /**
- * Thinking indicator component - shows only the spinning Nicole avatar
+ * Thinking indicator component - shows thinking steps or spinning avatar
  */
-function ThinkingIndicator() {
+function ThinkingIndicator({ steps }: { steps?: ThinkingStep[] }) {
+  // If we have thinking steps, show the ThinkingBox
+  if (steps && steps.length > 0) {
+    return (
+      <div className="py-4 px-6 animate-fade-in-up">
+        <div className="max-w-[800px] mx-auto">
+          <div className="flex gap-3">
+            {/* Nicole Avatar */}
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-lavender text-white">
+              N
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Nicole</div>
+              <ThinkingBox steps={steps} defaultExpanded={true} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Default: spinning avatar
   return (
     <div className="py-6 px-6 animate-fade-in-up">
       <div className="max-w-[800px] mx-auto flex justify-center">
@@ -132,44 +157,11 @@ function cleanMessageContent(content: string): string {
   return cleaned;
 }
 
-/**
- * Simple markdown parser for Nicole's responses
- */
-function parseMarkdown(text: string): string {
-  let html = text;
-  
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>');
-  html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
-    if (match.includes('1.')) {
-      return '<ol>' + match + '</ol>';
-    }
-    return '<ul>' + match + '</ul>';
-  });
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.split(/\n\n+/).map(p => {
-    if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || p.startsWith('<pre')) {
-      return p;
-    }
-    return `<p>${p}</p>`;
-  }).join('');
-  html = html.replace(/\n/g, '<br/>');
-  html = html.replace(/<\/li><br\/>/g, '</li>');
-  html = html.replace(/<br\/><li>/g, '<li>');
-  
-  return html;
-}
+// Markdown parsing is now handled by NicoleMessageRenderer
 
 /**
  * Message bubble component - Claude style with attachment chips
+ * Uses NicoleMessageRenderer for assistant messages with rich formatting
  */
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
@@ -177,10 +169,17 @@ function MessageBubble({ message }: { message: Message }) {
   
   // Clean content for user messages (remove metadata)
   const displayContent = isUser ? cleanMessageContent(message.content) : message.content;
-  const formattedContent = isUser ? displayContent : parseMarkdown(displayContent);
+  
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   
   return (
-    <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'}`}>
+    <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'} animate-fade-in-up`}>
       <div className="max-w-[800px] mx-auto flex gap-3">
         {/* Avatar */}
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold ${
@@ -212,15 +211,24 @@ function MessageBubble({ message }: { message: Message }) {
               )}
             </div>
           ) : (
-            <div 
-              className="nicole-message"
-              dangerouslySetInnerHTML={{ __html: formattedContent }}
-            />
+            <>
+              {/* Thinking steps if available */}
+              {message.thinkingSteps && message.thinkingSteps.length > 0 && (
+                <ThinkingBox 
+                  steps={message.thinkingSteps} 
+                  summary={message.thinkingSummary}
+                  defaultExpanded={false}
+                />
+              )}
+              
+              {/* Nicole's response with rich formatting */}
+              <NicoleMessageRenderer content={displayContent} />
+            </>
           )}
           
           {/* Action buttons for assistant messages */}
           {!isUser && (
-            <div className="message-actions">
+            <div className="message-actions mt-3 flex gap-1">
               <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Good response">
                 <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
                   <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
@@ -231,11 +239,21 @@ function MessageBubble({ message }: { message: Message }) {
                   <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
                 </svg>
               </button>
-              <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Copy">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
+              <button 
+                className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" 
+                title={copied ? "Copied!" : "Copy"}
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#7A9B93]">
+                    <path d="M5 13l4 4L19 7"/>
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                )}
               </button>
             </div>
           )}

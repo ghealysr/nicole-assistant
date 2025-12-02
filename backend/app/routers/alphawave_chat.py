@@ -412,6 +412,21 @@ async def send_message(
         # Send immediate acknowledgment
         yield f"data: {json.dumps({'type': 'start', 'conversation_id': conversation_id})}\n\n"
         
+        # Track thinking steps for complex queries
+        thinking_steps = []
+        
+        def emit_thinking_step(description: str, status: str = "running", file: str = None):
+            """Helper to emit a thinking step via SSE"""
+            step_data = {
+                'type': 'thinking_step',
+                'description': description,
+                'status': status,
+            }
+            if file:
+                step_data['file'] = file
+            thinking_steps.append(step_data)
+            return f"data: {json.dumps(step_data)}\n\n"
+        
         try:
             # ================================================================
             # MEMORY RETRIEVAL
@@ -421,6 +436,9 @@ async def send_message(
             memory_context = ""
             
             try:
+                # Emit thinking step for memory search
+                yield emit_thinking_step("Searching memory for relevant context...", "running")
+                
                 logger.info(f"[MEMORY RETRIEVAL] Searching for user {tiger_user_id}...")
                 memories = await memory_service.search_memory(
                     user_id=tiger_user_id,
@@ -432,6 +450,9 @@ async def send_message(
                 if memories:
                     relevant_memories = memories
                     logger.info(f"[MEMORY RETRIEVAL] ✅ Found {len(memories)} memories!")
+                    
+                    # Update thinking step to complete
+                    yield emit_thinking_step(f"Found {len(memories)} relevant memories", "complete")
                     
                     memory_items = []
                     for mem in memories[:7]:
@@ -456,9 +477,11 @@ async def send_message(
                                 pass
                 else:
                     logger.info(f"[MEMORY RETRIEVAL] No memories found for query")
+                    yield emit_thinking_step("No specific memories found for this query", "complete")
                     
             except Exception as mem_err:
                 logger.error(f"[MEMORY RETRIEVAL] ERROR: {mem_err}")
+                yield emit_thinking_step("Memory search encountered an issue", "complete")
             
             # ================================================================
             # DOCUMENT SEARCH
@@ -467,6 +490,8 @@ async def send_message(
             document_context = ""
             
             try:
+                yield emit_thinking_step("Searching documents...", "running")
+                
                 doc_results = await document_service.search_documents(
                     user_id=tiger_user_id,
                     query=chat_request.text,
@@ -475,6 +500,8 @@ async def send_message(
                 
                 if doc_results:
                     logger.info(f"[DOCUMENT] Found {len(doc_results)} relevant documents")
+                    yield emit_thinking_step(f"Found {len(doc_results)} relevant documents", "complete")
+                    
                     doc_items = []
                     for doc in doc_results:
                         title = doc.get("title", "Document")
@@ -485,9 +512,12 @@ async def send_message(
                     
                     if doc_items:
                         document_context = "\n\n## 📄 RELEVANT DOCUMENTS:\n" + "\n".join(doc_items)
+                else:
+                    yield emit_thinking_step("No relevant documents found", "complete")
                         
             except Exception as doc_err:
                 logger.debug(f"[DOCUMENT] Error searching documents: {doc_err}")
+                yield emit_thinking_step("Document search completed", "complete")
             
             # ================================================================
             # URL PROCESSING
@@ -567,9 +597,16 @@ async def send_message(
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
             
+            # Emit thinking step for response generation
+            yield emit_thinking_step("Generating response...", "running")
+            
             # Send conversation_id for new conversations so frontend can track
             if is_new_conversation:
                 yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conversation_id})}\n\n"
+            
+            # Send thinking_complete before starting the actual response
+            if thinking_steps:
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'summary': 'Context gathered, generating response...'})}\n\n"
             
             try:
                 ai_generator = claude_client.generate_streaming_response(
