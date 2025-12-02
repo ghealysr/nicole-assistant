@@ -7,7 +7,7 @@ import { AlphawaveDashPanel } from './AlphawaveDashPanel';
 import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
 import { useChat } from '@/lib/hooks/alphawave_use_chat';
 import { useToast } from '@/components/ui/alphawave_toast';
-import { useConversation } from '@/app/(app)/layout';
+import { useConversation } from '@/lib/context/ConversationContext';
 
 interface Message {
   id: string;
