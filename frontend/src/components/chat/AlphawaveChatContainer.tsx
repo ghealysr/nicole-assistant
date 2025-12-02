@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { AlphawaveChatInput, type FileAttachment } from './AlphawaveChatInput';
 import { AlphawaveDashPanel } from './AlphawaveDashPanel';
@@ -57,8 +57,8 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
             className="rounded-full"
           />
         </div>
-        <h2 className="empty-title">{greeting}</h2>
-        <p className="empty-subtitle">{date}</p>
+        <h2 className="empty-title">{greeting || 'Hey Glen. What can I help you with?'}</h2>
+        <p className="empty-subtitle">{date || '\u00A0'}</p>
       </div>
     </div>
   );
@@ -293,9 +293,22 @@ export function AlphawaveChatContainer() {
     }
   }, [error, showToast, clearError]);
 
-  // Generate greeting once per session/new chat (memoized)
-  const greeting = useMemo(() => getDynamicGreeting(), [currentConversationId]);
-  const formattedDate = useMemo(() => getFormattedDate(), []);
+  // Dynamic greeting state - initialized client-side only to avoid hydration mismatch
+  const [greeting, setGreeting] = useState<string>('');
+  const [formattedDate, setFormattedDate] = useState<string>('');
+
+  // Generate greeting on client-side only (after hydration)
+  useEffect(() => {
+    setGreeting(getDynamicGreeting());
+    setFormattedDate(getFormattedDate());
+  }, []); // Run once on mount
+
+  // Regenerate greeting when starting a new conversation
+  useEffect(() => {
+    if (currentConversationId === null) {
+      setGreeting(getDynamicGreeting());
+    }
+  }, [currentConversationId]);
 
   const hasMessages = messages.length > 0;
 
