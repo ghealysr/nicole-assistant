@@ -331,97 +331,8 @@ async def shutdown_db():
 
 
 # =============================================================================
-# LEGACY COMPATIBILITY HELPERS
+# HELPER FUNCTIONS
 # =============================================================================
-# These functions provide backward compatibility for code still using
-# Supabase or Qdrant. They should be removed once migration is complete.
-
-_supabase_client = None
-_qdrant_client = None
-_redis_sync_client = None
-
-
-def get_supabase():
-    """
-    Legacy Supabase client for backward compatibility.
-    
-    Returns Supabase client if configured, None otherwise.
-    Used by: chat router (conversations/messages), document service
-    
-    TODO: Migrate remaining Supabase usage to Tiger
-    """
-    global _supabase_client
-    
-    if _supabase_client is not None:
-        return _supabase_client
-    
-    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
-        return None
-    
-    try:
-        from supabase import create_client
-        _supabase_client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY,
-        )
-        logger.info("[Supabase] Legacy client initialized")
-    except Exception as e:
-        logger.warning(f"[Supabase] Client initialization failed: {e}")
-        _supabase_client = None
-    
-    return _supabase_client
-
-
-def get_qdrant():
-    """
-    Legacy Qdrant client for backward compatibility.
-    
-    Returns Qdrant client if configured, None otherwise.
-    Used by: document service (embeddings)
-    
-    TODO: Migrate to pgvectorscale in Tiger
-    """
-    global _qdrant_client
-    
-    if _qdrant_client is not None:
-        return _qdrant_client
-    
-    try:
-        from qdrant_client import QdrantClient
-        qdrant_url = getattr(settings, "QDRANT_URL", "http://localhost:6333")
-        _qdrant_client = QdrantClient(url=qdrant_url)
-        _qdrant_client.get_collections()  # Verify connection
-        logger.info("[Qdrant] Legacy client initialized")
-    except Exception as e:
-        logger.debug(f"[Qdrant] Client initialization failed: {e}")
-        _qdrant_client = None
-    
-    return _qdrant_client
-
-
-def get_redis() -> Optional[SyncRedis]:
-    """
-    Legacy synchronous Redis client.
-    
-    Returns sync Redis client for code that can't use async.
-    Prefer db.redis for async operations.
-    """
-    global _redis_sync_client
-    
-    if _redis_sync_client is not None:
-        return _redis_sync_client
-    
-    try:
-        _redis_sync_client = SyncRedis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-        )
-        _redis_sync_client.ping()
-    except Exception:
-        _redis_sync_client = None
-    
-    return _redis_sync_client
-
 
 async def get_tiger_pool() -> Optional[asyncpg.Pool]:
     """
@@ -432,3 +343,17 @@ async def get_tiger_pool() -> Optional[asyncpg.Pool]:
     if not db._connected:
         await db.connect()
     return db.pool
+
+
+def get_redis_sync() -> Optional[SyncRedis]:
+    """
+    Get synchronous Redis client for code that can't use async.
+    
+    Prefer db.redis for async operations.
+    """
+    try:
+        client = SyncRedis.from_url(settings.REDIS_URL, decode_responses=True)
+        client.ping()
+        return client
+    except Exception:
+        return None

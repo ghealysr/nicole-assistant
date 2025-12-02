@@ -3,12 +3,13 @@ Memory Relationship models for linking related memories.
 
 Relationships help Nicole understand how memories connect,
 enabling better context and pattern detection.
+
+Note: Uses int IDs to match Tiger Postgres BIGINT primary keys.
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, Literal, List
 from datetime import datetime
-from uuid import UUID
 from decimal import Decimal
 
 
@@ -29,8 +30,8 @@ CreatedBy = Literal['user', 'nicole', 'system']
 
 class MemoryRelationshipCreate(BaseModel):
     """Create a relationship between two memories."""
-    source_memory_id: UUID
-    target_memory_id: UUID
+    source_memory_id: int
+    target_memory_id: int
     relationship_type: RelationshipType = 'related_to'
     strength: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
     created_by: CreatedBy = 'nicole'
@@ -38,9 +39,9 @@ class MemoryRelationshipCreate(BaseModel):
 
 class MemoryRelationship(BaseModel):
     """Full memory relationship model."""
-    id: UUID
-    source_memory_id: UUID
-    target_memory_id: UUID
+    id: int
+    source_memory_id: int
+    target_memory_id: int
     relationship_type: RelationshipType
     strength: Decimal
     created_by: CreatedBy
@@ -68,25 +69,31 @@ ConsolidationType = Literal[
 
 class MemoryConsolidationCreate(BaseModel):
     """Create a consolidation record."""
-    consolidated_memory_id: UUID
-    source_memory_ids: List[UUID]
+    consolidated_memory_id: int
+    source_memory_ids: List[int]
     consolidation_type: ConsolidationType
     reason: Optional[str] = None
     model_used: Optional[str] = None
 
+    class Config:
+        # Suppress warning about model_ prefix
+        protected_namespaces = ()
+
 
 class MemoryConsolidation(BaseModel):
     """Full consolidation record."""
-    id: UUID
-    consolidated_memory_id: UUID
-    source_memory_ids: List[UUID]
+    id: int
+    consolidated_memory_id: int
+    source_memory_ids: List[int]
     consolidation_type: ConsolidationType
-    reason: Optional[str]
-    model_used: Optional[str]
+    reason: Optional[str] = None
+    model_used: Optional[str] = None
     created_at: datetime
     
     class Config:
         from_attributes = True
+        # Suppress warning about model_ prefix
+        protected_namespaces = ()
 
 
 NicoleActionType = Literal[
@@ -107,15 +114,15 @@ TargetType = Literal['memory', 'knowledge_base', 'tag', 'relationship']
 
 class NicoleMemoryAction(BaseModel):
     """Record of Nicole's proactive memory management action."""
-    id: UUID
+    id: int
     action_type: NicoleActionType
     target_type: TargetType
-    target_id: UUID
-    user_id: Optional[UUID]
-    reason: Optional[str]
-    context: Optional[dict]
-    success: bool
-    error_message: Optional[str]
+    target_id: int
+    user_id: Optional[int] = None
+    reason: Optional[str] = None
+    context: Optional[dict] = None
+    success: bool = True
+    error_message: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -126,8 +133,8 @@ class NicoleMemoryActionCreate(BaseModel):
     """Create a Nicole action record."""
     action_type: NicoleActionType
     target_type: TargetType
-    target_id: UUID
-    user_id: Optional[UUID] = None
+    target_id: int
+    user_id: Optional[int] = None
     reason: Optional[str] = None
     context: Optional[dict] = None
     success: bool = True

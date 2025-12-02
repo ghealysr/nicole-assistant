@@ -464,9 +464,11 @@ class MemoryService:
         if "content" in update_data:
             try:
                 embedding = await openai_client.generate_embedding(update_data["content"])
+                # Format as string for PostgreSQL vector type
+                embedding_str = f'[{",".join(map(str, embedding))}]'
                 await db.execute(
-                    "UPDATE memory_entries SET embedding = $1 WHERE memory_id = $2",
-                    embedding,
+                    "UPDATE memory_entries SET embedding = $1::vector WHERE memory_id = $2",
+                    embedding_str,
                     memory_id_int,
                 )
             except Exception as e:

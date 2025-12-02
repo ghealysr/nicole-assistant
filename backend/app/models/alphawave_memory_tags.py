@@ -3,12 +3,13 @@ Memory Tag models for flexible categorization system.
 
 Tags provide additional categorization beyond memory_type,
 allowing for flexible organization and filtering.
+
+Note: Uses int IDs to match Tiger Postgres BIGINT primary keys.
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from datetime import datetime
-from uuid import UUID
 
 
 TagType = Literal[
@@ -41,14 +42,14 @@ class MemoryTagUpdate(BaseModel):
 
 class MemoryTag(BaseModel):
     """Full memory tag model."""
-    id: UUID
-    user_id: Optional[UUID]  # NULL for system tags
+    id: int
+    user_id: Optional[int] = None  # NULL for system tags
     name: str
-    description: Optional[str]
+    description: Optional[str] = None
     color: str
-    icon: Optional[str]
+    icon: Optional[str] = None
     tag_type: TagType
-    usage_count: int
+    usage_count: int = 0
     created_at: datetime
     
     class Config:
@@ -57,9 +58,9 @@ class MemoryTag(BaseModel):
 
 class TagAssignment(BaseModel):
     """Assignment of a tag to a memory."""
-    id: UUID
-    memory_id: UUID
-    tag_id: UUID
+    id: int
+    memory_id: int
+    tag_id: int
     assigned_at: datetime
     assigned_by: AssignedBy
     
@@ -72,12 +73,12 @@ class TagAssignment(BaseModel):
 
 class TagAssignmentCreate(BaseModel):
     """Assign a tag to a memory."""
-    tag_id: UUID
+    tag_id: int
     assigned_by: AssignedBy = 'user'
 
 
 class BulkTagAssignment(BaseModel):
     """Bulk assign tags to a memory."""
-    tag_ids: List[UUID]
+    tag_ids: List[int]
     assigned_by: AssignedBy = 'user'
 

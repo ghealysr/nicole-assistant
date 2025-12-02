@@ -3,12 +3,15 @@ Knowledge Base models for memory organization system.
 
 Knowledge bases allow Nicole and users to organize memories into
 hierarchical projects, topics, and domains.
+
+Note: Uses int IDs to match Tiger Postgres BIGINT primary keys.
+Currently implemented using the `category` field on memory_entries.
+Future enhancement: dedicated knowledge_bases table.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Union
 from datetime import datetime
-from uuid import UUID
 
 
 KBType = Literal[
@@ -29,10 +32,10 @@ class KnowledgeBaseCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     icon: str = Field(default='📁', max_length=10)
     color: str = Field(default='#B8A8D4', pattern=r'^#[0-9A-Fa-f]{6}$')
-    parent_id: Optional[UUID] = None
+    parent_id: Optional[int] = None
     kb_type: KBType = 'topic'
     is_shared: bool = False
-    shared_with: List[UUID] = Field(default_factory=list)
+    shared_with: List[int] = Field(default_factory=list)
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -41,30 +44,30 @@ class KnowledgeBaseUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     icon: Optional[str] = Field(None, max_length=10)
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
-    parent_id: Optional[UUID] = None
+    parent_id: Optional[int] = None
     kb_type: Optional[KBType] = None
     is_shared: Optional[bool] = None
-    shared_with: Optional[List[UUID]] = None
+    shared_with: Optional[List[int]] = None
     archived_at: Optional[datetime] = None
 
 
 class KnowledgeBase(BaseModel):
     """Full knowledge base model."""
-    id: UUID
-    user_id: UUID
+    id: Union[int, str]  # Can be int or category name string
+    user_id: Optional[int] = None
     name: str
-    description: Optional[str]
-    icon: str
-    color: str
-    parent_id: Optional[UUID]
-    kb_type: KBType
-    is_shared: bool
-    shared_with: List[UUID]
-    memory_count: int
-    last_memory_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
-    archived_at: Optional[datetime]
+    description: Optional[str] = None
+    icon: str = '📁'
+    color: str = '#B8A8D4'
+    parent_id: Optional[int] = None
+    kb_type: KBType = 'topic'
+    is_shared: bool = False
+    shared_with: List[int] = Field(default_factory=list)
+    memory_count: int = 0
+    last_memory_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
     
     # Computed fields (populated by service)
     children: List['KnowledgeBase'] = Field(default_factory=list)
@@ -76,18 +79,18 @@ class KnowledgeBase(BaseModel):
 
 class KnowledgeBaseTree(BaseModel):
     """Hierarchical tree of knowledge bases."""
-    roots: List[KnowledgeBase]
-    total_count: int
-    total_memories: int
+    roots: List[KnowledgeBase] = Field(default_factory=list)
+    total_count: int = 0
+    total_memories: int = 0
 
 
 class KnowledgeBaseSummary(BaseModel):
     """Lightweight knowledge base summary for lists."""
-    id: UUID
+    id: Union[int, str]
     name: str
-    icon: str
-    color: str
-    kb_type: KBType
-    memory_count: int
-    has_children: bool
+    icon: str = '📁'
+    color: str = '#B8A8D4'
+    kb_type: KBType = 'topic'
+    memory_count: int = 0
+    has_children: bool = False
 
