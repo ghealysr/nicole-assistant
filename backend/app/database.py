@@ -357,3 +357,12 @@ def get_redis_sync() -> Optional[SyncRedis]:
         return client
     except Exception:
         return None
+
+
+def get_redis() -> Optional[SyncRedis]:
+    """
+    Get synchronous Redis client for rate limiting and other sync operations.
+    
+    This is a compatibility function - prefer db.redis for async operations.
+    """
+    return get_redis_sync()
