@@ -9,7 +9,7 @@
  * - Claude-style attachments with invisible AI processing
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/alphawave_supabase';
 import { ENDPOINTS, REQUEST_CONFIG } from '@/lib/alphawave_config';
 import type { FileAttachment } from '@/components/chat/AlphawaveChatInput';
@@ -48,6 +48,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId ? parseInt(initialConversationId) : null
   );
+  
+  // Flag to prevent loading history when we just created a new conversation during streaming
+  const isNewConversationRef = useRef(false);
 
   /**
    * Load existing conversation history
@@ -81,9 +84,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   }, []);
 
   useEffect(() => {
-    if (conversationId) {
+    // Don't load history if this is a new conversation we just created (messages already in state)
+    if (conversationId && !isNewConversationRef.current) {
       loadConversationHistory(String(conversationId));
     }
+    // Reset the flag after the effect runs
+    isNewConversationRef.current = false;
   }, [conversationId, loadConversationHistory]);
 
   // When conversationId changes to null (new chat), clear messages
@@ -223,6 +229,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 );
               } else if (data.type === 'conversation_id' && data.conversation_id) {
                 // Capture conversation ID from backend for new conversations
+                // Set flag to prevent reloading history (we already have the messages in state)
+                isNewConversationRef.current = true;
                 setConversationId(data.conversation_id);
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
