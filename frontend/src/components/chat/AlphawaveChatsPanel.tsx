@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/alphawave_supabase';
 import { ENDPOINTS } from '@/lib/alphawave_config';
 
@@ -46,155 +46,47 @@ function formatRelativeTime(dateString: string): string {
 }
 
 /**
- * Truncate title for display
+ * Format title to be professional (Title Case)
  */
-function truncateTitle(title: string, maxLength: number = 40): string {
-  if (title.length <= maxLength) return title;
-  return title.slice(0, maxLength - 3) + '...';
+function formatTitle(title: string): string {
+  if (!title) return 'New Conversation';
+  
+  // Clean up the title
+  let cleaned = title.trim();
+  
+  // If it looks like a message snippet, truncate nicely
+  if (cleaned.length > 50) {
+    cleaned = cleaned.slice(0, 47) + '...';
+  }
+  
+  // Convert to Title Case (capitalize first letter of each word)
+  // But preserve common acronyms and handle edge cases
+  const titleCased = cleaned
+    .split(' ')
+    .map(word => {
+      // Skip if it's an acronym (all caps) or already properly cased
+      if (word === word.toUpperCase() && word.length <= 4) return word;
+      // Skip URLs or paths
+      if (word.includes('/') || word.includes('.')) return word;
+      // Capitalize first letter
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+  
+  return titleCased;
 }
 
 /**
- * Conversation item component with drag-drop support
- */
-function ConversationItem({ 
-  conversation, 
-  isActive,
-  onSelect,
-  onPin,
-  onDelete,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  isDragging,
-  isDropTarget,
-}: {
-  conversation: Conversation;
-  isActive: boolean;
-  onSelect: () => void;
-  onPin: () => void;
-  onDelete: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  isDragging: boolean;
-  isDropTarget: boolean;
-}) {
-  const [showActions, setShowActions] = useState(false);
-  const isShortConversation = conversation.message_count <= 3;
-
-  return (
-    <div
-      draggable={conversation.is_pinned}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onClick={onSelect}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
-      className={`
-        group relative px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150
-        ${isActive 
-          ? 'bg-[#B8A8D4]/20 border border-[#B8A8D4]/40' 
-          : 'hover:bg-[#2a2a2a] border border-transparent'
-        }
-        ${isDragging ? 'opacity-50' : ''}
-        ${isDropTarget ? 'border-[#B8A8D4] border-dashed' : ''}
-      `}
-    >
-      {/* Pin indicator */}
-      {conversation.is_pinned && (
-        <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-4 bg-[#B8A8D4] rounded-full" />
-      )}
-      
-      <div className="flex items-start gap-2">
-        {/* Icon */}
-        <div className={`
-          w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
-          ${conversation.is_pinned ? 'bg-[#B8A8D4]/20' : 'bg-[#333]'}
-        `}>
-          {conversation.is_pinned ? (
-            <svg className="w-4 h-4 text-[#B8A8D4]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-              <path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/>
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-[#9ca3af]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-          )}
-        </div>
-        
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`
-              text-sm font-medium truncate
-              ${isActive ? 'text-white' : 'text-[#e5e5e5]'}
-            `}>
-              {truncateTitle(conversation.title)}
-            </span>
-            {isShortConversation && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#333] text-[#9ca3af]">
-                Draft
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-[#6b7280]">
-              {conversation.message_count} messages
-            </span>
-            <span className="text-[#444]">•</span>
-            <span className="text-xs text-[#6b7280]">
-              {formatRelativeTime(conversation.last_message_at || conversation.created_at)}
-            </span>
-          </div>
-        </div>
-        
-        {/* Actions */}
-        {showActions && (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); onPin(); }}
-              className={`
-                p-1.5 rounded-md transition-colors
-                ${conversation.is_pinned 
-                  ? 'text-[#B8A8D4] hover:bg-[#B8A8D4]/20' 
-                  : 'text-[#6b7280] hover:text-white hover:bg-[#333]'
-                }
-              `}
-              title={conversation.is_pinned ? 'Unpin' : 'Pin'}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={conversation.is_pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
-                <path d="M12 2L12 12"/>
-                <path d="M18.5 12.5L18.5 8.5L5.5 8.5L5.5 12.5L8 15L8 22L16 22L16 15L18.5 12.5Z"/>
-              </svg>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="p-1.5 rounded-md text-[#6b7280] hover:text-red-400 hover:bg-red-400/10 transition-colors"
-              title="Delete"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-              </svg>
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Chats Panel - Slide-out dashboard for conversation management
+ * Nicole V7 Chats Panel - Memory Dashboard Style
  * 
  * Features:
- * - Lists recent conversations (last 30)
+ * - Resizable panel (400px - 800px)
  * - Pinned conversations at top (max 5)
  * - Drag-and-drop to reorder pinned chats
  * - Delete conversations
- * - Shows draft indicator for short conversations
+ * - Draft indicator for short conversations
  * - Search functionality
+ * - Matches Memory Dashboard design language
  */
 export function AlphawaveChatsPanel({
   isOpen,
@@ -208,6 +100,50 @@ export function AlphawaveChatsPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  const [dashboardWidth, setDashboardWidth] = useState(520);
+  const [isResizing, setIsResizing] = useState(false);
+  
+  const resizeRef = useRef<HTMLDivElement>(null);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(520);
+
+  const MIN_WIDTH = 400;
+  const MAX_WIDTH = 800;
+
+  // Resize handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    startXRef.current = e.clientX;
+    startWidthRef.current = dashboardWidth;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ew-resize';
+  }, [dashboardWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const diff = startXRef.current - e.clientX;
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidthRef.current + diff));
+      setDashboardWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   /**
    * Fetch conversations from backend
@@ -241,9 +177,18 @@ export function AlphawaveChatsPanel({
   }, [isOpen, fetchConversations]);
 
   /**
+   * Handle selecting a conversation
+   */
+  const handleSelectConversation = useCallback((conversationId: number) => {
+    onSelectConversation(conversationId);
+    onClose();
+  }, [onSelectConversation, onClose]);
+
+  /**
    * Pin/unpin a conversation
    */
-  const handlePin = async (conversationId: number) => {
+  const handlePin = async (e: React.MouseEvent, conversationId: number) => {
+    e.stopPropagation();
     const conv = conversations.find(c => c.conversation_id === conversationId);
     if (!conv) return;
 
@@ -281,7 +226,8 @@ export function AlphawaveChatsPanel({
   /**
    * Delete a conversation
    */
-  const handleDelete = async (conversationId: number) => {
+  const handleDelete = async (e: React.MouseEvent, conversationId: number) => {
+    e.stopPropagation();
     if (!confirm('Delete this conversation? This cannot be undone.')) return;
 
     try {
@@ -381,7 +327,7 @@ export function AlphawaveChatsPanel({
   // Filter conversations by search
   const filteredConversations = searchQuery
     ? conversations.filter(c => 
-        c.title.toLowerCase().includes(searchQuery.toLowerCase())
+        c.title?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : conversations;
 
@@ -397,168 +343,307 @@ export function AlphawaveChatsPanel({
       new Date(a.last_message_at || a.created_at).getTime()
     );
 
+  // Stats
+  const totalConversations = conversations.length;
+  const pinnedCount = conversations.filter(c => c.is_pinned).length;
+  const totalMessages = conversations.reduce((sum, c) => sum + (c.message_count || 0), 0);
+  const draftCount = conversations.filter(c => (c.message_count || 0) <= 3).length;
+
   return (
-    <div 
-      className={`
-        fixed top-0 right-0 h-full bg-[#1a1a1a] border-l border-[#333] 
-        shadow-2xl z-50 transition-transform duration-300 ease-out
-        ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}
-      style={{ width: '380px' }}
+    <aside 
+      className={`mem-dashboard-panel ${isOpen ? 'mem-open' : ''}`}
+      style={{ '--mem-dashboard-width': `${dashboardWidth}px` } as React.CSSProperties}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-[#333]">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#B8A8D4]/20 flex items-center justify-center">
-            <svg className="w-5 h-5 text-[#B8A8D4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      {/* Resize Handle */}
+      <div 
+        ref={resizeRef}
+        className={`mem-resize-handle ${isResizing ? 'mem-dragging' : ''}`}
+        onMouseDown={handleMouseDown}
+      />
+
+      <div className="mem-dashboard-inner">
+        {/* Header */}
+        <div className="mem-dash-header">
+          <div className="mem-dash-header-left">
+            <div className="mem-dash-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <span className="mem-dash-title">Conversations</span>
+          </div>
+          <button className="mem-dash-close-btn" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
-          </div>
-          <div>
-            <h2 className="text-white font-semibold">Conversations</h2>
-            <p className="text-xs text-[#6b7280]">{conversations.length} total</p>
-          </div>
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-lg hover:bg-[#333] text-[#9ca3af] hover:text-white transition-colors"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
 
-      {/* Search */}
-      <div className="px-4 py-3 border-b border-[#333]">
-        <div className="relative">
-          <svg 
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b7280]" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth={2}
+        {/* New Chat Button */}
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #333' }}>
+          <button
+            onClick={() => { onNewChat(); onClose(); }}
+            className="mem-filter-pill mem-active"
+            style={{ 
+              width: '100%', 
+              padding: '10px 16px', 
+              justifyContent: 'center',
+              gap: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
           >
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search conversations..."
-            className="w-full pl-10 pr-4 py-2 bg-[#2a2a2a] border border-[#333] rounded-lg 
-                       text-sm text-white placeholder-[#6b7280] 
-                       focus:outline-none focus:border-[#B8A8D4]/50"
-          />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: '16px', height: '16px' }}>
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            New Conversation
+          </button>
         </div>
-      </div>
 
-      {/* New Chat Button */}
-      <div className="px-4 py-3">
-        <button
-          onClick={() => { onNewChat(); onClose(); }}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 
-                     bg-[#B8A8D4] hover:bg-[#a898c4] text-white rounded-lg 
-                     font-medium transition-colors"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          New Conversation
-        </button>
-      </div>
-
-      {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto px-3 pb-4" style={{ maxHeight: 'calc(100vh - 220px)' }}>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-[#B8A8D4] border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <>
-            {/* Pinned Section */}
-            {pinnedConvs.length > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center gap-2 px-2 py-2">
-                  <svg className="w-3.5 h-3.5 text-[#B8A8D4]" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L12 12"/>
-                    <path d="M18.5 12.5L18.5 8.5L5.5 8.5L5.5 12.5L8 15L8 22L16 22L16 15L18.5 12.5Z"/>
+        {/* Content */}
+        <div className="mem-dash-content">
+          <div className="mem-tab-panel">
+            {/* Stats Widget */}
+            <div className="mem-widget">
+              <div className="mem-widget-header">
+                <span className="mem-widget-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
-                  <span className="text-xs font-semibold text-[#B8A8D4] uppercase tracking-wide">
-                    Pinned ({pinnedConvs.length}/5)
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  {pinnedConvs.map(conv => (
-                    <ConversationItem
-                      key={conv.conversation_id}
-                      conversation={conv}
-                      isActive={conv.conversation_id === currentConversationId}
-                      onSelect={() => { onSelectConversation(conv.conversation_id); onClose(); }}
-                      onPin={() => handlePin(conv.conversation_id)}
-                      onDelete={() => handleDelete(conv.conversation_id)}
-                      onDragStart={(e) => handleDragStart(e, conv.conversation_id)}
-                      onDragOver={(e) => handleDragOver(e, conv.conversation_id)}
-                      onDrop={(e) => handleDrop(e, conv.conversation_id)}
-                      isDragging={draggedId === conv.conversation_id}
-                      isDropTarget={dropTargetId === conv.conversation_id}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Section */}
-            <div>
-              <div className="flex items-center gap-2 px-2 py-2">
-                <svg className="w-3.5 h-3.5 text-[#6b7280]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                <span className="text-xs font-semibold text-[#6b7280] uppercase tracking-wide">
-                  Recent
+                  Chat Statistics
                 </span>
               </div>
-              <div className="space-y-1">
-                {recentConvs.length > 0 ? (
-                  recentConvs.map(conv => (
-                    <ConversationItem
-                      key={conv.conversation_id}
-                      conversation={conv}
-                      isActive={conv.conversation_id === currentConversationId}
-                      onSelect={() => { onSelectConversation(conv.conversation_id); onClose(); }}
-                      onPin={() => handlePin(conv.conversation_id)}
-                      onDelete={() => handleDelete(conv.conversation_id)}
-                      onDragStart={() => {}}
-                      onDragOver={() => {}}
-                      onDrop={() => {}}
-                      isDragging={false}
-                      isDropTarget={false}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-[#6b7280]">
-                    <svg className="w-12 h-12 mx-auto mb-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                    <p className="text-sm">No conversations yet</p>
-                    <p className="text-xs mt-1">Start chatting with Nicole!</p>
-                  </div>
-                )}
+              <div className="mem-stat-grid mem-stat-grid-4">
+                <div className="mem-stat-box">
+                  <div className="mem-stat-value mem-small mem-highlight">{totalConversations}</div>
+                  <div className="mem-stat-label">Total</div>
+                </div>
+                <div className="mem-stat-box">
+                  <div className="mem-stat-value mem-small">{pinnedCount}</div>
+                  <div className="mem-stat-label">Pinned</div>
+                </div>
+                <div className="mem-stat-box">
+                  <div className="mem-stat-value mem-small">{totalMessages}</div>
+                  <div className="mem-stat-label">Messages</div>
+                </div>
+                <div className="mem-stat-box">
+                  <div className="mem-stat-value mem-small">{draftCount}</div>
+                  <div className="mem-stat-label">Drafts</div>
+                </div>
               </div>
             </div>
-          </>
-        )}
-      </div>
 
-      {/* Footer Info */}
-      <div className="px-4 py-3 border-t border-[#333] bg-[#1a1a1a]">
-        <p className="text-xs text-[#6b7280] text-center">
-          Drag pinned chats to reorder • Short chats auto-delete after 3 days
-        </p>
+            {/* Search */}
+            <div className="mem-search-input-wrapper">
+              <svg className="mem-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input 
+                type="text" 
+                className="mem-search-input" 
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {isLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                <div style={{ 
+                  width: '32px', 
+                  height: '32px', 
+                  border: '2px solid #B8A8D4', 
+                  borderTopColor: 'transparent', 
+                  borderRadius: '50%', 
+                  animation: 'spin 1s linear infinite' 
+                }} />
+              </div>
+            ) : (
+              <>
+                {/* Pinned Section */}
+                {pinnedConvs.length > 0 && (
+                  <div className="mem-widget">
+                    <div className="mem-widget-header">
+                      <span className="mem-widget-title">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" style={{ color: '#B8A8D4' }}>
+                          <path d="M12 2L12 12"/>
+                          <path d="M18.5 12.5L18.5 8.5L5.5 8.5L5.5 12.5L8 15L8 22L16 22L16 15L18.5 12.5Z"/>
+                        </svg>
+                        Pinned ({pinnedConvs.length}/5)
+                      </span>
+                    </div>
+                    <div className="mem-chat-history-list">
+                      {pinnedConvs.map(conv => (
+                        <div 
+                          key={conv.conversation_id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, conv.conversation_id)}
+                          onDragOver={(e) => handleDragOver(e, conv.conversation_id)}
+                          onDrop={(e) => handleDrop(e, conv.conversation_id)}
+                          onClick={() => handleSelectConversation(conv.conversation_id)}
+                          className={`mem-chat-item ${conv.conversation_id === currentConversationId ? 'mem-active' : ''} ${draggedId === conv.conversation_id ? 'mem-dragging' : ''} ${dropTargetId === conv.conversation_id ? 'mem-drop-target' : ''}`}
+                          style={{ 
+                            cursor: 'pointer',
+                            borderLeft: '3px solid #B8A8D4',
+                            opacity: draggedId === conv.conversation_id ? 0.5 : 1,
+                            border: dropTargetId === conv.conversation_id ? '1px dashed #B8A8D4' : undefined,
+                          }}
+                        >
+                          <div className="mem-chat-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {formatTitle(conv.title)}
+                            {(conv.message_count || 0) <= 3 && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                padding: '2px 6px', 
+                                background: '#333', 
+                                borderRadius: '4px',
+                                color: '#9ca3af'
+                              }}>
+                                Draft
+                              </span>
+                            )}
+                          </div>
+                          <div className="mem-chat-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{conv.message_count || 0} messages • {formatRelativeTime(conv.last_message_at || conv.created_at)}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button 
+                                onClick={(e) => handlePin(e, conv.conversation_id)}
+                                style={{ 
+                                  padding: '4px', 
+                                  background: 'transparent', 
+                                  border: 'none', 
+                                  cursor: 'pointer',
+                                  color: '#B8A8D4',
+                                  borderRadius: '4px',
+                                }}
+                                title="Unpin"
+                              >
+                                <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '14px', height: '14px' }}>
+                                  <path d="M12 2L12 12"/>
+                                  <path d="M18.5 12.5L18.5 8.5L5.5 8.5L5.5 12.5L8 15L8 22L16 22L16 15L18.5 12.5Z"/>
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={(e) => handleDelete(e, conv.conversation_id)}
+                                style={{ 
+                                  padding: '4px', 
+                                  background: 'transparent', 
+                                  border: 'none', 
+                                  cursor: 'pointer',
+                                  color: '#6b7280',
+                                  borderRadius: '4px',
+                                }}
+                                title="Delete"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: '14px', height: '14px' }}>
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent Section */}
+                <div className="mem-widget">
+                  <div className="mem-widget-header">
+                    <span className="mem-widget-title">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                      </svg>
+                      Recent Conversations
+                    </span>
+                  </div>
+                  {recentConvs.length > 0 ? (
+                    <div className="mem-chat-history-list">
+                      {recentConvs.map(conv => (
+                        <div 
+                          key={conv.conversation_id}
+                          onClick={() => handleSelectConversation(conv.conversation_id)}
+                          className={`mem-chat-item ${conv.conversation_id === currentConversationId ? 'mem-active' : ''}`}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="mem-chat-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {formatTitle(conv.title)}
+                            {(conv.message_count || 0) <= 3 && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                padding: '2px 6px', 
+                                background: '#333', 
+                                borderRadius: '4px',
+                                color: '#9ca3af'
+                              }}>
+                                Draft
+                              </span>
+                            )}
+                          </div>
+                          <div className="mem-chat-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{conv.message_count || 0} messages • {formatRelativeTime(conv.last_message_at || conv.created_at)}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button 
+                                onClick={(e) => handlePin(e, conv.conversation_id)}
+                                style={{ 
+                                  padding: '4px', 
+                                  background: 'transparent', 
+                                  border: 'none', 
+                                  cursor: 'pointer',
+                                  color: '#6b7280',
+                                  borderRadius: '4px',
+                                }}
+                                title="Pin"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: '14px', height: '14px' }}>
+                                  <path d="M12 2L12 12"/>
+                                  <path d="M18.5 12.5L18.5 8.5L5.5 8.5L5.5 12.5L8 15L8 22L16 22L16 15L18.5 12.5Z"/>
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={(e) => handleDelete(e, conv.conversation_id)}
+                                style={{ 
+                                  padding: '4px', 
+                                  background: 'transparent', 
+                                  border: 'none', 
+                                  cursor: 'pointer',
+                                  color: '#6b7280',
+                                  borderRadius: '4px',
+                                }}
+                                title="Delete"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: '14px', height: '14px' }}>
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '32px 16px', color: '#6b7280' }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: '48px', height: '48px', margin: '0 auto 12px', opacity: 0.5 }}>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}>No conversations yet</p>
+                      <p style={{ fontSize: '11px' }}>Start chatting with Nicole!</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mem-dash-footer">
+          <div className="mem-dash-footer-text">
+            Drag pinned chats to reorder • Short chats auto-delete after 3 days
+          </div>
+        </div>
       </div>
-    </div>
+    </aside>
   );
 }
-
