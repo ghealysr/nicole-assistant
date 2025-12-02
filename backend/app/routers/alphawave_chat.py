@@ -716,6 +716,19 @@ async def get_chat_history(
     )
 
 
+# Alias endpoint for frontend compatibility
+@router.get("/conversations/{conversation_id}/messages")
+async def get_conversation_messages(
+    request: Request,
+    conversation_id: int
+) -> AlphawaveChatHistoryResponse:
+    """
+    Get message history for a conversation.
+    Alias for /history/{conversation_id} to match frontend expectations.
+    """
+    return await get_chat_history(request, conversation_id)
+
+
 # ============================================================================
 # CONVERSATION LIST
 # ============================================================================
