@@ -85,6 +85,21 @@ body {
   animation: spin 8s linear infinite;
 }
 
+/* Fast spin for thinking indicators */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse animation for running states */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
 /* Thinking indicator bounce animation */
 @keyframes bounce {
   0%, 60%, 100% {
