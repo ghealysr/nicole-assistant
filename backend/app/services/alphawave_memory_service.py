@@ -757,7 +757,7 @@ class MemoryService:
         return count
     
     # =========================================================================
-    # TAGS (Using memory_feedback for now)
+    # TAGS - Full database implementation
     # =========================================================================
     
     async def get_tags(
@@ -765,33 +765,101 @@ class MemoryService:
         user_id: Any,
         include_system: bool = True,
     ) -> List[Dict[str, Any]]:
-        """Get available tags."""
-        # Return common tag suggestions
-        return [
-            {"id": 1, "name": "important", "color": "#EF4444"},
-            {"id": 2, "name": "personal", "color": "#8B5CF6"},
-            {"id": 3, "name": "family", "color": "#EC4899"},
-            {"id": 4, "name": "work", "color": "#3B82F6"},
-            {"id": 5, "name": "health", "color": "#22C55E"},
-            {"id": 6, "name": "financial", "color": "#84CC16"},
-            {"id": 7, "name": "goal", "color": "#FBBF24"},
-        ]
+        """
+        Get available tags for a user.
+        
+        Returns system tags (available to all) plus user's custom tags.
+        """
+        user_id_int = self._normalize_id(user_id)
+        
+        try:
+            if include_system:
+                rows = await db.fetch(
+                    """
+                    SELECT tag_id, name, description, color, icon, tag_type, usage_count
+                    FROM memory_tags
+                    WHERE user_id IS NULL OR user_id = $1
+                    ORDER BY tag_type, usage_count DESC
+                    """,
+                    user_id_int
+                )
+            else:
+                rows = await db.fetch(
+                    """
+                    SELECT tag_id, name, description, color, icon, tag_type, usage_count
+                    FROM memory_tags
+                    WHERE user_id = $1
+                    ORDER BY usage_count DESC
+                    """,
+                    user_id_int
+                )
+            
+            return [
+                {
+                    "id": row["tag_id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "color": row["color"],
+                    "icon": row["icon"],
+                    "tag_type": str(row["tag_type"]) if row["tag_type"] else "custom",
+                    "usage_count": row["usage_count"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"[MEMORY] Failed to get tags: {e}")
+            # Fallback to hardcoded tags if table doesn't exist
+            return [
+                {"id": 1, "name": "important", "color": "#EF4444", "tag_type": "system"},
+                {"id": 2, "name": "personal", "color": "#8B5CF6", "tag_type": "system"},
+                {"id": 3, "name": "family", "color": "#EC4899", "tag_type": "system"},
+                {"id": 4, "name": "work", "color": "#3B82F6", "tag_type": "system"},
+                {"id": 5, "name": "health", "color": "#22C55E", "tag_type": "system"},
+                {"id": 6, "name": "financial", "color": "#84CC16", "tag_type": "system"},
+                {"id": 7, "name": "goal", "color": "#FBBF24", "tag_type": "system"},
+            ]
     
     async def create_tag(
         self,
         user_id: Any,
         tag_data: Any,
-    ) -> Dict[str, Any]:
-        """Create a custom tag."""
+    ) -> Optional[Dict[str, Any]]:
+        """Create a custom tag for a user."""
+        user_id_int = self._normalize_id(user_id)
         name = getattr(tag_data, "name", None) or tag_data.get("name")
         color = getattr(tag_data, "color", None) or tag_data.get("color", "#6366f1")
+        description = getattr(tag_data, "description", None) or tag_data.get("description")
+        icon = getattr(tag_data, "icon", None) or tag_data.get("icon")
         
-        return {
-            "id": hash(name) % 10000,
-            "name": name,
-            "color": color,
-            "created_at": datetime.utcnow().isoformat(),
-        }
+        try:
+            row = await db.fetchrow(
+                """
+                INSERT INTO memory_tags (user_id, name, description, color, icon, tag_type)
+                VALUES ($1, $2, $3, $4, $5, 'custom')
+                ON CONFLICT (user_id, name) DO UPDATE SET color = $4, description = $3
+                RETURNING tag_id, name, description, color, icon, tag_type, created_at
+                """,
+                user_id_int,
+                name,
+                description,
+                color,
+                icon,
+            )
+            
+            if row:
+                return {
+                    "id": row["tag_id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "color": row["color"],
+                    "icon": row["icon"],
+                    "tag_type": "custom",
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                }
+            return None
+        except Exception as e:
+            logger.warning(f"[MEMORY] Failed to create tag: {e}")
+            return None
     
     async def tag_memory(
         self,
@@ -799,10 +867,28 @@ class MemoryService:
         tag_ids: Sequence[Any],
         assigned_by: str = "user",
     ) -> int:
-        """Tag a memory (stores in feedback for now)."""
-        # This would normally update a tags array or link table
-        # For now, we'll log as feedback
-        return len(tag_ids)
+        """Assign tags to a memory."""
+        memory_id_int = self._normalize_id(memory_id)
+        count = 0
+        
+        for tag_id in tag_ids:
+            try:
+                tag_id_int = self._normalize_id(tag_id)
+                await db.execute(
+                    """
+                    INSERT INTO memory_tag_links (memory_id, tag_id, assigned_by)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (memory_id, tag_id) DO NOTHING
+                    """,
+                    memory_id_int,
+                    tag_id_int,
+                    assigned_by,
+                )
+                count += 1
+            except Exception as e:
+                logger.debug(f"[MEMORY] Failed to assign tag {tag_id}: {e}")
+        
+        return count
     
     async def untag_memory(
         self,
@@ -810,7 +896,49 @@ class MemoryService:
         tag_id: Any,
     ) -> bool:
         """Remove a tag from a memory."""
-        return True
+        memory_id_int = self._normalize_id(memory_id)
+        tag_id_int = self._normalize_id(tag_id)
+        
+        try:
+            await db.execute(
+                "DELETE FROM memory_tag_links WHERE memory_id = $1 AND tag_id = $2",
+                memory_id_int,
+                tag_id_int,
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"[MEMORY] Failed to remove tag: {e}")
+            return False
+    
+    async def get_memory_tags(self, memory_id: Any) -> List[Dict[str, Any]]:
+        """Get all tags assigned to a memory."""
+        memory_id_int = self._normalize_id(memory_id)
+        
+        try:
+            rows = await db.fetch(
+                """
+                SELECT t.tag_id, t.name, t.color, t.icon, mtl.assigned_by, mtl.confidence
+                FROM memory_tag_links mtl
+                JOIN memory_tags t ON t.tag_id = mtl.tag_id
+                WHERE mtl.memory_id = $1
+                ORDER BY mtl.assigned_at DESC
+                """,
+                memory_id_int
+            )
+            return [
+                {
+                    "id": row["tag_id"],
+                    "name": row["name"],
+                    "color": row["color"],
+                    "icon": row["icon"],
+                    "assigned_by": row["assigned_by"],
+                    "confidence": float(row["confidence"]) if row["confidence"] else 1.0,
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.debug(f"[MEMORY] Failed to get memory tags: {e}")
+            return []
     
     # =========================================================================
     # MEMORY RELATIONSHIPS
@@ -821,13 +949,43 @@ class MemoryService:
         user_id: Any,
         source_memory_id: Any,
         target_memory_id: Any,
-        relationship_type: str = "related",
+        relationship_type: str = "related_to",
         strength: float = 0.5,
         created_by: str = "nicole",
+        reasoning: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create a relationship between two memories."""
+        """
+        Create a relationship between two memories.
+        
+        Args:
+            user_id: User ID (for validation)
+            source_memory_id: Source memory ID
+            target_memory_id: Target memory ID
+            relationship_type: Type of relationship (related_to, contradicts, elaborates, etc.)
+            strength: Relationship strength 0-1
+            created_by: Who created this (user, nicole, system)
+            reasoning: Optional explanation for the relationship
+            
+        Returns:
+            Created relationship dict
+        """
         source_id = self._normalize_id(source_memory_id)
         target_id = self._normalize_id(target_memory_id)
+        
+        # Map common variations to enum values
+        type_mapping = {
+            "related": "related_to",
+            "related_to": "related_to",
+            "contradicts": "contradicts",
+            "elaborates": "elaborates",
+            "supersedes": "supersedes",
+            "derived_from": "derived_from",
+            "references": "references",
+            "same_topic": "same_topic",
+            "same_entity": "same_entity",
+            "temporal_sequence": "temporal_sequence",
+        }
+        db_rel_type = type_mapping.get(relationship_type, "related_to")
         
         try:
             row = await db.fetchrow(
@@ -838,19 +996,32 @@ class MemoryService:
                     relationship_type,
                     weight,
                     created_by,
+                    reasoning,
                     created_at
-                ) VALUES ($1, $2, $3, $4, $5, NOW())
+                ) VALUES ($1, $2, $3::relationship_type_enum, $4, $5, $6, NOW())
                 ON CONFLICT (source_memory_id, target_memory_id, relationship_type) 
-                DO UPDATE SET weight = $4, created_at = NOW()
-                RETURNING *
+                DO UPDATE SET weight = $4, reasoning = $6
+                RETURNING link_id, source_memory_id, target_memory_id, relationship_type, weight, created_by, reasoning
                 """,
                 source_id,
                 target_id,
-                relationship_type,
+                db_rel_type,
                 Decimal(str(strength)),
                 created_by,
+                reasoning,
             )
-            return dict(row) if row else {}
+            
+            if row:
+                return {
+                    "id": row["link_id"],
+                    "source_memory_id": row["source_memory_id"],
+                    "target_memory_id": row["target_memory_id"],
+                    "relationship_type": str(row["relationship_type"]),
+                    "weight": float(row["weight"]),
+                    "created_by": row["created_by"],
+                    "reasoning": row["reasoning"],
+                }
+            return {}
         except Exception as e:
             logger.warning(f"[MEMORY] Link creation failed: {e}")
             return {}

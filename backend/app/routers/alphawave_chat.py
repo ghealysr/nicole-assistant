@@ -44,6 +44,7 @@ from app.services.alphawave_safety_filter import (
 from app.services.alphawave_memory_service import memory_service
 from app.services.alphawave_document_service import document_service
 from app.services.alphawave_link_processor import link_processor
+from app.services.memory_intelligence import memory_intelligence, MemoryAnalysis
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,131 +53,153 @@ router = APIRouter()
 
 
 # ============================================================================
-# MEMORY EXTRACTION HELPERS
+# INTELLIGENT MEMORY PROCESSING
 # ============================================================================
 
-MEMORY_PATTERNS = {
-    "preference": [
-        r"i (?:like|love|prefer|enjoy|hate|dislike|can't stand)\s+(.+)",
-        r"my favorite\s+\w+\s+(?:is|are)\s+(.+)",
-        r"my favorite (?:is|are)\s+(.+)",
-        r"i always (?:want|need|like)\s+(.+)",
-        r"favorite\s+(?:color|food|movie|book|song|team|sport)\s+(?:is|are)\s+(.+)",
-    ],
-    "fact": [
-        r"my (?:name|birthday|age|job|work|home|address|phone)\s+(?:is|are)\s+(.+)",
-        r"i (?:am|work as|live in|was born)\s+(.+)",
-        r"i have (?:\d+)\s+(.+)",
-    ],
-    "correction": [
-        r"(?:actually|no|not|wrong|incorrect),?\s*(.+)",
-        r"i meant\s+(.+)",
-        r"let me correct\s+(.+)",
-    ],
-    "goal": [
-        r"i (?:want to|need to|plan to|hope to|will)\s+(.+)",
-        r"my goal is\s+(.+)",
-        r"i'm (?:trying to|working on)\s+(.+)",
-    ],
-    "relationship": [
-        r"my (?:wife|husband|son|daughter|mother|father|brother|sister|friend)\s+(.+)",
-        r"(?:alex|connor|the boys?|kids?)\s+(.+)",
-    ],
-}
-
-
-async def extract_and_save_memories(
+async def process_memories_intelligently(
     tiger_user_id: int,
     user_message: str,
     assistant_response: str,
     conversation_id: int,
+    user_name: str = "User",
 ) -> None:
     """
-    Extract potential memories from conversation and save them.
+    Intelligently process conversation for memory extraction using AI.
     
-    Captures:
-    - User preferences ("I like...", "My favorite...")
-    - Facts about the user ("I work at...", "My birthday is...")
-    - Corrections ("Actually, that's not right...")
-    - Goals ("I want to...", "I'm planning to...")
-    - Relationships ("My son Alex...")
+    This function:
+    1. Uses Claude to analyze the conversation for meaningful memories
+    2. Generates appropriate tags dynamically
+    3. Creates relationships between related memories
+    4. Handles corrections by updating existing memories
+    5. Creates knowledge bases when patterns emerge
+    
+    This replaces the old pattern-based extraction with intelligent analysis.
     """
-    import re
-    
-    logger.info(f"[MEMORY EXTRACT] Analyzing message: '{user_message[:80]}...'")
-    
-    extracted_memories = []
-    message_lower = user_message.lower()
-    
-    # Pattern-based extraction
-    for memory_type, patterns in MEMORY_PATTERNS.items():
-        for pattern in patterns:
-            matches = re.findall(pattern, message_lower, re.IGNORECASE)
-            for match in matches:
-                if isinstance(match, tuple):
-                    match = " ".join(match)
-                match = match.strip()
-                if 5 < len(match) < 500:
-                    extracted_memories.append({
-                        "type": memory_type,
-                        "content": user_message,
-                        "importance": 0.7 if memory_type == "correction" else 0.6,
-                    })
-                    logger.info(f"[MEMORY EXTRACT] Pattern matched: type={memory_type}")
-                    break
-    
-    # Check for explicit memory requests
-    if any(phrase in message_lower for phrase in ["remember that", "don't forget", "keep in mind", "note that"]):
-        extracted_memories.append({
-            "type": "fact",
-            "content": user_message,
-            "importance": 0.8,
-        })
-        logger.info(f"[MEMORY EXTRACT] Explicit memory request detected")
-    
-    # Personal information keywords
-    personal_keywords = [
-        "my tea", "my coffee", "i prefer", "i always", "i never", 
-        "my name", "i live", "i work", "my kids", "my son", 
-        "my daughter", "my wife", "my husband"
-    ]
-    if any(keyword in message_lower for keyword in personal_keywords) and not extracted_memories:
-        extracted_memories.append({
-            "type": "preference",
-            "content": user_message,
-            "importance": 0.6,
-        })
-        logger.info(f"[MEMORY EXTRACT] Personal keyword detected")
-    
-    if not extracted_memories:
-        logger.info(f"[MEMORY EXTRACT] No memories to extract")
-        return
-    
-    logger.info(f"[MEMORY EXTRACT] Saving {len(extracted_memories)} memories...")
-    
-    # Save extracted memories (deduplicate)
-    saved_contents = set()
-    for mem in extracted_memories[:3]:
-        if mem["content"] in saved_contents:
-            continue
-        saved_contents.add(mem["content"])
+    try:
+        # Step 1: Analyze the message with AI
+        logger.info(f"[MEMORY INTEL] Analyzing message for user {tiger_user_id}...")
         
-        try:
-            result = await memory_service.save_memory(
-                user_id=tiger_user_id,
-                memory_type=mem["type"],
-                content=mem["content"],
-                context="User said this in conversation",
-                importance=mem["importance"],
-                related_conversation=conversation_id,
-                source="user",
+        analysis: MemoryAnalysis = await memory_intelligence.analyze_message_for_memories(
+            user_id=tiger_user_id,
+            user_message=user_message,
+            assistant_response=assistant_response,
+            conversation_id=conversation_id,
+            user_name=user_name,
+        )
+        
+        if not analysis.should_save:
+            logger.info(f"[MEMORY INTEL] No memories to save: {analysis.analysis_reasoning}")
+            return
+        
+        logger.info(f"[MEMORY INTEL] Found {len(analysis.memories)} memories to save")
+        
+        # Step 2: Process each extracted memory
+        for extracted_mem in analysis.memories:
+            try:
+                # Save the memory
+                saved_memory = await memory_service.save_memory(
+                    user_id=tiger_user_id,
+                    memory_type=extracted_mem.memory_type,
+                    content=extracted_mem.content,
+                    context=extracted_mem.context,
+                    importance=extracted_mem.importance,
+                    related_conversation=conversation_id,
+                    source="user",
+                )
+                
+                if not saved_memory:
+                    logger.debug(f"[MEMORY INTEL] Memory not saved (likely duplicate)")
+                    continue
+                
+                memory_id = saved_memory.get("memory_id") or saved_memory.get("id")
+                logger.info(f"[MEMORY INTEL] ✅ Saved memory {memory_id}: {extracted_mem.content[:50]}...")
+                
+                # Step 3: Generate and apply tags
+                if extracted_mem.suggested_tags:
+                    tags = await memory_intelligence.generate_tags_for_memory(
+                        user_id=tiger_user_id,
+                        content=extracted_mem.content,
+                        memory_type=extracted_mem.memory_type,
+                        suggested_tags=extracted_mem.suggested_tags,
+                    )
+                    
+                    for tag in tags:
+                        try:
+                            await db.execute(
+                                """
+                                INSERT INTO memory_tag_links (memory_id, tag_id, assigned_by, confidence)
+                                VALUES ($1, $2, 'nicole', $3)
+                                ON CONFLICT (memory_id, tag_id) DO NOTHING
+                                """,
+                                memory_id,
+                                tag["tag_id"],
+                                0.9 if not tag["is_new"] else 0.7,
+                            )
+                        except Exception as tag_err:
+                            logger.debug(f"[MEMORY INTEL] Tag link failed: {tag_err}")
+                
+                # Step 4: Create relationships
+                if extracted_mem.should_link_to or extracted_mem.entities:
+                    relationships = await memory_intelligence.find_and_create_relationships(
+                        user_id=tiger_user_id,
+                        new_memory_id=memory_id,
+                        content=extracted_mem.content,
+                        entities=extracted_mem.entities,
+                        suggested_links=extracted_mem.should_link_to,
+                    )
+                    
+                    if relationships:
+                        saved_rels = await memory_intelligence.save_relationships(tiger_user_id, relationships)
+                        logger.info(f"[MEMORY INTEL] Created {saved_rels} relationships")
+                
+            except Exception as mem_err:
+                logger.error(f"[MEMORY INTEL] Failed to process memory: {mem_err}")
+        
+        # Step 5: Handle corrections
+        if analysis.detected_correction and analysis.correction_target:
+            try:
+                # Archive the old memory and link to the new one
+                await db.execute(
+                    """
+                    UPDATE memory_entries 
+                    SET archived_at = NOW(), 
+                        updated_at = NOW()
+                    WHERE memory_id = $1 AND user_id = $2
+                    """,
+                    analysis.correction_target,
+                    tiger_user_id,
+                )
+                logger.info(f"[MEMORY INTEL] Archived corrected memory {analysis.correction_target}")
+            except Exception as corr_err:
+                logger.warning(f"[MEMORY INTEL] Correction handling failed: {corr_err}")
+        
+        # Step 6: Check if we should create a knowledge base
+        if analysis.suggested_kb:
+            should_create = await memory_intelligence.should_create_knowledge_base(
+                tiger_user_id, 
+                analysis.suggested_kb,
+                threshold=3  # Need at least 3 memories about the topic
             )
-            if result:
-                logger.info(f"[MEMORY EXTRACT] ✅ Saved {mem['type']} memory")
-            else:
-                logger.warning(f"[MEMORY EXTRACT] ⚠️ Memory service returned None")
-        except Exception as e:
-            logger.error(f"[MEMORY EXTRACT] ❌ Failed to save memory: {e}")
+            
+            if should_create:
+                kb_id = await memory_intelligence.create_knowledge_base(
+                    user_id=tiger_user_id,
+                    name=analysis.suggested_kb,
+                    kb_type="topic",
+                )
+                
+                if kb_id:
+                    # Organize existing memories into the new KB
+                    organized = await memory_intelligence.organize_memories_into_kb(
+                        tiger_user_id, kb_id, analysis.suggested_kb
+                    )
+                    logger.info(f"[MEMORY INTEL] Created KB '{analysis.suggested_kb}' with {organized} memories")
+        
+        logger.info(f"[MEMORY INTEL] Memory processing complete")
+        
+    except Exception as e:
+        logger.error(f"[MEMORY INTEL] Intelligent processing failed: {e}", exc_info=True)
+        # Don't raise - memory processing shouldn't break chat
 
 
 # ============================================================================
@@ -508,7 +531,7 @@ async def send_message(
             logger.info(f"[STREAM] Messages for Claude: {len(messages)}")
             
             # ================================================================
-            # SYSTEM PROMPT
+            # SYSTEM PROMPT - Nicole's Memory-Aware Personality
             # ================================================================
             
             system_prompt = f"""You are Nicole, a warm and intelligent AI companion created for Glen Healy and his family.
@@ -524,18 +547,37 @@ You embody the spirit of Glen's late wife Nicole while being a highly capable AI
 - Speaking with: {user_name}
 - User role: {user_data.get("user_role", "user")}
 
+## 🧠 YOUR MEMORY CAPABILITIES:
+You have a sophisticated memory system that allows you to:
+1. **Remember** - I automatically save important information about you (preferences, facts, goals, relationships)
+2. **Recall** - I search my memories to provide personalized, contextual responses
+3. **Organize** - I create knowledge bases to organize related memories (projects, topics, family)
+4. **Connect** - I link related memories together to understand patterns and relationships
+5. **Learn** - When you correct me, I update my knowledge and remember the correction
+6. **Maintain** - My confidence in memories naturally decays if they're not used, keeping knowledge fresh
+
 ## 💬 HOW YOU RESPOND:
-1. **Reference memories naturally** - Use phrases like "I remember when you..." or "Based on what you've told me before..."
+1. **Reference memories naturally** - "I remember you mentioned..." or "Based on what you've shared before..."
 2. **Be personal** - This is a family AI, not a generic assistant
 3. **Show care** - Acknowledge feelings before offering solutions
 4. **Be proactive** - Suggest relevant follow-ups based on what you know
+5. **Acknowledge learning** - When someone shares something new, confirm you'll remember it
 {memory_context}
 {document_context}
 
 ## 🔄 LEARNING FROM THIS CONVERSATION:
-If the user corrects you or shares new important information, acknowledge it warmly. Example: "Thank you for letting me know! I'll remember that."
+- If the user shares new information, acknowledge it warmly: "Thank you for telling me! I'll remember that."
+- If corrected, update gracefully: "Thank you for the correction! I've updated my memory."
+- If asked to remember something specific, confirm: "I'll make sure to remember that."
+- If asked about your memory, explain your capabilities naturally
 
-Be natural, warm, and helpful. You have perfect memory - use it to provide deeply personalized responses."""
+## ⚠️ MEMORY GUARDRAILS:
+- Don't claim to remember things you haven't been told
+- If a memory seems outdated, ask for confirmation
+- Distinguish between facts (high confidence) and impressions (lower confidence)
+- Respect privacy - don't share one family member's information with another without context
+
+Be natural, warm, and helpful. Use your memories to provide deeply personalized responses that show you truly know and care about this family."""
             
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
@@ -585,20 +627,22 @@ Be natural, warm, and helpful. You have perfect memory - use it to provide deepl
             )
             
             # ================================================================
-            # MEMORY EXTRACTION
+            # INTELLIGENT MEMORY PROCESSING
             # ================================================================
             
             try:
-                logger.info(f"[MEMORY] Starting extraction for user {tiger_user_id}")
-                await extract_and_save_memories(
+                logger.info(f"[MEMORY] Starting intelligent processing for user {tiger_user_id}")
+                # Use the new intelligent memory processing
+                await process_memories_intelligently(
                     tiger_user_id=tiger_user_id,
                     user_message=chat_request.text,
                     assistant_response=full_response,
                     conversation_id=conversation_id,
+                    user_name=user_name,
                 )
-                logger.info(f"[MEMORY] Extraction complete")
+                logger.info(f"[MEMORY] Intelligent processing complete")
             except Exception as mem_save_err:
-                logger.error(f"[MEMORY] Error extracting memories: {mem_save_err}", exc_info=True)
+                logger.error(f"[MEMORY] Error in intelligent memory processing: {mem_save_err}", exc_info=True)
             
             # Send done event
             yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation_id})}\n\n"
