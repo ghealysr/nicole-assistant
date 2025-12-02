@@ -671,6 +671,47 @@ async def _log_job_action(
 
 
 # =============================================================================
+# CONVERSATION CLEANUP JOB
+# =============================================================================
+
+async def run_conversation_cleanup_job() -> Dict[str, Any]:
+    """
+    Clean up short conversations (≤3 messages) older than 3 days.
+    
+    This prevents cluttering the conversation list with abandoned chats.
+    Pinned conversations are always protected.
+    
+    Returns:
+        Dict with job results
+    """
+    logger.info("[CONVERSATION JOB] Starting conversation cleanup job...")
+    
+    results = {
+        "job": "conversation_cleanup",
+        "started_at": datetime.utcnow().isoformat(),
+        "deleted_count": 0,
+        "success": True,
+    }
+    
+    try:
+        # Call the database function for all users
+        deleted_count = await db.fetchval(
+            "SELECT cleanup_short_conversations(NULL)"
+        )
+        
+        results["deleted_count"] = deleted_count if deleted_count else 0
+        logger.info(f"[CONVERSATION JOB] Cleaned up {results['deleted_count']} short conversations")
+        
+    except Exception as e:
+        logger.error(f"[CONVERSATION JOB] Cleanup failed: {e}")
+        results["success"] = False
+        results["error"] = str(e)
+    
+    results["completed_at"] = datetime.utcnow().isoformat()
+    return results
+
+
+# =============================================================================
 # JOB SCHEDULER INTEGRATION
 # =============================================================================
 
@@ -693,6 +734,7 @@ async def run_all_memory_jobs() -> Dict[str, Any]:
         ("consolidation", run_memory_consolidation_job),
         ("relationships", run_relationship_maintenance_job),
         ("reflection", run_self_reflection_job),
+        ("conversation_cleanup", run_conversation_cleanup_job),  # New job
     ]
     
     for job_name, job_func in jobs:

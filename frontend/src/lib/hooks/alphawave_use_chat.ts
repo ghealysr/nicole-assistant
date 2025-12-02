@@ -35,14 +35,19 @@ export interface UseChatReturn {
   error: string | null;
   clearError: () => void;
   clearMessages: () => void;
+  conversationId: number | null;
+  setConversationId: (id: number | null) => void;
 }
 
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { conversationId, onError } = options;
+  const { conversationId: initialConversationId, onError } = options;
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(
+    initialConversationId ? parseInt(initialConversationId) : null
+  );
 
   /**
    * Load existing conversation history
@@ -77,9 +82,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   useEffect(() => {
     if (conversationId) {
-      loadConversationHistory(conversationId);
+      loadConversationHistory(String(conversationId));
     }
   }, [conversationId, loadConversationHistory]);
+
+  // When conversationId changes to null (new chat), clear messages
+  useEffect(() => {
+    if (conversationId === null) {
+      setMessages([]);
+    }
+  }, [conversationId]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -87,6 +99,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
+    setConversationId(null);
   }, []);
 
   /**
@@ -208,6 +221,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                       : m
                   )
                 );
+              } else if (data.type === 'conversation_id' && data.conversation_id) {
+                // Capture conversation ID from backend for new conversations
+                setConversationId(data.conversation_id);
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               }
@@ -254,5 +270,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     error, 
     clearError,
     clearMessages,
+    conversationId,
+    setConversationId,
   };
 }

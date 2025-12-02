@@ -7,6 +7,7 @@ import { AlphawaveDashPanel } from './AlphawaveDashPanel';
 import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
 import { useChat } from '@/lib/hooks/alphawave_use_chat';
 import { useToast } from '@/components/ui/alphawave_toast';
+import { useConversation } from '@/app/(app)/layout';
 
 interface Message {
   id: string;
@@ -245,16 +246,43 @@ function MessageBubble({ message }: { message: Message }) {
 /**
  * Main chat container component for Nicole V7.
  * Claude-style file uploads with invisible AI processing.
+ * Integrates with conversation context for cross-component state management.
  */
 export function AlphawaveChatContainer() {
   const { showToast } = useToast();
-  const { messages, sendMessage, isLoading, error, clearError } = useChat({
+  const { currentConversationId, setCurrentConversationId } = useConversation();
+  
+  const { 
+    messages, 
+    sendMessage, 
+    isLoading, 
+    error, 
+    clearError,
+    conversationId,
+    setConversationId,
+  } = useChat({
+    conversationId: currentConversationId ? String(currentConversationId) : undefined,
     onError: (err) => {
       showToast(err.message, 'error');
     },
   });
+  
   const [dashOpen, setDashOpen] = useState(false);
   const [dashboardWidth, setDashboardWidth] = useState(420);
+
+  // Sync conversation ID from chat hook to context
+  useEffect(() => {
+    if (conversationId && conversationId !== currentConversationId) {
+      setCurrentConversationId(conversationId);
+    }
+  }, [conversationId, currentConversationId, setCurrentConversationId]);
+
+  // When context conversation changes (e.g., from Chats panel), update chat hook
+  useEffect(() => {
+    if (currentConversationId !== conversationId) {
+      setConversationId(currentConversationId);
+    }
+  }, [currentConversationId, conversationId, setConversationId]);
 
   useEffect(() => {
     if (error) {

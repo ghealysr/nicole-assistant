@@ -358,9 +358,11 @@ async def send_message(
     # ========================================================================
     
     conversation_id = chat_request.conversation_id
+    is_new_conversation = False
     
     if not conversation_id:
         # Create new conversation in Tiger
+        is_new_conversation = True
         try:
             conv_row = await db.fetchrow(
                 """
@@ -508,19 +510,28 @@ async def send_message(
                 logger.debug(f"[LINK] Error processing URLs: {url_err}")
             
             # ================================================================
-            # CONVERSATION HISTORY
+            # CONVERSATION HISTORY (Last 25 messages for context)
             # ================================================================
+            # 
+            # Context window strategy:
+            # - Load last 25 messages to maintain conversation flow
+            # - This ensures Nicole has enough context to avoid repetitive questions
+            # - Older context is captured in memory system for long-term recall
+            #
             
             history_rows = await db.fetch(
                 """
-                SELECT message_role, content
+                SELECT message_role, content, created_at
                 FROM messages
                 WHERE conversation_id = $1
-                ORDER BY created_at ASC
-                LIMIT 20
+                ORDER BY created_at DESC
+                LIMIT 25
                 """,
                 conversation_id,
             )
+            
+            # Reverse to chronological order (oldest first)
+            history_rows = list(reversed(history_rows))
             
             messages = [
                 {"role": row["message_role"], "content": row["content"]}
@@ -533,7 +544,7 @@ async def send_message(
                 "content": chat_request.text
             })
             
-            logger.info(f"[STREAM] Messages for Claude: {len(messages)}")
+            logger.info(f"[STREAM] Messages for Claude: {len(messages)} (context window: 25)")
             
             # ================================================================
             # SYSTEM PROMPT - Nicole's Complete Personality & Memory System
@@ -554,6 +565,10 @@ async def send_message(
             
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
+            
+            # Send conversation_id for new conversations so frontend can track
+            if is_new_conversation:
+                yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conversation_id})}\n\n"
             
             try:
                 ai_generator = claude_client.generate_streaming_response(
@@ -707,10 +722,16 @@ async def get_chat_history(
 @router.get("/conversations")
 async def get_conversations(
     request: Request,
-    limit: int = 20,
+    limit: int = 30,
     offset: int = 0
-) -> AlphawaveConversationListResponse:
-    """Get list of user's conversations."""
+) -> Dict[str, Any]:
+    """
+    Get list of user's conversations with pinning support.
+    
+    Returns conversations sorted by:
+    1. Pinned conversations first (by pin_order)
+    2. Then recent conversations (by last_message_at or created_at)
+    """
     
     tiger_user_id = get_current_tiger_user_id(request)
     if tiger_user_id is None:
@@ -724,10 +745,16 @@ async def get_conversations(
             conversation_status,
             last_message_at,
             created_at,
-            updated_at
+            updated_at,
+            COALESCE(is_pinned, FALSE) as is_pinned,
+            pin_order,
+            COALESCE(message_count, 0) as message_count
         FROM conversations
         WHERE user_id = $1 AND conversation_status != 'deleted'
-        ORDER BY updated_at DESC
+        ORDER BY 
+            is_pinned DESC NULLS LAST,
+            CASE WHEN is_pinned = TRUE THEN pin_order ELSE NULL END ASC NULLS LAST,
+            COALESCE(last_message_at, created_at) DESC
         LIMIT $2 OFFSET $3
         """,
         tiger_user_id,
@@ -747,20 +774,23 @@ async def get_conversations(
     
     conversations = [
         {
-            "id": row["conversation_id"],
-            "title": row["title"],
+            "conversation_id": row["conversation_id"],
+            "title": row["title"] or "New Conversation",
             "status": row["conversation_status"],
             "last_message_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "is_pinned": row["is_pinned"],
+            "pin_order": row["pin_order"],
+            "message_count": row["message_count"],
         }
         for row in rows
     ]
     
-    return AlphawaveConversationListResponse(
-        conversations=conversations,
-        total=count_row["total"] if count_row else 0
-    )
+    return {
+        "conversations": conversations,
+        "total": count_row["total"] if count_row else 0
+    }
 
 
 # ============================================================================
@@ -792,3 +822,138 @@ async def delete_conversation(
     logger.info(f"Conversation {conversation_id} deleted by user {tiger_user_id}")
     
     return {"message": "Conversation deleted successfully"}
+
+
+# ============================================================================
+# PIN/UNPIN CONVERSATION
+# ============================================================================
+
+class PinRequest(BaseModel):
+    is_pinned: bool
+
+
+@router.post("/conversations/{conversation_id}/pin")
+async def pin_conversation(
+    request: Request,
+    conversation_id: int,
+    pin_request: PinRequest
+) -> Dict[str, Any]:
+    """Pin or unpin a conversation."""
+    
+    tiger_user_id = get_current_tiger_user_id(request)
+    if tiger_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if pin_request.is_pinned:
+        # Check pin limit (max 5)
+        count_row = await db.fetchrow(
+            """
+            SELECT COUNT(*) as pinned_count
+            FROM conversations
+            WHERE user_id = $1 AND is_pinned = TRUE
+            """,
+            tiger_user_id,
+        )
+        
+        if count_row and count_row["pinned_count"] >= 5:
+            raise HTTPException(status_code=400, detail="Maximum 5 pinned conversations allowed")
+        
+        # Get next pin order
+        max_order_row = await db.fetchrow(
+            """
+            SELECT COALESCE(MAX(pin_order), -1) + 1 as next_order
+            FROM conversations
+            WHERE user_id = $1 AND is_pinned = TRUE
+            """,
+            tiger_user_id,
+        )
+        next_order = max_order_row["next_order"] if max_order_row else 0
+        
+        await db.execute(
+            """
+            UPDATE conversations
+            SET is_pinned = TRUE, pin_order = $3, updated_at = NOW()
+            WHERE conversation_id = $1 AND user_id = $2
+            """,
+            conversation_id,
+            tiger_user_id,
+            next_order,
+        )
+    else:
+        # Unpin
+        await db.execute(
+            """
+            UPDATE conversations
+            SET is_pinned = FALSE, pin_order = NULL, updated_at = NOW()
+            WHERE conversation_id = $1 AND user_id = $2
+            """,
+            conversation_id,
+            tiger_user_id,
+        )
+    
+    logger.info(f"Conversation {conversation_id} {'pinned' if pin_request.is_pinned else 'unpinned'} by user {tiger_user_id}")
+    
+    return {"message": "Pin status updated", "is_pinned": pin_request.is_pinned}
+
+
+# ============================================================================
+# REORDER PINNED CONVERSATIONS
+# ============================================================================
+
+class ReorderPinsRequest(BaseModel):
+    order: List[Dict[str, int]]  # [{"conversation_id": 1, "pin_order": 0}, ...]
+
+
+@router.post("/conversations/reorder-pins")
+async def reorder_pinned_conversations(
+    request: Request,
+    reorder_request: ReorderPinsRequest
+) -> Dict[str, str]:
+    """Reorder pinned conversations via drag-and-drop."""
+    
+    tiger_user_id = get_current_tiger_user_id(request)
+    if tiger_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    for item in reorder_request.order:
+        await db.execute(
+            """
+            UPDATE conversations
+            SET pin_order = $3, updated_at = NOW()
+            WHERE conversation_id = $1 AND user_id = $2 AND is_pinned = TRUE
+            """,
+            item["conversation_id"],
+            tiger_user_id,
+            item["pin_order"],
+        )
+    
+    logger.info(f"Pinned conversations reordered by user {tiger_user_id}")
+    
+    return {"message": "Pin order updated"}
+
+
+# ============================================================================
+# CLEANUP SHORT CONVERSATIONS (Called by background job)
+# ============================================================================
+
+@router.post("/conversations/cleanup")
+async def cleanup_short_conversations(request: Request) -> Dict[str, Any]:
+    """
+    Delete short conversations (≤3 messages) older than 3 days.
+    This is typically called by a scheduled background job.
+    """
+    
+    tiger_user_id = get_current_tiger_user_id(request)
+    if tiger_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Call the database function
+    result = await db.fetchval(
+        "SELECT cleanup_short_conversations($1)",
+        tiger_user_id,
+    )
+    
+    deleted_count = result if result else 0
+    logger.info(f"Cleaned up {deleted_count} short conversations for user {tiger_user_id}")
+    
+    return {"message": f"Cleaned up {deleted_count} conversations", "deleted_count": deleted_count}

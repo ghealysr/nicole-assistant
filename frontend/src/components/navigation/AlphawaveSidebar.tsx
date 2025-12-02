@@ -11,6 +11,9 @@ interface AlphawaveSidebarProps {
   isMemoryOpen?: boolean;
   onJournalClick?: () => void;
   isJournalOpen?: boolean;
+  onChatsClick?: () => void;
+  isChatsOpen?: boolean;
+  onNewChat?: () => void;
 }
 
 /**
@@ -29,7 +32,10 @@ export function AlphawaveSidebar({
   onMemoryClick, 
   isMemoryOpen,
   onJournalClick,
-  isJournalOpen
+  isJournalOpen,
+  onChatsClick,
+  isChatsOpen,
+  onNewChat,
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
 
@@ -53,16 +59,27 @@ export function AlphawaveSidebar({
       
       {/* Navigation */}
       <nav className="flex-1 p-3 flex flex-col gap-1">
-        {/* New Chat - navigates to chat page */}
-        <Link
-          href="/chat"
+        {/* New Chat - clears current conversation */}
+        <button
+          onClick={onNewChat}
           className={`menu-item ${isOnChat ? 'active' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
             <path d="M12 5v14M5 12h14"/>
           </svg>
           New Chat
-        </Link>
+        </button>
+        
+        {/* Chats Button - Opens Conversations Panel */}
+        <button
+          onClick={onChatsClick}
+          className={`menu-item ${isChatsOpen ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Chats
+        </button>
         
         {/* Journal Button - Opens Journal Panel */}
         <button
