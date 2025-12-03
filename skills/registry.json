@@ -1,0 +1,132 @@
+{
+  "updated_at": "2025-12-03T02:07:07.144282",
+  "skills": [
+    {
+      "id": "ios-simulator-skill-ios-simulator-skill",
+      "name": "iOS Simulator Skill",
+      "vendor": "ios-simulator-skill",
+      "description": "Imported from /var/folders/qd/y93pqdp97wg45ysz9ghw3t440000gn/T/skill-import-tvr1f81d/skill/SKILL.md",
+      "version": "0.1.0",
+      "checksum": "394298e7c2ed8410f4ef9476dd11ea3dfb4126b75c75721d1ab1feef475a5624",
+      "source": {
+        "url": "https://github.com/conorluddy/ios-simulator-skill",
+        "repo": "https://github.com/conorluddy/ios-simulator-skill",
+        "ref": "main",
+        "license": null,
+        "imported_at": null
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "README-driven",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Imported from /var/folders/qd/y93pqdp97wg45ysz9ghw3t440000gn/T/skill-import-tvr1f81d/skill/SKILL.md",
+          "trigger_phrases": [],
+          "tags": []
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/ios-simulator-skill/iOS Simulator Skill",
+      "status": "installed"
+    },
+    {
+      "id": "playwright-skill-playwright-browser-automation",
+      "name": "Playwright Browser Automation",
+      "vendor": "playwright-skill",
+      "description": "Imported from /var/folders/qd/y93pqdp97wg45ysz9ghw3t440000gn/T/skill-import-7e3md1f_/skills/playwright-skill/SKILL.md",
+      "version": "0.1.0",
+      "checksum": "7ac817fa9e6b5ead7066a2bf53857ffb2586a567f2f8e5034418fc7a911abdd6",
+      "source": {
+        "url": "https://github.com/lackeyjb/playwright-skill",
+        "repo": "https://github.com/lackeyjb/playwright-skill",
+        "ref": "main",
+        "license": null,
+        "imported_at": null
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "README-driven",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Imported from /var/folders/qd/y93pqdp97wg45ysz9ghw3t440000gn/T/skill-import-7e3md1f_/skills/playwright-skill/SKILL.md",
+          "trigger_phrases": [],
+          "tags": []
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/playwright-skill/Playwright Browser Automation",
+      "status": "installed"
+    },
+    {
+      "id": "local-example-python-skill",
+      "name": "Example Python Skill",
+      "vendor": "local",
+      "description": "Sample python-based skill for QA",
+      "version": "1.0.0",
+      "checksum": "724ad5c89a742e6df1996093d55e7886c2ec6ca2c132670bdc7347712d8d05d6",
+      "source": {
+        "url": "local",
+        "repo": "local/example-python-skill",
+        "ref": "main",
+        "license": "MIT",
+        "imported_at": null
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "main.py",
+        "runtime": null,
+        "timeout_seconds": 60,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "testing",
+          "description": "Demonstrates python execution",
+          "trigger_phrases": [],
+          "tags": []
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Sample skill"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [
+        "Run hello world"
+      ],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/local/example-python-skill",
+      "status": "installed"
+    }
+  ]
+}

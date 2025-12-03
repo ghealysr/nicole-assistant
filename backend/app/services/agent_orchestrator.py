@@ -24,6 +24,10 @@ from app.services.tool_search_service import tool_search_service, TOOL_SEARCH_DE
 from app.services.tool_examples import tool_examples_service
 from app.services.alphawave_memory_service import memory_service
 from app.services.alphawave_document_service import document_service
+from app.skills.skill_runner import skill_runner
+from app.skills.skill_memory import get_skill_memory_manager
+from app.services.skill_run_service import skill_run_service
+from app.skills.adapters.base import SkillExecutionError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,7 @@ class AgentOrchestrator:
     
     def __init__(self):
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
+        self.skill_memory_manager = get_skill_memory_manager(skill_runner.registry)
         logger.info("[ORCHESTRATOR] Agent Orchestrator initialized")
     
     def get_core_tools(self) -> List[Dict[str, Any]]:
@@ -149,7 +154,51 @@ class AgentOrchestrator:
             }),
         ]
         
+        core_tools.extend(self._get_skill_tools())
         return core_tools
+
+    def _get_skill_tools(self) -> List[Dict[str, Any]]:
+        """Generate tool definitions for installed skills.
+        
+        Only includes skills that can be executed automatically (not manual skills).
+        """
+        tools = []
+        # Executor types that can be run automatically
+        EXECUTABLE_TYPES = {"python", "python_script", "node", "node_script", "cli", "command"}
+        
+        try:
+            skill_runner.registry.load()
+            for skill in skill_runner.registry.list_skills():
+                # Skip non-installed or not-ready skills
+                if skill.status != "installed":
+                    continue
+                if skill.setup_status != "ready":
+                    logger.debug(
+                        f"[ORCHESTRATOR] Skipping skill {skill.id} (setup_status={skill.setup_status})"
+                    )
+                    continue
+                # Skip manual skills - they can't be executed programmatically
+                if skill.executor.executor_type.lower() not in EXECUTABLE_TYPES:
+                    logger.debug(f"[ORCHESTRATOR] Skipping manual skill: {skill.id}")
+                    continue
+
+                schema = {
+                    "name": skill.id,
+                    "description": f"{skill.description} (Skill)",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": True,
+                        "description": (
+                            "Parameters forwarded directly to the skill runner. "
+                            "Include a JSON payload matching the skill's documented interface."
+                        ),
+                    },
+                }
+                tools.append(tool_examples_service.enhance_tool_schema(schema))
+        except Exception as exc:
+            logger.warning(f"[ORCHESTRATOR] Failed to load skill tools: {exc}")
+        return tools
     
     def start_session(
         self,
@@ -205,12 +254,15 @@ class AgentOrchestrator:
         logger.info(f"[ORCHESTRATOR] Executing tool: {tool_name}")
         
         # Record tool call if session exists
+        conversation_id = None
         if session_id and session_id in self._active_sessions:
-            self._active_sessions[session_id]["tool_calls"].append({
+            session = self._active_sessions[session_id]
+            session["tool_calls"].append({
                 "tool": tool_name,
                 "input": tool_input,
                 "timestamp": datetime.utcnow().isoformat()
             })
+            conversation_id = session.get("conversation_id")
         
         try:
             # Think tool - just record and return
@@ -320,6 +372,66 @@ class AgentOrchestrator:
                 }
             
             else:
+                # Try to execute a registered skill
+                skill_meta = skill_runner.registry.get_skill(tool_name)
+                if skill_meta:
+                    if skill_meta.setup_status != "ready":
+                        return {
+                            "status": "not_ready",
+                            "message": (
+                                f"Skill '{tool_name}' is not ready (setup_status={skill_meta.setup_status}). "
+                                "Run the skill health check to enable it."
+                            ),
+                        }
+                    try:
+                        result = await skill_runner.run(
+                            skill_id=tool_name,
+                            payload=tool_input,
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                        )
+                    except SkillExecutionError as exec_err:
+                        await skill_run_service.record_failure(
+                            skill_meta=skill_meta,
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                            error_message=str(exec_err),
+                        )
+                        return {
+                            "status": "error",
+                            "message": f"Skill '{tool_name}' failed: {exec_err}",
+                        }
+                    # Update metadata
+                    skill_meta.last_run_at = result.finished_at.isoformat()
+                    skill_meta.last_run_status = result.status
+                    skill_runner.registry.update_skill(skill_meta)
+                    try:
+                        await self.skill_memory_manager.record_run(
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                            skill=skill_meta,
+                            result_status=result.status,
+                            output=result.output,
+                            log_file=str(result.log_file),
+                        )
+                    except Exception as mem_err:
+                        logger.warning(f"[ORCHESTRATOR] Failed to log skill memory: {mem_err}")
+                    try:
+                        await skill_run_service.record_success(
+                            skill_meta=skill_meta,
+                            result=result,
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                        )
+                    except Exception as run_log_err:
+                        logger.warning(f"[ORCHESTRATOR] Failed to persist skill run: {run_log_err}")
+                    return {
+                        "status": result.status,
+                        "output": result.output,
+                        "error": result.error,
+                        "log_file": str(result.log_file),
+                    }
+                
                 # Try to find a dynamically registered tool
                 tool = tool_search_service.get_tool(tool_name)
                 if tool and tool.mcp_server:

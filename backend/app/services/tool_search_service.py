@@ -26,6 +26,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import re
+from pathlib import Path
+
+from app.skills.registry import load_registry, SkillMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +166,10 @@ After finding a tool, you can use it in your next action.
 }
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SKILLS_REGISTRY_PATH = PROJECT_ROOT / "skills" / "registry.json"
+
+
 class ToolSearchService:
     """
     Service for dynamic tool discovery and management.
@@ -178,6 +185,7 @@ class ToolSearchService:
         self._registry: Dict[str, RegisteredTool] = {}
         self._loaded_tools: Set[str] = set()  # Currently loaded tool names
         self._initialize_core_tools()
+        self._load_skills_from_registry()
         logger.info(f"[TOOL SEARCH] Service initialized with {len(self._registry)} tools")
     
     def _initialize_core_tools(self):
@@ -262,6 +270,10 @@ class ToolSearchService:
         Returns:
             The registered tool
         """
+        if name in self._registry:
+            logger.debug(f"[TOOL SEARCH] Tool {name} already registered, skipping duplicate registration")
+            return self._registry[name]
+
         tool = RegisteredTool(
             name=name,
             description=description,
@@ -314,6 +326,99 @@ class ToolSearchService:
         
         logger.info(f"[TOOL SEARCH] Registered {len(registered)} tools from {mcp_server}")
         return registered
+
+    def _category_from_domain(self, domain: Optional[str]) -> ToolCategory:
+        if not domain:
+            return ToolCategory.INTEGRATION
+        domain = domain.lower()
+        mapping = {
+            "docs": ToolCategory.DOCUMENTS,
+            "document": ToolCategory.DOCUMENTS,
+            "documents": ToolCategory.DOCUMENTS,
+            "memory": ToolCategory.MEMORY,
+            "automation": ToolCategory.AUTOMATION,
+            "browser": ToolCategory.BROWSER,
+            "media": ToolCategory.MEDIA,
+            "image": ToolCategory.MEDIA,
+            "research": ToolCategory.SEARCH,
+            "search": ToolCategory.SEARCH,
+            "development": ToolCategory.DEVELOPMENT,
+            "engineering": ToolCategory.DEVELOPMENT,
+            "sports": ToolCategory.SPORTS,
+            "health": ToolCategory.HEALTH,
+            "finance": ToolCategory.FINANCE,
+        }
+        return mapping.get(domain, ToolCategory.INTEGRATION)
+
+    def register_skill(self, skill: SkillMetadata) -> Optional[RegisteredTool]:
+        """Register a skill from the registry as a tool.
+        
+        Only registers skills that can be executed automatically.
+        Manual skills (README-driven) are skipped.
+        """
+        # Executor types that can be run automatically
+        EXECUTABLE_TYPES = {"python", "python_script", "node", "node_script", "cli", "command"}
+        
+        if skill.status != "installed":
+            return None
+        
+        # Skip manual skills - they can't be executed programmatically
+        if skill.executor.executor_type.lower() not in EXECUTABLE_TYPES:
+            logger.debug(f"[TOOL SEARCH] Skipping manual skill: {skill.id}")
+            return None
+        if skill.setup_status not in {"ready"}:
+            logger.debug(
+                f"[TOOL SEARCH] Skill {skill.id} not registered (setup_status={skill.setup_status})"
+            )
+            return None
+
+        description = f"{skill.description} (Skill)"
+        tags = []
+        domain = None
+        examples = skill.usage_examples[:3]
+        for cap in skill.capabilities:
+            domain = domain or cap.domain
+            tags.extend(cap.tags)
+            if not examples and cap.description:
+                examples.append(cap.description)
+
+        category = self._category_from_domain(domain) if domain else self._infer_category(description)
+
+        schema = {
+            "name": skill.id,
+            "description": description
+            + ("\n\nExamples:\n- " + "\n- ".join(examples) if examples else ""),
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": True,
+                "description": (
+                    "Parameters forwarded to the skill runner. "
+                    "Consult the skill documentation before invoking."
+                ),
+            },
+        }
+
+        return self.register_tool(
+            name=skill.id,
+            description=description,
+            category=category,
+            tags=tags,
+            examples=examples,
+            schema=schema,
+            defer_loading=True,
+        )
+
+    def _load_skills_from_registry(self) -> None:
+        if not SKILLS_REGISTRY_PATH.exists():
+            logger.info("[TOOL SEARCH] No skills registry found; skipping skill registration")
+            return
+        registry = load_registry(SKILLS_REGISTRY_PATH)
+        count = 0
+        for skill in registry.list_skills():
+            if self.register_skill(skill):
+                count += 1
+        logger.info(f"[TOOL SEARCH] Registered {count} skills from registry")
     
     def _infer_category(self, description: str) -> ToolCategory:
         """Infer tool category from description."""
