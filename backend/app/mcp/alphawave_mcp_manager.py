@@ -109,71 +109,89 @@ class AlphawaveMCPManager:
         self._register_default_servers()
     
     def _register_default_servers(self):
-        """Register default MCP server configurations."""
+        """
+        Register default MCP server configurations.
         
-        # Google Workspace MCP
+        Uses official MCP servers from @modelcontextprotocol namespace.
+        Google/Notion require custom setup or community servers.
+        """
+        
+        # Google Workspace MCP (community server - requires setup)
+        # See: https://github.com/anthropics/anthropic-cookbook/tree/main/misc/mcp_integrations
         self._servers["google"] = MCPServerState(
             config=MCPServerConfig(
                 name="google",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-google"],
+                args=["-y", "@anthropics/mcp-server-google-drive"],  # Example - verify actual package
                 env={
                     "GOOGLE_CLIENT_ID": os.getenv("GOOGLE_CLIENT_ID", ""),
                     "GOOGLE_CLIENT_SECRET": os.getenv("GOOGLE_CLIENT_SECRET", ""),
                 },
-                enabled=bool(os.getenv("GOOGLE_CLIENT_ID")),
+                # Disabled by default - requires OAuth setup
+                enabled=False,
             )
         )
         
-        # Notion MCP
+        # Notion MCP (community server - requires setup)
         self._servers["notion"] = MCPServerState(
             config=MCPServerConfig(
                 name="notion",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-notion"],
+                args=["-y", "mcp-notion-server"],  # Community package
                 env={
                     "NOTION_API_KEY": os.getenv("NOTION_API_KEY", ""),
                 },
-                enabled=bool(os.getenv("NOTION_API_KEY")),
+                # Disabled by default - requires API key setup
+                enabled=False,
             )
         )
         
-        # Filesystem MCP (always available)
+        # Filesystem MCP (official - always available)
         self._servers["filesystem"] = MCPServerState(
             config=MCPServerConfig(
                 name="filesystem",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-filesystem", "/tmp/nicole"],
+                args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp/nicole"],
                 enabled=True,
             )
         )
         
-        # Playwright MCP (web automation)
-        self._servers["playwright"] = MCPServerState(
+        # Puppeteer MCP (official - web automation)
+        self._servers["puppeteer"] = MCPServerState(
             config=MCPServerConfig(
-                name="playwright",
+                name="puppeteer",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-playwright"],
+                args=["-y", "@modelcontextprotocol/server-puppeteer"],
                 enabled=True,
             )
         )
         
-        # Sequential Thinking MCP (reasoning visualization)
+        # Sequential Thinking MCP (official - reasoning)
         self._servers["sequential-thinking"] = MCPServerState(
             config=MCPServerConfig(
                 name="sequential-thinking",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-sequential-thinking"],
+                args=["-y", "@modelcontextprotocol/server-sequential-thinking"],
                 enabled=True,
             )
         )
         
-        # Fetch MCP (HTTP requests)
+        # Fetch MCP (official - HTTP requests)
         self._servers["fetch"] = MCPServerState(
             config=MCPServerConfig(
                 name="fetch",
                 command="npx",
-                args=["-y", "@anthropic/mcp-server-fetch"],
+                args=["-y", "@modelcontextprotocol/server-fetch"],
+                enabled=True,
+            )
+        )
+        
+        # Memory MCP (official - persistent memory)
+        self._servers["memory"] = MCPServerState(
+            config=MCPServerConfig(
+                name="memory",
+                command="npx",
+                args=["-y", "@modelcontextprotocol/server-memory"],
                 enabled=True,
             )
         )
@@ -299,7 +317,10 @@ class AlphawaveMCPManager:
         timeout: Optional[float] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Send a JSON-RPC request to an MCP server.
+        Send a JSON-RPC request to an MCP server using the MCP protocol.
+        
+        MCP uses Content-Length headers similar to LSP:
+        Content-Length: <length>\r\n\r\n<json-message>
         
         Args:
             state: Server state
@@ -323,25 +344,26 @@ class AlphawaveMCPManager:
         }
         
         try:
-            # Send request
-            request_json = json.dumps(request) + "\n"
-            state.process.stdin.write(request_json)
+            # Encode request with Content-Length header (MCP protocol)
+            request_json = json.dumps(request)
+            message = f"Content-Length: {len(request_json)}\r\n\r\n{request_json}"
+            state.process.stdin.write(message)
             state.process.stdin.flush()
             
             # Read response with timeout
             timeout_val = timeout or state.config.timeout_seconds
             
-            loop = asyncio.get_event_loop()
-            response_line = await asyncio.wait_for(
-                loop.run_in_executor(None, state.process.stdout.readline),
+            loop = asyncio.get_running_loop()
+            response_data = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._read_mcp_message(state)),
                 timeout=timeout_val
             )
             
-            if not response_line:
+            if not response_data:
                 logger.error(f"[MCP] Empty response from {state.config.name}")
                 return None
             
-            response = json.loads(response_line)
+            response = json.loads(response_data)
             
             if "error" in response:
                 logger.error(f"[MCP] Error from {state.config.name}: {response['error']}")
@@ -357,6 +379,44 @@ class AlphawaveMCPManager:
             return None
         except Exception as e:
             logger.error(f"[MCP] Request error: {e}", exc_info=True)
+            return None
+    
+    def _read_mcp_message(self, state: MCPServerState) -> Optional[str]:
+        """
+        Read a message from MCP server using Content-Length protocol.
+        
+        Returns:
+            JSON message content or None
+        """
+        if not state.process or not state.process.stdout:
+            return None
+        
+        try:
+            # Read headers until we find Content-Length
+            content_length = None
+            while True:
+                line = state.process.stdout.readline()
+                if not line:
+                    return None
+                
+                line = line.strip()
+                if not line:
+                    # Empty line marks end of headers
+                    break
+                
+                if line.startswith("Content-Length:"):
+                    content_length = int(line.split(":")[1].strip())
+            
+            if content_length is None:
+                logger.error("[MCP] No Content-Length header found")
+                return None
+            
+            # Read the JSON body
+            body = state.process.stdout.read(content_length)
+            return body
+            
+        except Exception as e:
+            logger.error(f"[MCP] Error reading message: {e}")
             return None
     
     async def _send_notification(
@@ -376,8 +436,10 @@ class AlphawaveMCPManager:
         }
         
         try:
-            notification_json = json.dumps(notification) + "\n"
-            state.process.stdin.write(notification_json)
+            # Use Content-Length protocol
+            notification_json = json.dumps(notification)
+            message = f"Content-Length: {len(notification_json)}\r\n\r\n{notification_json}"
+            state.process.stdin.write(message)
             state.process.stdin.flush()
         except Exception as e:
             logger.warning(f"[MCP] Notification error: {e}")
@@ -666,6 +728,10 @@ class FallbackMCPManager:
     def get_all_tools(self) -> List[Dict[str, Any]]:
         """Get all fallback tools."""
         return list(self._tool_registry.values())
+    
+    def get_tool(self, tool_name: str) -> Optional[Dict[str, Any]]:
+        """Get a specific tool by name."""
+        return self._tool_registry.get(tool_name)
     
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a fallback tool."""

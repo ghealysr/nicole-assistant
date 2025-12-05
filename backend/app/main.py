@@ -33,6 +33,7 @@ from app.routers import (
     alphawave_journal,
     alphawave_memories,
     alphawave_projects,
+    alphawave_skills,
     alphawave_sports_oracle,
     alphawave_voice,
     alphawave_webhooks,
@@ -52,11 +53,12 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 def setup_scheduled_jobs():
     """
-    Configure scheduled background jobs for memory maintenance.
+    Configure scheduled background jobs for memory maintenance and skill health.
     
     Jobs run during low-activity hours (3 AM UTC) to minimize impact.
     """
     from app.services.memory_background_jobs import run_all_memory_jobs
+    from app.services.skill_health_service import run_scheduled_health_checks
     
     # Run all memory maintenance jobs daily at 3 AM UTC
     scheduler.add_job(
@@ -68,7 +70,17 @@ def setup_scheduled_jobs():
         misfire_grace_time=3600,  # Allow 1 hour grace period
     )
     
-    logger.info("[SCHEDULER] Background jobs configured")
+    # Run skill health checks daily at 4 AM UTC
+    scheduler.add_job(
+        run_scheduled_health_checks,
+        CronTrigger(hour=4, minute=0),
+        id="skill_health_checks",
+        name="Daily Skill Health Checks",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    
+    logger.info("[SCHEDULER] Background jobs configured (memory + skills)")
 
 
 # =============================================================================
@@ -176,6 +188,7 @@ app.include_router(alphawave_files.router, prefix="/files", tags=["Files"])
 app.include_router(alphawave_journal.router, prefix="/journal", tags=["Journal"])
 app.include_router(alphawave_memories.router, prefix="/memories", tags=["Memories"])
 app.include_router(alphawave_projects.router, prefix="/projects", tags=["Projects"])
+app.include_router(alphawave_skills.router, prefix="/skills", tags=["Skills"])
 app.include_router(alphawave_sports_oracle.router, prefix="/sports", tags=["Sports Oracle"])
 app.include_router(alphawave_voice.router, prefix="/voice", tags=["Voice"])
 app.include_router(alphawave_webhooks.router, prefix="/webhooks", tags=["Webhooks"])

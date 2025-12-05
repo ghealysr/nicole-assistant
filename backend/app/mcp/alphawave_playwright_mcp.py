@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 
 class AlphawavePlaywrightMCP:
     """
-    Playwright MCP integration.
+    Browser automation MCP integration (via Puppeteer).
+    
+    Note: Uses the official @modelcontextprotocol/server-puppeteer server.
     
     Provides browser automation capabilities:
     - Navigate to pages
@@ -33,7 +35,7 @@ class AlphawavePlaywrightMCP:
     - Fill forms
     """
     
-    SERVER_NAME = "playwright"
+    SERVER_NAME = "puppeteer"  # Uses puppeteer MCP server
     
     def __init__(self):
         """Initialize Playwright MCP."""

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { AlphawaveSkillsTab } from './AlphawaveSkillsTab';
 
 interface AlphawaveMemoryDashboardProps {
   isOpen: boolean;
   onClose: () => void;
+  authToken?: string;
 }
 
 // Types for backend integration
@@ -105,8 +107,8 @@ const sampleStats: MemoryStats = {
  * - All tabs functional with placeholder data
  * - Ready for backend integration
  */
-export function AlphawaveMemoryDashboard({ isOpen, onClose }: AlphawaveMemoryDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'documents' | 'history' | 'system'>('overview');
+export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: AlphawaveMemoryDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'documents' | 'history' | 'skills' | 'system'>('overview');
   const [dashboardWidth, setDashboardWidth] = useState(520);
   const [isResizing, setIsResizing] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
@@ -237,7 +239,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose }: AlphawaveMemoryDas
 
         {/* Tabs */}
         <div className="mem-dash-tabs">
-          {(['overview', 'memories', 'documents', 'history', 'system'] as const).map(tab => (
+          {(['overview', 'memories', 'documents', 'history', 'skills', 'system'] as const).map(tab => (
             <button
               key={tab}
               className={`mem-dash-tab ${activeTab === tab ? 'mem-active' : ''}`}
@@ -570,6 +572,13 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose }: AlphawaveMemoryDas
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Skills Tab */}
+          {activeTab === 'skills' && (
+            <div className="mem-tab-panel">
+              <AlphawaveSkillsTab authToken={authToken} />
             </div>
           )}
 

@@ -448,64 +448,14 @@ class AgentOrchestrator:
             
             else:
                 # Try to execute a registered skill first
-                skill_meta = skill_runner.registry.get_skill(tool_name)
-                if skill_meta:
-                    if skill_meta.setup_status != "ready":
-                        return {
-                            "status": "not_ready",
-                            "message": (
-                                f"Skill '{tool_name}' is not ready (setup_status={skill_meta.setup_status}). "
-                                "Run the skill health check to enable it."
-                            ),
-                        }
-                    try:
-                        result = await skill_runner.run(
-                            skill_id=tool_name,
-                            payload=tool_input,
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                        )
-                    except SkillExecutionError as exec_err:
-                        await skill_run_service.record_failure(
-                            skill_meta=skill_meta,
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                            error_message=str(exec_err),
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Skill '{tool_name}' failed: {exec_err}",
-                        }
-                    # Update metadata
-                    skill_meta.last_run_at = result.finished_at.isoformat()
-                    skill_meta.last_run_status = result.status
-                    skill_runner.registry.update_skill(skill_meta)
-                    try:
-                        await self.skill_memory_manager.record_run(
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                            skill=skill_meta,
-                            result_status=result.status,
-                            output=result.output,
-                            log_file=str(result.log_file),
-                        )
-                    except Exception as mem_err:
-                        logger.warning(f"[ORCHESTRATOR] Failed to log skill memory: {mem_err}")
-                    try:
-                        await skill_run_service.record_success(
-                            skill_meta=skill_meta,
-                            result=result,
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                        )
-                    except Exception as run_log_err:
-                        logger.warning(f"[ORCHESTRATOR] Failed to persist skill run: {run_log_err}")
-                    return {
-                        "status": result.status,
-                        "output": result.output,
-                        "error": result.error,
-                        "log_file": str(result.log_file),
-                    }
+                skill_result = await self._execute_skill(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                )
+                if skill_result is not None:
+                    return skill_result
                 
                 # Try to execute as MCP tool
                 mcp_result = await self._execute_mcp_tool(tool_name, tool_input)
@@ -522,6 +472,194 @@ class AgentOrchestrator:
                     "status": "unknown_tool",
                     "message": f"Tool '{tool_name}' is not available"
                 }
+        
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Tool execution error: {e}", exc_info=True)
+            raise
+    
+    async def _execute_skill(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        user_id: int,
+        conversation_id: Optional[int],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute a skill with comprehensive validation and error handling.
+        
+        DEFENSIVE CHECKS:
+        1. Skill exists in registry
+        2. Skill status is "installed"
+        3. Skill executor type is executable (not manual)
+        4. Skill setup_status is "ready"
+        5. Install path exists
+        
+        Args:
+            tool_name: Skill ID to execute
+            tool_input: Payload parameters
+            user_id: Executing user
+            conversation_id: Associated conversation (optional)
+            
+        Returns:
+            Execution result dict, or None if not a skill
+        """
+        # Reload registry to ensure fresh state
+        skill_runner.registry.load()
+        skill_meta = skill_runner.registry.get_skill(tool_name)
+        
+        if not skill_meta:
+            return None  # Not a skill, let other handlers try
+        
+        # Define executable types
+        EXECUTABLE_TYPES = {"python", "python_script", "node", "node_script", "cli", "command"}
+        
+        # Check 1: Skill must be installed
+        if getattr(skill_meta, 'status', None) != "installed":
+            return {
+                "status": "not_installed",
+                "message": f"Skill '{tool_name}' is not installed (status={getattr(skill_meta, 'status', 'unknown')}).",
+                "skill_id": tool_name,
+            }
+        
+        # Check 2: Skill must have executable type
+        exec_type = skill_meta.executor.executor_type.lower() if skill_meta.executor else "unknown"
+        if exec_type not in EXECUTABLE_TYPES:
+            return {
+                "status": "manual_skill",
+                "message": (
+                    f"Skill '{tool_name}' is a manual skill (type={exec_type}) and cannot be executed programmatically. "
+                    f"Please refer to the skill documentation for usage instructions."
+                ),
+                "skill_id": tool_name,
+                "executor_type": exec_type,
+            }
+        
+        # Check 3: Skill must be ready (with graceful handling of missing field)
+        setup_status = getattr(skill_meta, 'setup_status', None)
+        if setup_status is None:
+            # Missing Phase 4 field - treat as needs_verification
+            setup_status = "needs_verification"
+            logger.warning(
+                f"[ORCHESTRATOR] Skill {tool_name} missing setup_status field. "
+                "Run skill_registry_migrate.py to fix."
+            )
+        
+        if setup_status != "ready":
+            status_guidance = {
+                "needs_configuration": "Configure required environment variables or credentials.",
+                "needs_verification": "Run skill health check to verify it works correctly.",
+                "manual_only": "This skill requires manual execution.",
+                "failed": "Previous health check failed. Review health_notes and retry.",
+            }
+            guidance = status_guidance.get(setup_status, "Contact support for assistance.")
+            
+            return {
+                "status": "not_ready",
+                "message": (
+                    f"Skill '{tool_name}' is not ready for execution.\n"
+                    f"Current status: {setup_status}\n"
+                    f"Action required: {guidance}"
+                ),
+                "skill_id": tool_name,
+                "setup_status": setup_status,
+                "health_notes": getattr(skill_meta, 'health_notes', []),
+            }
+        
+        # Check 4: Install path must exist
+        if skill_meta.install_path:
+            from pathlib import Path
+            PROJECT_ROOT = Path(__file__).resolve().parents[3]
+            install_dir = PROJECT_ROOT / skill_meta.install_path
+            if not install_dir.exists():
+                return {
+                    "status": "missing_files",
+                    "message": f"Skill '{tool_name}' installation directory not found: {skill_meta.install_path}",
+                    "skill_id": tool_name,
+                }
+        
+        # All checks passed - execute the skill
+        try:
+            result = await skill_runner.run(
+                skill_id=tool_name,
+                payload=tool_input,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+        except SkillExecutionError as exec_err:
+            # Record failure
+            try:
+                await skill_run_service.record_failure(
+                    skill_meta=skill_meta,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error_message=str(exec_err),
+                )
+            except Exception as record_err:
+                logger.warning(f"[ORCHESTRATOR] Failed to record skill failure: {record_err}")
+            
+            # Update skill metadata with failure
+            skill_meta.last_run_at = datetime.utcnow().isoformat()
+            skill_meta.last_run_status = "failed"
+            skill_meta.health_notes = getattr(skill_meta, 'health_notes', []) or []
+            skill_meta.health_notes.append(f"Execution failed: {str(exec_err)[:100]}")
+            try:
+                skill_runner.registry.update_skill(skill_meta)
+            except Exception:
+                pass
+            
+            return {
+                "status": "error",
+                "message": f"Skill '{tool_name}' execution failed: {exec_err}",
+                "skill_id": tool_name,
+            }
+        except Exception as unexpected_err:
+            logger.error(f"[ORCHESTRATOR] Unexpected skill error: {unexpected_err}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"Skill '{tool_name}' encountered an unexpected error: {type(unexpected_err).__name__}",
+                "skill_id": tool_name,
+            }
+        
+        # Update metadata with successful run
+        skill_meta.last_run_at = result.finished_at.isoformat()
+        skill_meta.last_run_status = result.status
+        try:
+            skill_runner.registry.update_skill(skill_meta)
+        except Exception as update_err:
+            logger.warning(f"[ORCHESTRATOR] Failed to update skill metadata: {update_err}")
+        
+        # Record to memory system (non-blocking)
+        try:
+            await self.skill_memory_manager.record_run(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                skill=skill_meta,
+                result_status=result.status,
+                output=result.output,
+                log_file=str(result.log_file),
+            )
+        except Exception as mem_err:
+            logger.warning(f"[ORCHESTRATOR] Failed to log skill memory: {mem_err}")
+        
+        # Persist to database (non-blocking)
+        try:
+            await skill_run_service.record_success(
+                skill_meta=skill_meta,
+                result=result,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+        except Exception as run_log_err:
+            logger.warning(f"[ORCHESTRATOR] Failed to persist skill run: {run_log_err}")
+        
+        return {
+            "status": result.status,
+            "output": result.output,
+            "error": result.error,
+            "log_file": str(result.log_file),
+            "skill_id": tool_name,
+            "duration_seconds": result.duration_seconds,
+        }
     
     async def _execute_mcp_tool(
         self,
@@ -575,10 +713,6 @@ class AgentOrchestrator:
             pass
         
         return None
-                
-        except Exception as e:
-            logger.error(f"[ORCHESTRATOR] Tool execution error: {e}", exc_info=True)
-            raise
     
     def get_tool_executor(self, user_id: int, session_id: Optional[str] = None):
         """
