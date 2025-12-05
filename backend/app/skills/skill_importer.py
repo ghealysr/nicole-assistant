@@ -133,17 +133,246 @@ class SkillImporter:
         elif manifest_path.suffix == ".json":
             data = json.loads(manifest_path.read_text())
         elif manifest_path.name.lower() == "skill.md":
-            lines = manifest_path.read_text().splitlines()
-            title = next((ln.strip("# ").strip() for ln in lines if ln.startswith("#")), manifest_path.parent.name)
-            data = {
-                "name": title,
-                "description": f"Imported from {manifest_path}",
-                "executor": {"type": "manual", "entrypoint": "README-driven"},
-            }
+            data = self._parse_skill_md(manifest_path)
         else:
             raise ValueError(f"Unsupported manifest format: {manifest_path}")
 
         return data
+
+    def _parse_skill_md(self, manifest_path: Path) -> Dict[str, Any]:
+        """
+        Parse SKILL.md format with enhanced metadata extraction.
+        
+        Extracts:
+        - Title from first H1 heading
+        - Description from opening paragraph
+        - Capabilities from "Features" or "Capabilities" section
+        - Usage examples from "Usage" or "Examples" section
+        - Trigger phrases from "Commands" or code blocks
+        - Executor type inferred from file extensions
+        
+        SKILL.md Format (typical Claude Code skill):
+        ```markdown
+        # Skill Name
+        
+        Short description paragraph.
+        
+        ## Features
+        - Feature 1
+        - Feature 2
+        
+        ## Usage
+        ```command
+        example-command --flag
+        ```
+        ```
+        """
+        content = manifest_path.read_text()
+        lines = content.splitlines()
+        skill_dir = manifest_path.parent
+        
+        # Extract title
+        title = None
+        for line in lines:
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+        title = title or skill_dir.name
+        
+        # Extract description (first paragraph after title)
+        description = ""
+        in_paragraph = False
+        paragraph_lines = []
+        for line in lines:
+            if line.startswith("#"):
+                if in_paragraph:
+                    break
+                continue
+            
+            stripped = line.strip()
+            if not stripped:
+                if paragraph_lines:
+                    break
+                continue
+            
+            paragraph_lines.append(stripped)
+            in_paragraph = True
+        
+        description = " ".join(paragraph_lines) if paragraph_lines else f"Skill imported from {manifest_path.name}"
+        
+        # Extract features/capabilities from bullet points
+        capabilities = []
+        features_section = self._extract_section(content, ["features", "capabilities", "what it does"])
+        if features_section:
+            for line in features_section.splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("-", "*", "•")):
+                    feature = stripped.lstrip("-*• ").strip()
+                    if feature and len(feature) > 5:
+                        capabilities.append({
+                            "domain": self._infer_domain(feature),
+                            "description": feature,
+                            "tags": self._extract_tags(feature),
+                        })
+        
+        # Extract usage examples
+        examples = []
+        usage_section = self._extract_section(content, ["usage", "examples", "how to use"])
+        if usage_section:
+            # Find code blocks
+            code_block_pattern = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+            for match in code_block_pattern.finditer(usage_section):
+                code = match.group(1).strip()
+                if code:
+                    examples.append(code)
+            
+            # Also capture inline code
+            inline_code_pattern = re.compile(r"`([^`]+)`")
+            for match in inline_code_pattern.finditer(usage_section):
+                code = match.group(1).strip()
+                if code and len(code) > 3 and code not in examples:
+                    examples.append(code)
+        
+        # Extract trigger phrases from commands section
+        trigger_phrases = []
+        commands_section = self._extract_section(content, ["commands", "triggers", "invocation"])
+        if commands_section:
+            for line in commands_section.splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("-", "*", "•")):
+                    trigger = stripped.lstrip("-*• ").strip()
+                    if trigger:
+                        trigger_phrases.append(trigger)
+        
+        # Infer executor type from files in directory
+        executor_type, entrypoint = self._infer_executor(skill_dir)
+        
+        # Build normalized manifest
+        data = {
+            "name": title,
+            "description": description[:500],  # Truncate if too long
+            "executor": {
+                "type": executor_type,
+                "entrypoint": entrypoint,
+            },
+            "capabilities": capabilities if capabilities else [{
+                "domain": self._infer_domain(description),
+                "description": description,
+                "tags": self._extract_tags(title + " " + description),
+            }],
+            "examples": examples[:5],  # Keep top 5 examples
+        }
+        
+        # Add trigger phrases to first capability
+        if trigger_phrases and data["capabilities"]:
+            data["capabilities"][0]["trigger_phrases"] = trigger_phrases[:10]
+        
+        return data
+
+    def _extract_section(self, content: str, headers: list) -> Optional[str]:
+        """Extract content under a specific section header."""
+        lines = content.splitlines()
+        in_section = False
+        section_lines = []
+        
+        for line in lines:
+            stripped = line.strip().lower()
+            
+            # Check if we hit a new section
+            if stripped.startswith("##"):
+                section_name = stripped.lstrip("#").strip()
+                if any(h in section_name for h in headers):
+                    in_section = True
+                    continue
+                elif in_section:
+                    break  # Hit next section
+            
+            if in_section:
+                section_lines.append(line)
+        
+        return "\n".join(section_lines) if section_lines else None
+
+    def _infer_executor(self, skill_dir: Path) -> tuple:
+        """
+        Infer executor type and entrypoint from files in directory.
+        
+        Returns:
+            Tuple of (executor_type, entrypoint)
+        """
+        # Check for common entrypoints in order of preference
+        entrypoint_checks = [
+            ("main.py", "python"),
+            ("index.py", "python"),
+            ("run.py", "python"),
+            ("__main__.py", "python"),
+            ("index.js", "node"),
+            ("main.js", "node"),
+            ("index.ts", "node"),
+            ("main.ts", "node"),
+            ("cli.py", "python"),
+            ("cli.js", "node"),
+        ]
+        
+        for filename, exec_type in entrypoint_checks:
+            if (skill_dir / filename).exists():
+                return exec_type, filename
+        
+        # Check for shell scripts
+        for ext in [".sh", ".bash"]:
+            for f in skill_dir.glob(f"*{ext}"):
+                return "cli", f.name
+        
+        # Fallback based on file extensions present
+        py_files = list(skill_dir.glob("*.py"))
+        js_files = list(skill_dir.glob("*.js")) + list(skill_dir.glob("*.ts"))
+        
+        if py_files:
+            return "python", py_files[0].name
+        if js_files:
+            return "node", js_files[0].name
+        
+        # Default to manual if no executable found
+        return "manual", "README-driven"
+
+    def _infer_domain(self, text: str) -> str:
+        """Infer capability domain from text."""
+        text_lower = text.lower()
+        
+        domain_keywords = {
+            "automation": ["automat", "browser", "playwright", "selenium", "puppeteer", "scrape"],
+            "coding": ["code", "program", "debug", "refactor", "lint", "compile", "git"],
+            "mobile": ["ios", "android", "mobile", "simulator", "emulator", "react native"],
+            "communication": ["email", "slack", "discord", "telegram", "message", "notify"],
+            "data": ["data", "database", "sql", "query", "csv", "json", "api"],
+            "ai": ["ai", "ml", "model", "gpt", "claude", "embedding", "vector"],
+            "filesystem": ["file", "directory", "folder", "path", "read", "write"],
+            "devops": ["deploy", "docker", "kubernetes", "ci", "cd", "build", "server"],
+            "security": ["security", "auth", "encrypt", "password", "token", "secret"],
+        }
+        
+        for domain, keywords in domain_keywords.items():
+            if any(kw in text_lower for kw in keywords):
+                return domain
+        
+        return "general"
+
+    def _extract_tags(self, text: str) -> list:
+        """Extract relevant tags from text."""
+        text_lower = text.lower()
+        
+        potential_tags = [
+            "python", "javascript", "node", "typescript", "rust", "go",
+            "browser", "automation", "testing", "api", "cli", "gui",
+            "ios", "android", "mobile", "web", "desktop",
+            "database", "sql", "nosql", "file", "filesystem",
+            "ai", "ml", "llm", "gpt", "claude", "embedding",
+            "security", "auth", "encryption",
+            "docker", "kubernetes", "devops", "ci", "cd",
+            "git", "github", "gitlab", "bitbucket",
+            "email", "slack", "discord", "telegram",
+        ]
+        
+        return [tag for tag in potential_tags if tag in text_lower][:5]  # Max 5 tags
 
     def install_skill(
         self,

@@ -334,8 +334,39 @@ export function AlphawaveSkillsTab({ authToken }: AlphawaveSkillsTabProps) {
     }
   };
 
+  // If no auth token, show graceful fallback with sample data
+  const isOfflineMode = !authToken;
+
   return (
     <div className="skills-tab">
+      {/* Offline Mode Banner */}
+      {isOfflineMode && (
+        <div className="skills-offline-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div className="skills-offline-text">
+            <strong>Preview Mode</strong>
+            <span>Showing sample data. Sign in to view your actual skills.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error Banner */}
+      {error && (
+        <div className="skills-error-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>Dismiss</button>
+        </div>
+      )}
+
       {/* Summary Widget */}
       <div className="mem-widget">
         <div className="mem-widget-header">

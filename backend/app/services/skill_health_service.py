@@ -240,6 +240,19 @@ class SkillHealthService:
                 result.notes.append("Test suite failed")
                 result.passed = False
         
+        # Check 6: Functional probe - try to actually invoke the skill
+        if result.passed:
+            result.checks_performed.append("functional_probe")
+            probe_result = await self._run_functional_probe(skill)
+            if probe_result["success"]:
+                result.checks_passed.append("functional_probe")
+                result.notes.append(f"Probe succeeded in {probe_result.get('duration_ms', 0):.0f}ms")
+            else:
+                result.checks_failed.append("functional_probe")
+                result.notes.append(f"Probe failed: {probe_result.get('error', 'Unknown error')}")
+                result.passed = False
+                result.new_status = "needs_verification"
+        
         # Determine final status
         if result.passed:
             result.new_status = "ready"
@@ -418,6 +431,109 @@ class SkillHealthService:
                 return False
         
         return True
+
+    async def _run_functional_probe(self, skill: SkillMetadata) -> Dict[str, Any]:
+        """
+        Run a functional probe to verify the skill can actually execute.
+        
+        This performs a minimal execution test:
+        1. For Python: Import the entrypoint module
+        2. For Node: Check if the entrypoint is valid JS
+        3. For CLI: Check if the command is available
+        
+        Args:
+            skill: The skill to probe
+            
+        Returns:
+            Dict with 'success', 'error', and 'duration_ms'
+        """
+        import time
+        
+        start = time.monotonic()
+        exec_type = skill.executor.executor_type.lower()
+        install_dir = PROJECT_ROOT / skill.install_path if skill.install_path else None
+        
+        if not install_dir or not install_dir.exists():
+            return {"success": False, "error": "Install directory not found"}
+        
+        try:
+            if exec_type in ("python", "python_script"):
+                # Try to import the Python module
+                entrypoint = skill.executor.entrypoint or "main.py"
+                entrypoint_file = entrypoint.split()[0]
+                entrypoint_path = install_dir / entrypoint_file
+                
+                # Check syntax by compiling
+                result = subprocess.run(
+                    ["python3", "-m", "py_compile", str(entrypoint_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=install_dir,
+                )
+                
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "error": f"Python syntax error: {result.stderr[:200]}",
+                        "duration_ms": (time.monotonic() - start) * 1000,
+                    }
+                    
+            elif exec_type in ("node", "node_script"):
+                # Check if node can parse the file
+                entrypoint = skill.executor.entrypoint or "index.js"
+                entrypoint_file = entrypoint.split()[0]
+                entrypoint_path = install_dir / entrypoint_file
+                
+                result = subprocess.run(
+                    ["node", "--check", str(entrypoint_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=install_dir,
+                )
+                
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "error": f"Node syntax error: {result.stderr[:200]}",
+                        "duration_ms": (time.monotonic() - start) * 1000,
+                    }
+                    
+            elif exec_type in ("cli", "command"):
+                # Check if the command exists
+                entrypoint = skill.executor.entrypoint
+                command = entrypoint.split()[0]
+                
+                result = subprocess.run(
+                    ["which", command],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "error": f"Command not found: {command}",
+                        "duration_ms": (time.monotonic() - start) * 1000,
+                    }
+            
+            duration_ms = (time.monotonic() - start) * 1000
+            return {"success": True, "duration_ms": duration_ms}
+            
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Probe timed out",
+                "duration_ms": (time.monotonic() - start) * 1000,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "duration_ms": (time.monotonic() - start) * 1000,
+            }
     
     def get_status_summary(self) -> Dict[str, Any]:
         """Get summary of all skill statuses."""

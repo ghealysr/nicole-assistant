@@ -667,52 +667,129 @@ class AgentOrchestrator:
         tool_input: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        Execute a tool via MCP.
+        Execute a tool via MCP with comprehensive error handling.
+        
+        MCP INTEGRATION STATUS:
+        - MCP servers are optional external integrations
+        - If no servers configured, gracefully return None
+        - If server disconnected, provide clear error message
+        - If tool not found, return None (let other handlers try)
         
         Args:
             tool_name: Name of the tool
             tool_input: Tool input parameters
             
         Returns:
-            Tool result or None if tool not found
+            Tool result dict on success/error, None if tool not found in MCP
         """
-        # Check if this is an MCP tool
-        if isinstance(mcp_manager, AlphawaveMCPManager):
-            mcp_tool = mcp_manager.get_tool(tool_name)
-            if mcp_tool:
-                logger.info(f"[ORCHESTRATOR] Executing MCP tool: {tool_name} via {mcp_tool.server_name}")
-                
-                result = await call_mcp_tool(tool_name, tool_input)
-                
-                # Check for errors
-                if "error" in result:
-                    logger.warning(f"[ORCHESTRATOR] MCP tool error: {result['error']}")
-                    return {
-                        "status": "error",
-                        "message": result.get("error"),
-                        "tool": tool_name
-                    }
-                
-                return {
-                    "status": "success",
-                    "result": result.get("result", result),
-                    "tool": tool_name,
-                    "server": mcp_tool.server_name
-                }
+        # Check if MCP is properly initialized
+        if not self._mcp_initialized:
+            logger.debug(f"[ORCHESTRATOR] MCP not initialized, skipping for {tool_name}")
+            return None
         
-        # Also check fallback manager
+        # Check if MCP manager is the full implementation
+        if not isinstance(mcp_manager, AlphawaveMCPManager):
+            logger.debug(f"[ORCHESTRATOR] MCP using fallback manager, skipping for {tool_name}")
+            return None
+        
+        # Try to get tool from MCP manager
+        mcp_tool = mcp_manager.get_tool(tool_name)
+        
+        if not mcp_tool:
+            # Tool not found in MCP - let other handlers try
+            return None
+        
+        # Verify server connection
+        server_name = mcp_tool.server_name
+        server_status = mcp_manager.get_server_status(server_name) if hasattr(mcp_manager, 'get_server_status') else None
+        
+        if server_status and not server_status.get("connected"):
+            return {
+                "status": "mcp_disconnected",
+                "message": (
+                    f"MCP server '{server_name}' is not connected. "
+                    f"This tool requires the {server_name} integration to be configured and running. "
+                    "Check server logs or contact support."
+                ),
+                "tool": tool_name,
+                "server": server_name,
+                "remediation": f"Verify {server_name} MCP server is running and credentials are configured."
+            }
+        
+        logger.info(f"[ORCHESTRATOR] Executing MCP tool: {tool_name} via {server_name}")
+        
         try:
             result = await call_mcp_tool(tool_name, tool_input)
-            if "error" not in result or "not found" not in result.get("error", "").lower():
+            
+            # Check for structured errors
+            if isinstance(result, dict) and "error" in result:
+                error_msg = result.get("error", "Unknown MCP error")
+                
+                # Provide context-aware remediation hints
+                remediation = self._get_mcp_error_remediation(tool_name, server_name, error_msg)
+                
+                logger.warning(f"[ORCHESTRATOR] MCP tool error: {error_msg}")
                 return {
-                    "status": "success",
-                    "result": result.get("result", result),
-                    "tool": tool_name
+                    "status": "error",
+                    "message": error_msg,
+                    "tool": tool_name,
+                    "server": server_name,
+                    "remediation": remediation,
                 }
-        except Exception:
-            pass
+            
+            return {
+                "status": "success",
+                "result": result.get("result", result) if isinstance(result, dict) else result,
+                "tool": tool_name,
+                "server": server_name,
+            }
+            
+        except ConnectionError as conn_err:
+            return {
+                "status": "connection_error",
+                "message": f"Failed to connect to MCP server '{server_name}': {conn_err}",
+                "tool": tool_name,
+                "server": server_name,
+                "remediation": "Check network connectivity and server status.",
+            }
+        except TimeoutError as timeout_err:
+            return {
+                "status": "timeout",
+                "message": f"MCP tool '{tool_name}' timed out: {timeout_err}",
+                "tool": tool_name,
+                "server": server_name,
+                "remediation": "The operation took too long. Try with simpler inputs or check server load.",
+            }
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] MCP execution error: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"MCP tool execution failed: {type(e).__name__}: {str(e)[:200]}",
+                "tool": tool_name,
+                "server": server_name,
+            }
+    
+    def _get_mcp_error_remediation(self, tool_name: str, server_name: str, error_msg: str) -> str:
+        """Get context-aware remediation hints for MCP errors."""
+        error_lower = error_msg.lower()
         
-        return None
+        # Auth errors
+        if any(term in error_lower for term in ["auth", "token", "credential", "permission", "401", "403"]):
+            return f"Check your {server_name} credentials in the MCP configuration."
+        
+        # Not found errors
+        if any(term in error_lower for term in ["not found", "404", "does not exist"]):
+            return f"The requested resource may have been deleted or you may not have access."
+        
+        # Rate limit errors
+        if any(term in error_lower for term in ["rate", "limit", "429", "quota"]):
+            return "You've hit an API rate limit. Wait a moment and try again."
+        
+        # Input validation errors
+        if any(term in error_lower for term in ["invalid", "validation", "required", "missing"]):
+            return f"Check the input parameters for {tool_name}. Some required fields may be missing."
+        
+        return f"Review the error message and {server_name} documentation for guidance."
     
     def get_tool_executor(self, user_id: int, session_id: Optional[str] = None):
         """
