@@ -5,6 +5,7 @@ Built according to Agent 1 specifications for production-quality backend.
 Includes:
 - Database lifecycle management
 - Background job scheduler (APScheduler)
+- MCP (Model Context Protocol) integrations
 - Middleware stack (CORS, logging, auth, rate limiting)
 - All API routers
 """
@@ -17,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.config import settings
+from app.mcp import initialize_mcp, shutdown_mcp
 from app.middleware.alphawave_cors import configure_cors
 from app.middleware.alphawave_logging import logging_middleware
 from app.middleware.alphawave_auth import verify_jwt
@@ -106,12 +108,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Workflow scheduler failed to initialize (non-critical): {e}")
     
+    # Initialize MCP (Model Context Protocol) servers
+    try:
+        mcp_results = await initialize_mcp()
+        connected = [k for k, v in mcp_results.items() if v]
+        if connected:
+            logger.info(f"[STARTUP] MCP servers connected: {connected}")
+        else:
+            logger.info("[STARTUP] MCP initialized (no servers connected yet)")
+    except Exception as e:
+        logger.warning(f"[STARTUP] MCP failed to initialize (non-critical): {e}")
+    
     logger.info("[STARTUP] Nicole V7 API ready")
     
     yield  # Application runs here
     
     # Shutdown
     logger.info("[SHUTDOWN] Shutting down Nicole V7 API...")
+    
+    # Disconnect MCP servers
+    try:
+        await shutdown_mcp()
+        logger.info("[SHUTDOWN] MCP servers disconnected")
+    except Exception as e:
+        logger.debug(f"[SHUTDOWN] MCP shutdown: {e}")
     
     # Stop workflow scheduler
     try:

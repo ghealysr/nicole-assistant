@@ -126,6 +126,16 @@ qdrant-client==1.12.0
 # Performance: Optimized for high-dimensional vectors
 
 # ─────────────────────────────────────────────────────────────────────────
+# MCP (MODEL CONTEXT PROTOCOL)
+# ─────────────────────────────────────────────────────────────────────────
+
+mcp>=1.0.0
+# Official MCP Python SDK for connecting to MCP servers
+# Used for: Tool execution, resource access, external integrations
+# Servers: Google Workspace, Notion, Filesystem, Playwright, etc.
+# Features: stdio transport, SSE transport, tool discovery
+
+# ─────────────────────────────────────────────────────────────────────────
 # BACKGROUND JOBS & SCHEDULING
 # ─────────────────────────────────────────────────────────────────────────
 

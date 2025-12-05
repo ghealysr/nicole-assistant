@@ -7,6 +7,7 @@ Central orchestration service that wires together:
 - Tool Examples (enhanced accuracy)
 - Memory operations
 - Document operations
+- MCP tools (Google, Notion, Telegram, Filesystem, Playwright)
 
 This is the integration layer that connects all agent architecture
 components to the chat router.
@@ -29,6 +30,14 @@ from app.skills.skill_memory import get_skill_memory_manager
 from app.services.skill_run_service import skill_run_service
 from app.skills.adapters.base import SkillExecutionError
 
+# MCP imports
+from app.mcp import (
+    mcp_manager,
+    get_mcp_tools,
+    call_mcp_tool,
+    AlphawaveMCPManager,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,12 +50,42 @@ class AgentOrchestrator:
     2. Execute tool calls from Claude
     3. Track thinking sessions
     4. Manage tool discovery and loading
+    5. Route MCP tool calls to appropriate servers
     """
     
     def __init__(self):
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
         self.skill_memory_manager = get_skill_memory_manager(skill_runner.registry)
+        self._mcp_initialized = False
         logger.info("[ORCHESTRATOR] Agent Orchestrator initialized")
+    
+    async def initialize_mcp(self) -> Dict[str, bool]:
+        """
+        Initialize MCP connections on startup.
+        
+        Call this during application startup.
+        
+        Returns:
+            Dict mapping server names to connection success
+        """
+        if self._mcp_initialized:
+            return {}
+        
+        if isinstance(mcp_manager, AlphawaveMCPManager):
+            results = await mcp_manager.connect_enabled_servers()
+            self._mcp_initialized = True
+            logger.info(f"[ORCHESTRATOR] MCP initialized: {results}")
+            return results
+        
+        logger.info("[ORCHESTRATOR] MCP not available (using fallback)")
+        self._mcp_initialized = True
+        return {}
+    
+    def get_mcp_status(self) -> Dict[str, Any]:
+        """Get MCP server status summary."""
+        if isinstance(mcp_manager, AlphawaveMCPManager):
+            return mcp_manager.get_status_summary()
+        return {"status": "fallback", "servers": {}}
     
     def get_core_tools(self) -> List[Dict[str, Any]]:
         """
@@ -154,8 +193,44 @@ class AgentOrchestrator:
             }),
         ]
         
+        # Add skill tools
         core_tools.extend(self._get_skill_tools())
+        
+        # Add MCP tools (Google, Notion, Telegram, Filesystem, Playwright)
+        core_tools.extend(self._get_mcp_tools())
+        
         return core_tools
+    
+    def _get_mcp_tools(self) -> List[Dict[str, Any]]:
+        """
+        Get tool definitions from connected MCP servers.
+        
+        These tools are dynamically discovered from MCP servers:
+        - Google Workspace (Gmail, Calendar, Drive)
+        - Notion (databases, pages)
+        - Telegram (messaging)
+        - Filesystem (file operations)
+        - Playwright (web automation)
+        
+        Returns:
+            List of tool definitions in Claude format
+        """
+        try:
+            mcp_tools = get_mcp_tools()
+            
+            if mcp_tools:
+                logger.info(f"[ORCHESTRATOR] Loaded {len(mcp_tools)} MCP tools")
+                # Enhance with examples where available
+                return [
+                    tool_examples_service.enhance_tool_schema(tool)
+                    for tool in mcp_tools
+                ]
+            
+            return []
+            
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Failed to get MCP tools: {e}")
+            return []
 
     def _get_skill_tools(self) -> List[Dict[str, Any]]:
         """Generate tool definitions for installed skills.
@@ -372,7 +447,7 @@ class AgentOrchestrator:
                 }
             
             else:
-                # Try to execute a registered skill
+                # Try to execute a registered skill first
                 skill_meta = skill_runner.registry.get_skill(tool_name)
                 if skill_meta:
                     if skill_meta.setup_status != "ready":
@@ -432,19 +507,74 @@ class AgentOrchestrator:
                         "log_file": str(result.log_file),
                     }
                 
+                # Try to execute as MCP tool
+                mcp_result = await self._execute_mcp_tool(tool_name, tool_input)
+                if mcp_result is not None:
+                    return mcp_result
+                
                 # Try to find a dynamically registered tool
                 tool = tool_search_service.get_tool(tool_name)
                 if tool and tool.mcp_server:
-                    # TODO: Route to appropriate MCP server
-                    return {
-                        "status": "not_implemented",
-                        "message": f"Tool {tool_name} from MCP server {tool.mcp_server} is not yet connected"
-                    }
+                    # Route to MCP server
+                    return await self._execute_mcp_tool(tool_name, tool_input)
                 
                 return {
                     "status": "unknown_tool",
                     "message": f"Tool '{tool_name}' is not available"
                 }
+    
+    async def _execute_mcp_tool(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute a tool via MCP.
+        
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input parameters
+            
+        Returns:
+            Tool result or None if tool not found
+        """
+        # Check if this is an MCP tool
+        if isinstance(mcp_manager, AlphawaveMCPManager):
+            mcp_tool = mcp_manager.get_tool(tool_name)
+            if mcp_tool:
+                logger.info(f"[ORCHESTRATOR] Executing MCP tool: {tool_name} via {mcp_tool.server_name}")
+                
+                result = await call_mcp_tool(tool_name, tool_input)
+                
+                # Check for errors
+                if "error" in result:
+                    logger.warning(f"[ORCHESTRATOR] MCP tool error: {result['error']}")
+                    return {
+                        "status": "error",
+                        "message": result.get("error"),
+                        "tool": tool_name
+                    }
+                
+                return {
+                    "status": "success",
+                    "result": result.get("result", result),
+                    "tool": tool_name,
+                    "server": mcp_tool.server_name
+                }
+        
+        # Also check fallback manager
+        try:
+            result = await call_mcp_tool(tool_name, tool_input)
+            if "error" not in result or "not found" not in result.get("error", "").lower():
+                return {
+                    "status": "success",
+                    "result": result.get("result", result),
+                    "tool": tool_name
+                }
+        except Exception:
+            pass
+        
+        return None
                 
         except Exception as e:
             logger.error(f"[ORCHESTRATOR] Tool execution error: {e}", exc_info=True)

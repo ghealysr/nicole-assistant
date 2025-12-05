@@ -6,9 +6,11 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from datetime import datetime
 import logging
+from typing import Any
 
 from app.database import get_redis, get_qdrant, get_supabase, get_tiger_pool
 from app.config import settings
+from app.services.agent_orchestrator import agent_orchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,3 +93,58 @@ async def ping() -> dict:
         Pong response
     """
     return {"ping": "pong", "timestamp": datetime.utcnow().isoformat()}
+
+
+@router.get("/mcp")
+async def mcp_status() -> dict:
+    """
+    MCP (Model Context Protocol) server status.
+    
+    Shows status of all configured MCP servers:
+    - google: Gmail, Calendar, Drive
+    - notion: Databases, Pages
+    - telegram: Bot messaging
+    - filesystem: File operations
+    - playwright: Web automation
+    - sequential-thinking: Reasoning visualization
+    
+    Returns:
+        MCP server status summary
+    """
+    status = agent_orchestrator.get_mcp_status()
+    
+    return {
+        "mcp_status": "operational" if status.get("connected_servers", 0) > 0 else "available",
+        "connected_servers": status.get("connected_servers", 0),
+        "total_tools": status.get("total_tools", 0),
+        "servers": status.get("servers", {}),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.post("/mcp/connect/{server_name}")
+async def connect_mcp_server(server_name: str) -> dict:
+    """
+    Manually connect to a specific MCP server.
+    
+    Args:
+        server_name: Name of the server (google, notion, telegram, etc.)
+        
+    Returns:
+        Connection result
+    """
+    from app.mcp import mcp_manager, AlphawaveMCPManager
+    
+    if not isinstance(mcp_manager, AlphawaveMCPManager):
+        return {
+            "status": "unavailable",
+            "message": "MCP manager using fallback mode (npx not available)"
+        }
+    
+    success = await mcp_manager.connect_server(server_name)
+    
+    return {
+        "status": "connected" if success else "failed",
+        "server": server_name,
+        "timestamp": datetime.utcnow().isoformat()
+    }
