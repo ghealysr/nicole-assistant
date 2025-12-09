@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_ALLOWED_DOMAINS: str = "alphawavetech.com"  # Comma-separated domains
-    GOOGLE_ALLOWED_EMAILS: str = ""  # Comma-separated specific emails (e.g., personal Gmail)
+    GOOGLE_ALLOWED_EMAILS: str = "ghealysr@gmail.com"  # Comma-separated specific emails
 
     # MCP Integrations
     TELEGRAM_BOT_TOKEN: Optional[str] = None
