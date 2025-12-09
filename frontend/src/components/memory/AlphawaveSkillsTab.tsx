@@ -265,9 +265,46 @@ export function AlphawaveSkillsTab({ authToken }: AlphawaveSkillsTabProps) {
 
   // Initial load
   useEffect(() => {
-    if (authToken) {
-      fetchSkills();
-    }
+    const loadSkills = async () => {
+      if (!authToken) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`${API_BASE}/skills/`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setSkills(data.skills || []);
+        }
+        
+        // Fetch summary
+        const summaryResponse = await fetch(`${API_BASE}/skills/summary`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (summaryResponse.ok) {
+          const summaryData = await summaryResponse.json();
+          setSummary(summaryData);
+        }
+      } catch (err) {
+        console.error('Failed to fetch skills:', err);
+        setError('Failed to load skills data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadSkills();
   }, [authToken]);
 
   // Filter skills

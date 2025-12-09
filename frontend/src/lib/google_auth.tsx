@@ -82,7 +82,7 @@ interface GoogleAuthContextValue {
 const GoogleAuthContext = createContext<GoogleAuthContextValue | null>(null);
 
 // Decode JWT payload (no verification - server does that)
-function decodeJwtPayload(token: string): Record<string, any> | null {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -102,7 +102,8 @@ function decodeJwtPayload(token: string): Record<string, any> | null {
 function isTokenExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return true;
-  return Date.now() >= payload.exp * 1000;
+  const exp = payload.exp as number;
+  return Date.now() >= exp * 1000;
 }
 
 // Extract user info from token
@@ -110,12 +111,14 @@ function getUserFromToken(token: string): GoogleUser | null {
   const payload = decodeJwtPayload(token);
   if (!payload) return null;
   
+  const email = payload.email as string | undefined;
+  
   return {
-    id: payload.sub,
-    email: payload.email,
-    name: payload.name || payload.email?.split('@')[0] || 'User',
-    picture: payload.picture || '',
-    email_verified: payload.email_verified || false,
+    id: payload.sub as string,
+    email: email || '',
+    name: (payload.name as string) || email?.split('@')[0] || 'User',
+    picture: (payload.picture as string) || '',
+    email_verified: (payload.email_verified as boolean) || false,
   };
 }
 

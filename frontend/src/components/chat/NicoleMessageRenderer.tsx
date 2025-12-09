@@ -24,7 +24,6 @@ import {
   FileCard,
   StyledTable,
   NoteCard,
-  FileBadge,
   nicoleColors,
   type ThinkingStep,
 } from './NicoleThinkingUI';
@@ -59,6 +58,7 @@ interface NoteBlockData {
 interface TableData {
   headers: string[];
   rows: string[][];
+  [key: string]: unknown;
 }
 
 // ============================================================================
@@ -76,7 +76,7 @@ function parseThinkingBlock(content: string): ThinkingBlockData | null {
   if (!stepsMatch) return null;
   
   const stepTexts = stepsMatch[1].split('|');
-  const steps: ThinkingStep[] = stepTexts.map((text, index) => ({
+  const steps: ThinkingStep[] = stepTexts.map((text) => ({
     description: text.trim(),
     status: 'complete' as const, // All steps complete when rendered in final response
     file: undefined,
@@ -95,7 +95,7 @@ function parseThinkingBlock(content: string): ThinkingBlockData | null {
 function parseFileBlock(content: string): FileBlockData | null {
   const nameMatch = content.match(/name="([^"]+)"/);
   const typeMatch = content.match(/type="([^"]+)"/);
-  const contentMatch = content.match(/>([^<]*)</s);
+  const contentMatch = content.match(/>([^<]*)</);
   
   if (!nameMatch) return null;
   
@@ -113,7 +113,7 @@ function parseFileBlock(content: string): FileBlockData | null {
 function parseNoteBlock(content: string): NoteBlockData | null {
   const titleMatch = content.match(/title="([^"]+)"/);
   const iconMatch = content.match(/icon="([^"]+)"/);
-  const contentMatch = content.match(/>([^<]*)</s);
+  const contentMatch = content.match(/>([^<]*)</);
   
   return {
     title: titleMatch ? titleMatch[1] : undefined,
@@ -154,7 +154,6 @@ function parseMarkdownTable(content: string): TableData | null {
  */
 function parseMessageContent(content: string): ParsedBlock[] {
   const blocks: ParsedBlock[] = [];
-  let remaining = content;
   
   // Regex patterns for special blocks
   const patterns = [

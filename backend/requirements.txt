@@ -63,6 +63,11 @@ pydantic-settings==2.6.0
 # AUTHENTICATION & SECURITY
 # ─────────────────────────────────────────────────────────────────────────
 
+google-auth>=2.23.0
+# Google OAuth 2.0 authentication library
+# Used for: Google ID token verification in auth middleware
+# Features: Token verification, JWKS caching, issuer validation
+
 PyJWT==2.9.0
 # JWT token encoding/decoding for authentication
 # Used for: JWT verification in auth middleware, Supabase token validation
