@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoogleAuth } from '@/lib/google_auth';
 import { useRouter } from 'next/navigation';
 
@@ -13,10 +13,10 @@ import { useRouter } from 'next/navigation';
  * - Restricted to @alphawavetech.com and allowed personal emails
  */
 export default function LoginPage() {
-  const { isAuthenticated, isLoading, renderSignInButton } = useGoogleAuth();
+  const { isAuthenticated, isLoading, isGoogleReady, renderSignInButton } = useGoogleAuth();
   const router = useRouter();
   const buttonContainerRef = useRef<HTMLDivElement>(null);
-  const buttonRendered = useRef(false);
+  const [buttonRendered, setButtonRendered] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -25,17 +25,13 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, router]);
 
-  // Render Google Sign-In button
+  // Render Google Sign-In button when Google script is ready
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && !buttonRendered.current) {
-      // Small delay to ensure Google script is loaded
-      const timer = setTimeout(() => {
-        renderSignInButton('google-signin-button');
-        buttonRendered.current = true;
-      }, 100);
-      return () => clearTimeout(timer);
+    if (isGoogleReady && !isAuthenticated && !buttonRendered) {
+      renderSignInButton('google-signin-button');
+      setButtonRendered(true);
     }
-  }, [isLoading, isAuthenticated, renderSignInButton]);
+  }, [isGoogleReady, isAuthenticated, buttonRendered, renderSignInButton]);
 
   // Show loading while checking auth
   if (isLoading) {

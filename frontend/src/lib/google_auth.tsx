@@ -74,6 +74,7 @@ interface GoogleAuthContextValue {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isGoogleReady: boolean;
   signIn: () => void;
   signOut: () => void;
   renderSignInButton: (elementId: string) => void;
@@ -259,6 +260,7 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     token,
     isLoading,
     isAuthenticated: !!token && !!user,
+    isGoogleReady: isGsiLoaded && !!clientId,
     signIn,
     signOut,
     renderSignInButton,
