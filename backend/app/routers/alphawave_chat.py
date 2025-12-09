@@ -424,7 +424,10 @@ async def send_message(
     
     async def generate_safe_response():
         """Generate AI response with streaming safety checks and memory integration."""
+        logger.info(f"[STREAM] ========== NEW REQUEST ==========")
         logger.info(f"[STREAM] Generator started for conversation {conversation_id}")
+        logger.info(f"[STREAM] is_new_conversation: {is_new_conversation}")
+        logger.info(f"[STREAM] user_message: {chat_request.text[:50]}...")
         
         full_response = ""
         
@@ -663,6 +666,9 @@ async def send_message(
                 
                 else:
                     # Fallback: Simple streaming without tools
+                    logger.info(f"[STREAM] Calling Claude (no tools) with {len(messages)} messages")
+                    logger.info(f"[STREAM] First message role: {messages[0]['role'] if messages else 'EMPTY'}")
+                    
                     ai_generator = claude_client.generate_streaming_response(
                         messages=messages,
                         system_prompt=system_prompt,
@@ -671,8 +677,11 @@ async def send_message(
                         temperature=0.7,
                     )
                     
+                    logger.info(f"[STREAM] Generator created, starting iteration...")
                     chunk_count = 0
                     async for chunk in ai_generator:
+                        if chunk_count == 0:
+                            logger.info(f"[STREAM] First chunk received!")
                         chunk_count += 1
                         full_response += chunk
                         yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
