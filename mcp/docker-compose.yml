@@ -1,16 +1,22 @@
 version: '3.8'
+
 services:
-  mcp-gateway:
-    image: docker/mcp-gateway:latest
-    container_name: nicole-mcp-gateway
+  mcp-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nicole-mcp-bridge
     restart: unless-stopped
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - PORT=3100
     ports:
       - "127.0.0.1:3100:3100"
     volumes:
-      - ./mcp-config.json:/app/config.json:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - BRAVE_API_KEY=${BRAVE_API_KEY}
-    env_file:
-      - /opt/nicole/.env
-
+      - /opt/nicole/data:/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

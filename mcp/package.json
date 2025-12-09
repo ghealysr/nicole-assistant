@@ -1,0 +1,19 @@
+{
+  "name": "nicole-mcp-http-bridge",
+  "version": "1.0.0",
+  "description": "HTTP bridge for MCP servers in Nicole V7",
+  "main": "mcp-http-bridge.js",
+  "scripts": {
+    "start": "node mcp-http-bridge.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0",
+    "@modelcontextprotocol/server-brave-search": "^0.1.0",
+    "@modelcontextprotocol/server-filesystem": "^0.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
