@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ToastProvider } from '@/components/ui/alphawave_toast';
+import { GoogleAuthProvider } from '@/lib/google_auth';
 import './globals.css';
 
 /**
@@ -13,21 +14,26 @@ export const metadata: Metadata = {
   },
 };
 
+// Google OAuth Client ID
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
 /**
  * Root layout component for Nicole V7.
  * 
- * QA NOTES:
- * - Includes ToastProvider for app-wide notifications
- * - Layout structure handled by individual pages/route groups
+ * Features:
+ * - GoogleAuthProvider for authentication
+ * - ToastProvider for app-wide notifications
  * - Login page has its own full-screen layout
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-cream text-text-primary font-sans antialiased">
-        <ToastProvider>
-          {children}
-        </ToastProvider>
+        <GoogleAuthProvider clientId={GOOGLE_CLIENT_ID}>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </GoogleAuthProvider>
       </body>
     </html>
   );

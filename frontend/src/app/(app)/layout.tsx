@@ -1,12 +1,49 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AlphawaveSidebar } from '@/components/navigation/AlphawaveSidebar';
 import { AlphawaveVibeWorkspace } from '@/components/vibe/AlphawaveVibeWorkspace';
 import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDashboard';
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
 import { ConversationProvider, useConversation } from '@/lib/context/ConversationContext';
+import { useGoogleAuth } from '@/lib/google_auth';
+
+/**
+ * Auth guard component - redirects to login if not authenticated
+ */
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useGoogleAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-cream">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-lavender/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-lavender-text text-3xl font-serif">N</span>
+          </div>
+          <p className="text-text-secondary">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render children if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
 
 /**
  * Inner layout component that uses the conversation context
@@ -112,6 +149,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
  * Authenticated app layout with sidebar and slide-out panels.
  * 
  * QA NOTES:
+ * - Protected by AuthGuard - redirects to login if not authenticated
  * - Sidebar: 240px fixed width (dark theme)
  * - Main content area fills remaining space
  * - All slide-out panels are MUTUALLY EXCLUSIVE:
@@ -122,8 +160,10 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ConversationProvider>
-      <AppLayoutInner>{children}</AppLayoutInner>
-    </ConversationProvider>
+    <AuthGuard>
+      <ConversationProvider>
+        <AppLayoutInner>{children}</AppLayoutInner>
+      </ConversationProvider>
+    </AuthGuard>
   );
 }

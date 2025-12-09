@@ -1,30 +1,40 @@
 """
-Authentication middleware for JWT verification.
-Verifies Supabase JWT tokens and attaches user_id to request state.
-Production-quality with comprehensive error handling and logging.
+Nicole V7 - Google OAuth Authentication Middleware
+
+Verifies Google OAuth ID tokens and attaches user context to request state.
+Replaces Supabase JWT verification with Google's secure token verification.
+
+ACCESS CONTROL:
+- Only allows emails from configured domains (e.g., @alphawavetech.com)
+- Or specific emails in the allowlist (e.g., personal Gmail)
+- All other Google accounts are rejected
+
+Author: Nicole V7 Architecture
+Date: December 2025
 """
 
 import uuid
-import jwt
 import logging
 import time
-from typing import Callable, Optional, Dict, Any
+import re
+from typing import Callable, Optional, Dict, Any, Set
+
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 from app.config import settings
 from app.services.tiger_user_service import tiger_user_service
 
 logger = logging.getLogger(__name__)
 
-import re
-
 # CORS origins for error responses
 CORS_ORIGINS = [
     "https://nicole.alphawavetech.com",
     "https://nicole-v7.vercel.app",
     "https://ghealysr-nicole-assistant-yyr5.vercel.app",
+    "http://localhost:3000",
 ]
 
 # Regex pattern for Vercel preview deployments
@@ -34,7 +44,6 @@ CORS_ORIGIN_REGEX = re.compile(r"https://ghealysr-nicole-assistant.*\.vercel\.ap
 def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
     """Add CORS headers to error responses."""
     origin = request.headers.get("origin", "")
-    # Check exact match or regex pattern
     if origin in CORS_ORIGINS or CORS_ORIGIN_REGEX.match(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
@@ -46,21 +55,59 @@ PUBLIC_PATHS = {
     "/healthz",
     "/health/check",
     "/auth/login",
-    "/auth/register",
     "/auth/callback",
-    "/auth/refresh",
     "/auth/logout",
     "/docs",
     "/redoc",
-    "/openapi.json"
+    "/openapi.json",
 }
 
 # Paths that require admin role
 ADMIN_PATHS = {
     "/admin",
     "/users",
-    "/system"
+    "/system",
 }
+
+
+def _get_allowed_domains() -> Set[str]:
+    """Get set of allowed email domains from config."""
+    domains = settings.GOOGLE_ALLOWED_DOMAINS or ""
+    return {d.strip().lower() for d in domains.split(",") if d.strip()}
+
+
+def _get_allowed_emails() -> Set[str]:
+    """Get set of specifically allowed email addresses from config."""
+    emails = settings.GOOGLE_ALLOWED_EMAILS or ""
+    return {e.strip().lower() for e in emails.split(",") if e.strip()}
+
+
+def _is_email_allowed(email: str) -> bool:
+    """
+    Check if email is allowed to access Nicole.
+    
+    Allowed if:
+    - Email domain is in GOOGLE_ALLOWED_DOMAINS
+    - Email is specifically in GOOGLE_ALLOWED_EMAILS
+    """
+    if not email:
+        return False
+    
+    email_lower = email.lower()
+    
+    # Check specific emails first
+    allowed_emails = _get_allowed_emails()
+    if email_lower in allowed_emails:
+        return True
+    
+    # Check domain
+    allowed_domains = _get_allowed_domains()
+    if allowed_domains:
+        domain = email_lower.split("@")[-1] if "@" in email_lower else ""
+        if domain in allowed_domains:
+            return True
+    
+    return False
 
 
 def get_current_user_id(request: Request) -> Optional[str]:
@@ -85,19 +132,18 @@ def get_correlation_id(request: Request) -> str:
 
 async def verify_jwt(request: Request, call_next: Callable):
     """
-    JWT verification middleware with comprehensive security and logging.
-
-    Validates Supabase JWT tokens and attaches user context to request state.
-    Includes rate limiting protection and detailed security logging.
-
+    Google OAuth ID token verification middleware.
+    
+    Validates Google ID tokens and attaches user context to request state.
+    Only allows users from configured domains or specific email allowlist.
+    
     Args:
         request: FastAPI request object
         call_next: Next middleware/endpoint in chain
-
+        
     Returns:
         Response from next middleware/endpoint
     """
-
     start_time = time.time()
     correlation_id = str(uuid.uuid4())
     request.state.correlation_id = correlation_id
@@ -138,25 +184,45 @@ async def verify_jwt(request: Request, call_next: Callable):
 
         token = auth_header.split(" ")[1]
 
-        # Verify JWT token with Supabase
+        # Verify Google ID token
         try:
-            payload = jwt.decode(
+            # Verify the token with Google
+            google_client_id = settings.GOOGLE_CLIENT_ID
+            if not google_client_id:
+                logger.error(f"[{correlation_id}] GOOGLE_CLIENT_ID not configured")
+                return add_cors_headers(JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": "Authentication not configured",
+                        "correlation_id": correlation_id
+                    }
+                ), request)
+
+            # Verify ID token
+            idinfo = id_token.verify_oauth2_token(
                 token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                audience="authenticated",
-                options={
-                    "verify_exp": True,
-                    "verify_iat": True,
-                    "verify_nbf": True
-                },
-                leeway=60
+                google_requests.Request(),
+                google_client_id
             )
 
-            # Extract user information from JWT
-            user_id = payload.get("sub")
+            # Verify issuer
+            if idinfo["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
+                logger.warning(f"[{correlation_id}] Invalid token issuer: {idinfo.get('iss')}")
+                return add_cors_headers(JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": "Invalid token issuer",
+                        "correlation_id": correlation_id
+                    }
+                ), request)
+
+            # Extract user info from token
+            user_id = idinfo.get("sub")  # Google's unique user ID
+            user_email = idinfo.get("email")
+            email_verified = idinfo.get("email_verified", False)
+
             if not user_id:
-                logger.error(f"[{correlation_id}] JWT missing subject claim")
+                logger.error(f"[{correlation_id}] Token missing subject claim")
                 return add_cors_headers(JSONResponse(
                     status_code=401,
                     content={
@@ -165,78 +231,66 @@ async def verify_jwt(request: Request, call_next: Callable):
                     }
                 ), request)
 
-            # Optional issuer check if configured
-            token_issuer = payload.get("iss")
-            expected_issuer = getattr(settings, "SUPABASE_ISSUER", "")
-            if expected_issuer and token_issuer != expected_issuer:
-                logger.warning(f"[{correlation_id}] Token issuer mismatch")
+            # Require verified email
+            if not email_verified:
+                logger.warning(f"[{correlation_id}] Email not verified: {user_email}")
                 return add_cors_headers(JSONResponse(
-                    status_code=401,
+                    status_code=403,
                     content={
-                        "error": "Invalid authentication token",
+                        "error": "Email address not verified with Google",
                         "correlation_id": correlation_id
                     }
                 ), request)
 
-            # Validate user_id format as UUID
-            try:
-                uuid.UUID(str(user_id))
-            except Exception:
-                logger.warning(f"[{correlation_id}] Token subject is not a valid UUID")
+            # Check email allowlist
+            if not _is_email_allowed(user_email):
+                logger.warning(f"[{correlation_id}] Access denied for email: {user_email}")
                 return add_cors_headers(JSONResponse(
-                    status_code=401,
+                    status_code=403,
                     content={
-                        "error": "Invalid authentication token",
+                        "error": "Access denied. Your email is not authorized to use Nicole.",
                         "correlation_id": correlation_id
                     }
                 ), request)
 
-            # Get user metadata from JWT
-            user_metadata = payload.get("user_metadata", {})
-            app_metadata = payload.get("app_metadata", {})
+            # Extract additional user info
+            user_name = idinfo.get("name", "")
+            user_picture = idinfo.get("picture", "")
 
-            # Determine user role
-            user_role = user_metadata.get("role", "standard")
-
-            user_email = payload.get("email") or user_metadata.get("email")
+            # Determine role (admin for specific emails, standard otherwise)
+            user_role = "admin" if user_email and user_email.lower() in _get_allowed_emails() else "standard"
 
             # Attach user context to request state
             request.state.user_id = user_id
             request.state.user_role = user_role
             request.state.user_email = user_email
-            request.state.token_issued_at = payload.get("iat")
-            request.state.token_expires_at = payload.get("exp")
+            request.state.user_name = user_name
+            request.state.user_picture = user_picture
+            request.state.token_issued_at = idinfo.get("iat")
+            request.state.token_expires_at = idinfo.get("exp")
 
-            # Ensure Tiger user exists
+            # Ensure Tiger user exists (for database operations)
             tiger_user = None
             if user_email:
                 tiger_user = await tiger_user_service.get_or_create_user(
                     user_email,
-                    full_name=user_metadata.get("full_name"),
+                    full_name=user_name,
                     role=user_role,
-                    relationship=user_metadata.get("relationship"),
+                    relationship="owner" if user_role == "admin" else "user",
                 )
                 request.state.tiger_user_id = tiger_user["user_id"]
                 request.state.tiger_user = tiger_user
                 await tiger_user_service.touch_user_activity(tiger_user["user_id"])
 
-            masked_user = f"{str(user_id)[:8]}..."
+            masked_email = f"{user_email.split('@')[0][:3]}...@{user_email.split('@')[-1]}" if user_email else "unknown"
             logger.info(
-                f"[{correlation_id}] Auth successful - User: {masked_user}, Role: {user_role}, "
+                f"[{correlation_id}] Auth successful - Email: {masked_email}, Role: {user_role}, "
                 f"Path: {request.method} {request.url.path}"
             )
 
-        except jwt.ExpiredSignatureError:
-            logger.warning(f"[{correlation_id}] Token expired for path: {request.method} {request.url.path}")
-            return add_cors_headers(JSONResponse(
-                status_code=401,
-                content={
-                    "error": "Token has expired",
-                    "correlation_id": correlation_id
-                }
-            ), request)
-        except jwt.InvalidTokenError:
-            logger.warning(f"[{correlation_id}] Invalid token for path: {request.method} {request.url.path}")
+        except ValueError as ve:
+            # Token verification failed
+            logger.warning(f"[{correlation_id}] Token verification failed: {ve}")
             return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
@@ -245,11 +299,11 @@ async def verify_jwt(request: Request, call_next: Callable):
                 }
             ), request)
         except Exception as e:
-            logger.error(f"[{correlation_id}] JWT verification error: {str(e)}")
+            logger.error(f"[{correlation_id}] Auth error: {str(e)}")
             return add_cors_headers(JSONResponse(
-                status_code=500,
+                status_code=401,
                 content={
-                    "error": "Authentication service error",
+                    "error": "Authentication failed",
                     "correlation_id": correlation_id
                 }
             ), request)
@@ -261,7 +315,7 @@ async def verify_jwt(request: Request, call_next: Callable):
         duration = time.time() - start_time
         logger.info(
             f"[{correlation_id}] Request completed - Status: {response.status_code}, "
-            f"Duration: {duration:.3f}s, User: {request.state.user_id}"
+            f"Duration: {duration:.3f}s, User: {request.state.user_email}"
         )
 
         return response
@@ -284,14 +338,13 @@ async def verify_jwt(request: Request, call_next: Callable):
 async def require_admin(request: Request) -> None:
     """
     Helper function to enforce admin-only access.
-
+    
     Args:
         request: FastAPI request object
-
+        
     Raises:
         HTTPException: If user is not admin
     """
-
     user_role = get_current_user_role(request)
     if user_role != "admin":
         correlation_id = get_correlation_id(request)
@@ -308,13 +361,12 @@ async def require_admin(request: Request) -> None:
 def log_security_event(event_type: str, request: Request, details: Dict[str, Any] = None):
     """
     Log security-related events for monitoring.
-
+    
     Args:
         event_type: Type of security event
         request: FastAPI request object
         details: Additional event details
     """
-
     correlation_id = get_correlation_id(request)
     user_id = get_current_user_id(request)
 

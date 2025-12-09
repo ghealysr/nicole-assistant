@@ -7,10 +7,11 @@
  * - Includes error handling with user-friendly messages
  * - Supports conversation loading from history
  * - Claude-style attachments with invisible AI processing
+ * - Uses Google OAuth for authentication
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/alphawave_supabase';
+import { getStoredToken } from '@/lib/google_auth';
 import { ENDPOINTS, REQUEST_CONFIG } from '@/lib/alphawave_config';
 import type { FileAttachment } from '@/components/chat/AlphawaveChatInput';
 
@@ -65,12 +66,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
    */
   const loadConversationHistory = useCallback(async (convId: string) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const token = getStoredToken();
+      if (!token) return;
 
       const response = await fetch(ENDPOINTS.chat.history(convId), {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -143,9 +144,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setIsLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
-      if (!session?.access_token) {
+      if (!token) {
         throw new Error('Please log in to continue chatting');
       }
 
@@ -166,7 +167,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const response = await fetch(ENDPOINTS.chat.message, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
@@ -183,6 +184,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Session expired. Please log in again.');
+        } else if (response.status === 403) {
+          throw new Error('Access denied. Your account is not authorized.');
         } else if (response.status === 429) {
           throw new Error('Too many messages. Please wait a moment and try again.');
         } else if (response.status >= 500) {

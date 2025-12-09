@@ -71,9 +71,13 @@ class Settings(BaseSettings):
     COPPA_MIN_AGE_NO_CONSENT: int = 13
     SAFETY_POLICY_VERSION: str = "v7.1"
 
-    # MCP Integrations
+    # Google OAuth Authentication
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_ALLOWED_DOMAINS: str = "alphawavetech.com"  # Comma-separated domains
+    GOOGLE_ALLOWED_EMAILS: str = ""  # Comma-separated specific emails (e.g., personal Gmail)
+
+    # MCP Integrations
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     GLEN_TELEGRAM_CHAT_ID: Optional[str] = None
     NOTION_API_KEY: Optional[str] = None
