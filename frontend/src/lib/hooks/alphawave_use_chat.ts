@@ -281,11 +281,14 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     return m;
                   })
                 );
-              } else if (data.type === 'conversation_id' && data.conversation_id) {
+              } else if ((data.type === 'conversation_id' || data.type === 'start') && data.conversation_id) {
                 // Capture conversation ID from backend for new conversations
+                // Handles both 'start' (immediate) and 'conversation_id' (explicit) events
                 // Set flag to prevent reloading history (we already have the messages in state)
-                isNewConversationRef.current = true;
-                setConversationId(data.conversation_id);
+                if (!conversationId) {
+                  isNewConversationRef.current = true;
+                  setConversationId(data.conversation_id);
+                }
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               }

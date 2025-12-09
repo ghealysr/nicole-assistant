@@ -333,9 +333,18 @@ async def send_message(
     
     if settings.SAFETY_ENABLE:
         try:
+            # Handle both UUID (Supabase) and non-UUID (Google OAuth sub) user IDs
+            try:
+                safety_user_id = UUID(supabase_user_id) if supabase_user_id else uuid4()
+            except (ValueError, AttributeError):
+                # Google OAuth sub is not a UUID - generate deterministic UUID from it
+                import hashlib
+                hash_bytes = hashlib.md5(supabase_user_id.encode()).digest()
+                safety_user_id = UUID(bytes=hash_bytes)
+            
             safety_decision = await check_input_safety(
                 content=chat_request.text,
-                user_id=UUID(supabase_user_id) if supabase_user_id else uuid4(),
+                user_id=safety_user_id,
                 user_age=user_age,
                 correlation_id=correlation_id,
             )
@@ -548,11 +557,8 @@ async def send_message(
                 for row in history_rows
             ]
             
-            # Add current message
-            messages.append({
-                "role": "user",
-                "content": chat_request.text
-            })
+            # NOTE: Do NOT append chat_request.text here - it's already in history_rows
+            # (saved to DB in STEP 4 before this generator runs)
             
             logger.info(f"[STREAM] Messages for Claude: {len(messages)} (context window: 25)")
             
