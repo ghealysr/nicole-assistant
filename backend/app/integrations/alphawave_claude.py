@@ -11,7 +11,6 @@ Now with full tool support for:
 
 from typing import AsyncIterator, Optional, List, Dict, Any, Tuple, Union
 import anthropic
-import asyncio
 import logging
 import json
 
@@ -391,17 +390,12 @@ class AlphawaveClaudeClient:
                     # ============================================================
                     logger.info("[STREAM] Final response - using native Anthropic async streaming")
                     
-                    # Streaming pace: ~15ms delay for readable flow (50% slower)
-                    STREAM_DELAY_MS = 15
-                    
                     async with self.async_client.messages.stream(**kwargs) as stream:
                         async for text_chunk in stream.text_stream:
                             yield {
                                 "type": "text",
                                 "content": text_chunk
                             }
-                            # Pace the stream for readable flow
-                            await asyncio.sleep(STREAM_DELAY_MS / 1000)
                     
                     yield {"type": "done"}
                     return
