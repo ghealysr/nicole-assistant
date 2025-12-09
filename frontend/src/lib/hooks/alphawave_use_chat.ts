@@ -95,13 +95,15 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   }, []);
 
   useEffect(() => {
-    // Don't load history if this is a new conversation we just created (messages already in state)
-    if (conversationId && !isNewConversationRef.current) {
+    // Don't load history if:
+    // 1. This is a new conversation we just created (ref is true)
+    // 2. We already have messages in state (avoid overwriting streaming content)
+    if (conversationId && !isNewConversationRef.current && messages.length === 0) {
       loadConversationHistory(String(conversationId));
     }
     // Reset the flag after the effect runs
     isNewConversationRef.current = false;
-  }, [conversationId, loadConversationHistory]);
+  }, [conversationId, loadConversationHistory, messages.length]);
 
   const clearError = useCallback(() => {
     setError(null);
