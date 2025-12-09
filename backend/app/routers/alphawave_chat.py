@@ -61,7 +61,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # Feature flag: Enable agent tools (Think Tool, Tool Search, etc.)
-ENABLE_AGENT_TOOLS = True
+# TEMPORARILY DISABLED FOR DEBUGGING - agent tools may cause first message to fail
+ENABLE_AGENT_TOOLS = False
 
 router = APIRouter()
 
