@@ -45,6 +45,11 @@ httpx>=0.27.2
 # Used for: All HTTP requests in AI SDK clients, async HTTP operations
 # Latest version: 0.27.2 includes HTTP/2 support and connection pooling
 
+requests>=2.32.0
+# Required by google-auth for OAuth token verification
+# Used for: Google ID token verification via google.auth.transport.requests
+# Note: google-auth requires requests for the requests transport adapter
+
 # ─────────────────────────────────────────────────────────────────────────
 # DATA VALIDATION & SETTINGS
 # ─────────────────────────────────────────────────────────────────────────

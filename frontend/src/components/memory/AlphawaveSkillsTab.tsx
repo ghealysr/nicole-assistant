@@ -161,8 +161,14 @@ interface AlphawaveSkillsTabProps {
 }
 
 export function AlphawaveSkillsTab({ authToken }: AlphawaveSkillsTabProps) {
-  const [skills, setSkills] = useState<Skill[]>(sampleSkills);
-  const [summary, setSummary] = useState<SkillsSummary>(sampleSummary);
+  const [skills, setSkills] = useState<Skill[]>(authToken ? [] : sampleSkills);
+  const [summary, setSummary] = useState<SkillsSummary>(authToken ? {
+    total: 0,
+    by_status: {},
+    by_executor_type: {},
+    ready_count: 0,
+    needs_attention: [],
+  } : sampleSummary);
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(false);

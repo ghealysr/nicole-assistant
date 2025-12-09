@@ -55,6 +55,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   const [isChatsOpen, setIsChatsOpen] = useState(false);
   
   const { currentConversationId, setCurrentConversationId, clearConversation } = useConversation();
+  const { token } = useGoogleAuth();
 
   // Close all panels helper
   const closeAllPanels = useCallback(() => {
@@ -128,7 +129,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       <AlphawaveVibeWorkspace isOpen={isVibeOpen} onClose={() => setIsVibeOpen(false)} />
 
       {/* Memory Dashboard - slides in from right */}
-      <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} />
+      <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} authToken={token || undefined} />
 
       {/* Journal Panel - slides in from right */}
       <AlphawaveJournalPanel isOpen={isJournalOpen} onClose={() => setIsJournalOpen(false)} />
