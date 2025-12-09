@@ -156,6 +156,13 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
 
   // Load Google Identity Services script
   useEffect(() => {
+    // Check if script already exists (e.g., from previous mount)
+    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    if (existingScript) {
+      setIsGsiLoaded(true);
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
@@ -163,11 +170,12 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     script.onload = () => {
       setIsGsiLoaded(true);
     };
+    script.onerror = () => {
+      console.error('[GoogleAuth] Failed to load Google Identity Services script');
+    };
     document.head.appendChild(script);
 
-    return () => {
-      document.head.removeChild(script);
-    };
+    // Don't remove script on cleanup - it should persist
   }, []);
 
   // Initialize Google Sign-In when script loads
@@ -190,19 +198,29 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
 
   // Check for existing token on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem(STORAGE_KEY);
-    
-    if (storedToken && !isTokenExpired(storedToken)) {
-      const userInfo = getUserFromToken(storedToken);
-      if (userInfo) {
-        setToken(storedToken);
-        setUser(userInfo);
-      } else {
+    // Only access localStorage on client side
+    if (typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const storedToken = localStorage.getItem(STORAGE_KEY);
+      
+      if (storedToken && !isTokenExpired(storedToken)) {
+        const userInfo = getUserFromToken(storedToken);
+        if (userInfo) {
+          setToken(storedToken);
+          setUser(userInfo);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } else if (storedToken) {
+        // Token expired, remove it
         localStorage.removeItem(STORAGE_KEY);
       }
-    } else if (storedToken) {
-      // Token expired, remove it
-      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error('[GoogleAuth] Error checking stored token:', e);
     }
     
     setIsLoading(false);
