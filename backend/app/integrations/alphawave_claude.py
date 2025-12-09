@@ -11,6 +11,7 @@ Now with full tool support for:
 
 from typing import AsyncIterator, Optional, List, Dict, Any, Tuple, Union
 import anthropic
+import asyncio
 import logging
 import json
 
@@ -49,11 +50,15 @@ class AlphawaveClaudeClient:
     
     Handles interactions with Anthropic Claude API (Sonnet 4.5 and Haiku 4.5).
     Now includes full tool support for agent architecture.
+    Uses both sync client (for tool calls) and async client (for streaming).
     """
     
     def __init__(self):
-        """Initialize Claude client."""
+        """Initialize Claude clients."""
+        # Sync client for non-streaming and tool calls
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        # Async client for true async streaming
+        self.async_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         # Use latest Claude Sonnet and Haiku models
         self.sonnet_model = "claude-sonnet-4-20250514"
         self.haiku_model = "claude-haiku-4-20250514"
@@ -271,7 +276,7 @@ class AlphawaveClaudeClient:
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncIterator[str]:
         """
-        Generate streaming response from Claude.
+        Generate streaming response from Claude using async client.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -289,7 +294,7 @@ class AlphawaveClaudeClient:
             model = self.sonnet_model
         
         try:
-            logger.info(f"Starting Claude stream with model: {model}")
+            logger.info(f"Starting Claude async stream with model: {model}")
             
             kwargs = {
                 "model": model,
@@ -302,12 +307,12 @@ class AlphawaveClaudeClient:
             if tools:
                 kwargs["tools"] = tools
             
-            with self.client.messages.stream(**kwargs) as stream:
+            async with self.async_client.messages.stream(**kwargs) as stream:
                 chunk_count = 0
-                for text in stream.text_stream:
+                async for text in stream.text_stream:
                     chunk_count += 1
                     yield text
-                logger.info(f"Claude stream complete, {chunk_count} chunks")
+                logger.info(f"Claude async stream complete, {chunk_count} chunks")
                     
         except Exception as e:
             logger.error(f"Claude streaming error: {e}", exc_info=True)
@@ -381,17 +386,22 @@ class AlphawaveClaudeClient:
                 
                 if not has_tool_use or response.stop_reason == "end_turn":
                     # ============================================================
-                    # FINAL RESPONSE: Use real streaming from Anthropic API
+                    # FINAL RESPONSE: Use async streaming from Anthropic API
                     # This delivers true token-by-token streaming like Claude.ai
                     # ============================================================
-                    logger.info("[STREAM] Final response - using native Anthropic streaming")
+                    logger.info("[STREAM] Final response - using native Anthropic async streaming")
                     
-                    with self.client.messages.stream(**kwargs) as stream:
-                        for text_chunk in stream.text_stream:
+                    # Streaming pace: ~15ms delay for readable flow (50% slower)
+                    STREAM_DELAY_MS = 15
+                    
+                    async with self.async_client.messages.stream(**kwargs) as stream:
+                        async for text_chunk in stream.text_stream:
                             yield {
                                 "type": "text",
                                 "content": text_chunk
                             }
+                            # Pace the stream for readable flow
+                            await asyncio.sleep(STREAM_DELAY_MS / 1000)
                     
                     yield {"type": "done"}
                     return
