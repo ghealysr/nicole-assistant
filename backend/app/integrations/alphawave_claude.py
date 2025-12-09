@@ -327,8 +327,15 @@ class AlphawaveClaudeClient:
         """
         Generate streaming response with tool use support.
         
+        Uses Anthropic's native streaming API for the final text response
+        to deliver true token-by-token streaming like Claude.ai.
+        
+        Flow:
+        1. Tool iterations use non-streaming (necessary to execute tools)
+        2. Final response uses real streaming from Anthropic API
+        
         Yields events for:
-        - text: Text content chunks
+        - text: Text content chunks (real tokens from API)
         - tool_use_start: Tool use beginning
         - tool_use_complete: Tool use finished
         - thinking: Think tool invocations
@@ -366,29 +373,30 @@ class AlphawaveClaudeClient:
                     "tools": tools
                 }
                 
-                # Use non-streaming for tool calls to simplify handling
+                # First, check if Claude wants to use tools (non-streaming probe)
                 response = self.client.messages.create(**kwargs)
                 
                 # Check if we have tool uses
                 has_tool_use = any(block.type == "tool_use" for block in response.content)
                 
                 if not has_tool_use or response.stop_reason == "end_turn":
-                    # Final response - stream the text
-                    for block in response.content:
-                        if hasattr(block, 'text') and block.text:
-                            # Yield text in chunks for streaming effect
-                            text = block.text
-                            chunk_size = 20
-                            for i in range(0, len(text), chunk_size):
-                                yield {
-                                    "type": "text",
-                                    "content": text[i:i+chunk_size]
-                                }
+                    # ============================================================
+                    # FINAL RESPONSE: Use real streaming from Anthropic API
+                    # This delivers true token-by-token streaming like Claude.ai
+                    # ============================================================
+                    logger.info("[STREAM] Final response - using native Anthropic streaming")
+                    
+                    with self.client.messages.stream(**kwargs) as stream:
+                        for text_chunk in stream.text_stream:
+                            yield {
+                                "type": "text",
+                                "content": text_chunk
+                            }
                     
                     yield {"type": "done"}
                     return
                 
-                # Process tool uses
+                # Process tool uses (non-streaming path)
                 assistant_content = []
                 tool_uses = []
                 
