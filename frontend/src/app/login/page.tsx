@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGoogleAuth } from '@/lib/google_auth';
 import { useRouter } from 'next/navigation';
 
@@ -15,8 +15,8 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const { isAuthenticated, isLoading, isGoogleReady, renderSignInButton } = useGoogleAuth();
   const router = useRouter();
-  const buttonContainerRef = useRef<HTMLDivElement>(null);
   const [buttonRendered, setButtonRendered] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -28,10 +28,30 @@ export default function LoginPage() {
   // Render Google Sign-In button when Google script is ready
   useEffect(() => {
     if (isGoogleReady && !isAuthenticated && !buttonRendered) {
-      renderSignInButton('google-signin-button');
-      setButtonRendered(true);
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        const container = document.getElementById('google-signin-button');
+        if (container) {
+          renderSignInButton('google-signin-button');
+          setButtonRendered(true);
+        } else if (retryCount < 5) {
+          // Retry if container not found
+          setRetryCount(r => r + 1);
+        }
+      }, 200);
+      return () => clearTimeout(timer);
     }
-  }, [isGoogleReady, isAuthenticated, buttonRendered, renderSignInButton]);
+  }, [isGoogleReady, isAuthenticated, buttonRendered, renderSignInButton, retryCount]);
+
+  // Retry mechanism - trigger re-render to retry button rendering
+  useEffect(() => {
+    if (!buttonRendered && retryCount > 0 && retryCount < 5) {
+      const timer = setTimeout(() => {
+        setRetryCount(r => r + 1);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [retryCount, buttonRendered]);
 
   // Show loading while checking auth
   if (isLoading) {
@@ -93,9 +113,18 @@ export default function LoginPage() {
           <div className="flex justify-center mb-8">
             <div 
               id="google-signin-button" 
-              ref={buttonContainerRef}
-              className="min-h-[44px]"
-            />
+              className="min-h-[44px] flex items-center justify-center"
+            >
+              {!buttonRendered && (
+                <div className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-md bg-white">
+                  <svg className="w-5 h-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-gray-500 text-sm">Loading Google Sign-In...</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Access info */}
