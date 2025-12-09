@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/alphawave_supabase';
 import { ENDPOINTS } from '@/lib/alphawave_config';
+import { getStoredToken } from '@/lib/google_auth';
 
 /**
  * Conversation data structure from backend
@@ -150,12 +150,12 @@ export function AlphawaveChatsPanel({
    */
   const fetchConversations = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const token = getStoredToken();
+      if (!token) return;
 
       const response = await fetch(`${ENDPOINTS.chat.conversations}?limit=30`, {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -200,13 +200,13 @@ export function AlphawaveChatsPanel({
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const token = getStoredToken();
+      if (!token) return;
 
       await fetch(`${ENDPOINTS.chat.conversations}/${conversationId}/pin`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ is_pinned: !conv.is_pinned }),
@@ -231,13 +231,13 @@ export function AlphawaveChatsPanel({
     if (!confirm('Delete this conversation? This cannot be undone.')) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const token = getStoredToken();
+      if (!token) return;
 
       await fetch(`${ENDPOINTS.chat.conversations}/${conversationId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -302,12 +302,12 @@ export function AlphawaveChatsPanel({
 
       // Sync to backend
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
+        const token = getStoredToken();
+        if (token) {
           await fetch(`${ENDPOINTS.chat.conversations}/reorder-pins`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
+              'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({

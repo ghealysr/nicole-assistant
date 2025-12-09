@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { supabase } from '@/lib/alphawave_supabase';
+import { getStoredToken } from '@/lib/google_auth';
+import { API_URL } from '@/lib/alphawave_config';
 
 /**
  * File attachment with metadata for Claude-style display.
@@ -91,25 +92,22 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
     ));
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
+      const token = getStoredToken();
+      if (!token) {
         throw new Error('Please log in to upload files');
       }
 
       const formData = new FormData();
       formData.append('file', file);
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
-
       setPendingFiles(prev => prev.map(f => 
         f.id === fileId ? { ...f, status: 'processing' as const } : f
       ));
 
-      const response = await fetch(`${apiUrl}/documents/upload`, {
+      const response = await fetch(`${API_URL}/documents/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: formData,
       });
