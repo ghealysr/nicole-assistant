@@ -331,36 +331,25 @@ class AlphawaveClaudeClient:
         """
         Generate streaming response with tool use support.
         
-        Optimized flow:
-        1. First iteration uses streaming directly (most common case: no tools)
-        2. If Claude uses tools, handle them and iterate with non-streaming
-        3. Final text response always streams
+        Flow:
+        1. Make non-streaming call to check for tool use
+        2. If tools needed, execute them and loop
+        3. Final response streams via text_stream
         
         Yields events for:
-        - text: Text content chunks (real tokens from API)
+        - text: Text content chunks
         - tool_use_start: Tool use beginning
         - tool_use_complete: Tool use finished
         - thinking: Think tool invocations
         - done: Stream complete
-        
-        Args:
-            messages: Conversation messages
-            tools: List of tool definitions
-            tool_executor: Async function that executes tools
-            system_prompt: System prompt
-            model: Model to use
-            max_tokens: Max tokens per response
-            temperature: Sampling temperature
-            max_tool_iterations: Maximum tool use iterations
-            
-        Yields:
-            Event dictionaries with type and content
         """
         if model is None:
             model = self.sonnet_model
         
         conversation = list(messages)
         iterations = 0
+        
+        logger.info(f"[CLAUDE] Starting response generation with {len(messages)} messages")
         
         while iterations < max_tool_iterations:
             iterations += 1
@@ -375,62 +364,39 @@ class AlphawaveClaudeClient:
                     "tools": tools
                 }
                 
-                # ============================================================
-                # OPTIMIZED: Try streaming first (handles 90%+ of messages)
-                # Only fall back to non-streaming if tool use is detected
-                # ============================================================
+                logger.info(f"[CLAUDE] Iteration {iterations} - calling Claude API")
                 
-                if iterations == 1:
-                    # First iteration: use streaming, check for tool use after
-                    logger.info("[STREAM] Starting with native async streaming")
-                    
-                    collected_text = []
-                    tool_use_detected = False
-                    
-                    try:
-                        async with self.async_client.messages.stream(**kwargs) as stream:
-                            async for event in stream:
-                                # Check stop reason to detect tool use
-                                if hasattr(event, 'type'):
-                                    if event.type == 'content_block_start':
-                                        if hasattr(event, 'content_block') and event.content_block.type == 'tool_use':
-                                            tool_use_detected = True
-                                            break
-                                    elif event.type == 'content_block_delta':
-                                        if hasattr(event, 'delta') and hasattr(event.delta, 'text'):
-                                            text = event.delta.text
-                                            collected_text.append(text)
-                                            yield {"type": "text", "content": text}
-                            
-                            # If no tool use, we're done
-                            if not tool_use_detected:
-                                yield {"type": "done"}
-                                return
-                    
-                    except Exception as stream_err:
-                        logger.warning(f"[STREAM] Streaming failed, falling back to non-streaming: {stream_err}")
-                        # Fall through to non-streaming path
-                
-                # Non-streaming path (for tool use iterations or fallback)
-                logger.info(f"[STREAM] Using non-streaming for tool handling (iteration {iterations})")
+                # Check if Claude wants to use tools
                 response = self.client.messages.create(**kwargs)
+                
+                logger.info(f"[CLAUDE] Response received - stop_reason: {response.stop_reason}, blocks: {len(response.content)}")
                 
                 # Check if we have tool uses
                 has_tool_use = any(block.type == "tool_use" for block in response.content)
                 
                 if not has_tool_use or response.stop_reason == "end_turn":
-                    # Final response - stream the text
-                    logger.info("[STREAM] Final response - streaming text")
-                    for block in response.content:
-                        if hasattr(block, 'text') and block.text:
-                            # Yield character by character for smooth streaming effect
-                            for char in block.text:
-                                yield {"type": "text", "content": char}
+                    # Final response - stream using text_stream for smooth delivery
+                    logger.info("[CLAUDE] Final response - streaming via text_stream")
+                    
+                    try:
+                        async with self.async_client.messages.stream(**kwargs) as stream:
+                            chunk_count = 0
+                            async for text_chunk in stream.text_stream:
+                                chunk_count += 1
+                                yield {"type": "text", "content": text_chunk}
+                            logger.info(f"[CLAUDE] Streamed {chunk_count} chunks")
+                    except Exception as stream_err:
+                        # Fallback: yield the text we already got from non-streaming response
+                        logger.warning(f"[CLAUDE] Streaming failed ({stream_err}), using buffered response")
+                        for block in response.content:
+                            if hasattr(block, 'text') and block.text:
+                                yield {"type": "text", "content": block.text}
                     
                     yield {"type": "done"}
                     return
                 
                 # Process tool uses
+                logger.info(f"[CLAUDE] Processing tool uses")
                 assistant_content = []
                 tool_uses = []
                 
