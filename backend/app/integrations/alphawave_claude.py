@@ -275,7 +275,7 @@ class AlphawaveClaudeClient:
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncIterator[str]:
         """
-        Generate streaming response from Claude using async client.
+        Generate streaming response from Claude using sync client with chunking.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -293,7 +293,7 @@ class AlphawaveClaudeClient:
             model = self.sonnet_model
         
         try:
-            logger.info(f"Starting Claude async stream with model: {model}")
+            logger.info(f"[CLAUDE] Starting sync stream with model: {model}, messages: {len(messages)}")
             
             kwargs = {
                 "model": model,
@@ -306,15 +306,16 @@ class AlphawaveClaudeClient:
             if tools:
                 kwargs["tools"] = tools
             
-            async with self.async_client.messages.stream(**kwargs) as stream:
+            # Use sync client with native streaming
+            with self.client.messages.stream(**kwargs) as stream:
                 chunk_count = 0
-                async for text in stream.text_stream:
+                for text in stream.text_stream:
                     chunk_count += 1
                     yield text
-                logger.info(f"Claude async stream complete, {chunk_count} chunks")
+                logger.info(f"[CLAUDE] Sync stream complete, {chunk_count} chunks")
                     
         except Exception as e:
-            logger.error(f"Claude streaming error: {e}", exc_info=True)
+            logger.error(f"[CLAUDE] Streaming error: {e}", exc_info=True)
             raise
     
     async def generate_streaming_response_with_tools(
