@@ -172,6 +172,12 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
   // Initialize Google Sign-In when script loads
   useEffect(() => {
     if (!isGsiLoaded || !window.google) return;
+    
+    // Don't initialize if clientId is missing
+    if (!clientId) {
+      console.error('[GoogleAuth] NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set');
+      return;
+    }
 
     window.google.accounts.id.initialize({
       client_id: clientId,
@@ -229,6 +235,12 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
   const renderSignInButton = useCallback((elementId: string) => {
     if (!isGsiLoaded || !window.google) return;
     
+    // Don't render if clientId is missing
+    if (!clientId) {
+      console.error('[GoogleAuth] Cannot render button: NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set');
+      return;
+    }
+    
     const element = document.getElementById(elementId);
     if (element) {
       window.google.accounts.id.renderButton(element, {
@@ -240,7 +252,7 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
         width: 300,
       });
     }
-  }, [isGsiLoaded]);
+  }, [isGsiLoaded, clientId]);
 
   const value: GoogleAuthContextValue = {
     user,
