@@ -276,6 +276,7 @@ export function AlphawaveChatContainer() {
     messages, 
     sendMessage, 
     isLoading, 
+    isPendingAssistant,
     error, 
     clearError,
     conversationId,
@@ -323,12 +324,12 @@ export function AlphawaveChatContainer() {
 
   // Regenerate greeting when starting a new conversation
   useEffect(() => {
-    if (currentConversationId === null) {
+    if (currentConversationId === null && messages.length === 0) {
       setGreeting(getDynamicGreeting());
     }
-  }, [currentConversationId]);
+  }, [currentConversationId, messages.length]);
 
-  const hasMessages = messages.length > 0;
+  const hasMessages = messages.length > 0 || isPendingAssistant;
 
   return (
     <div className="flex flex-col h-full">
@@ -347,7 +348,7 @@ export function AlphawaveChatContainer() {
               {messages.map((message) => (
                 <MessageBubble key={message.id} message={message as Message} />
               ))}
-              {isLoading && <ThinkingIndicator />}
+              {(isLoading || isPendingAssistant) && <ThinkingIndicator />}
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />

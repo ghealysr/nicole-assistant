@@ -41,6 +41,7 @@ export interface UseChatReturn {
   messages: ChatMessage[];
   sendMessage: (content: string, attachments?: FileAttachment[]) => Promise<void>;
   isLoading: boolean;
+  isPendingAssistant: boolean;
   error: string | null;
   clearError: () => void;
   clearMessages: () => void;
@@ -53,6 +54,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPendingAssistant, setIsPendingAssistant] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId ? parseInt(initialConversationId) : null
@@ -101,13 +103,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     isNewConversationRef.current = false;
   }, [conversationId, loadConversationHistory]);
 
-  // When conversationId changes to null (new chat), clear messages
-  useEffect(() => {
-    if (conversationId === null) {
-      setMessages([]);
-    }
-  }, [conversationId]);
-
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -115,6 +110,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setConversationId(null);
+    setIsPendingAssistant(false);
   }, []);
 
   /**
@@ -142,6 +138,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setMessages((prev) => [...prev, userMessage]);
 
     setIsLoading(true);
+    setIsPendingAssistant(true);
 
     try {
       const token = getStoredToken();
@@ -299,6 +296,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           }
         }
       }
+      setIsPendingAssistant(false);
     } catch (err) {
       let errorMessage = 'Something went wrong. Please try again.';
       
@@ -323,6 +321,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       console.error('Chat error:', err);
     } finally {
       setIsLoading(false);
+      setIsPendingAssistant(false);
     }
   }, [conversationId, onError]);
 
@@ -330,6 +329,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     messages, 
     sendMessage, 
     isLoading, 
+    isPendingAssistant,
     error, 
     clearError,
     clearMessages,
