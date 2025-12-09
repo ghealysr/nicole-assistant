@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  mcp-gateway:
+    image: docker/mcp-gateway:latest
+    container_name: nicole-mcp-gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./mcp-config.json:/app/config.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    env_file:
+      - /opt/nicole/.env
+

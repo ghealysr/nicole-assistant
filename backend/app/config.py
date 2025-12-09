@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 60
     RATE_LIMIT_WINDOW: int = 60
 
+    # MCP Gateway (Docker MCP)
+    MCP_GATEWAY_URL: str = "http://127.0.0.1:3100"
+    MCP_ENABLED: bool = True
+    BRAVE_API_KEY: str = ""
+
     class Config:
         env_file = ".env" if os.path.exists(".env") else "/opt/nicole/.env"
         env_file_encoding = "utf-8"

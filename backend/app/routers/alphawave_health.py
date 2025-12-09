@@ -11,6 +11,7 @@ from typing import Any
 from app.database import get_redis, get_qdrant, get_supabase, get_tiger_pool
 from app.config import settings
 from app.services.agent_orchestrator import agent_orchestrator
+from app.mcp.docker_mcp_client import get_mcp_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -98,27 +99,40 @@ async def ping() -> dict:
 @router.get("/mcp")
 async def mcp_status() -> dict:
     """
-    MCP (Model Context Protocol) server status.
+    MCP (Model Context Protocol) status.
     
-    Shows status of all configured MCP servers:
-    - google: Gmail, Calendar, Drive
-    - notion: Databases, Pages
-    - telegram: Bot messaging
-    - filesystem: File operations
-    - playwright: Web automation
-    - sequential-thinking: Reasoning visualization
-    
-    Returns:
-        MCP server status summary
+    - Reports Docker MCP Gateway status (if enabled)
+    - Includes legacy MCP manager status for visibility
     """
-    status = agent_orchestrator.get_mcp_status()
+    legacy_status = agent_orchestrator.get_mcp_status()
+    gateway_status: dict[str, Any] = {
+        "status": "disabled",
+        "connected": False,
+        "tool_count": 0,
+        "tools": [],
+    }
+    try:
+        if settings.MCP_ENABLED:
+            mcp = await get_mcp_client()
+            tools = await mcp.list_tools(refresh=True)
+            gateway_status = {
+                "status": "healthy",
+                "connected": mcp.is_connected,
+                "tool_count": len(tools),
+                "tools": [t.name for t in tools[:10]],
+            }
+    except Exception as e:
+        gateway_status = {"status": "unhealthy", "error": str(e)}
     
     return {
-        "mcp_status": "operational" if status.get("connected_servers", 0) > 0 else "available",
-        "connected_servers": status.get("connected_servers", 0),
-        "total_tools": status.get("total_tools", 0),
-        "servers": status.get("servers", {}),
-        "timestamp": datetime.utcnow().isoformat()
+        "gateway": gateway_status,
+        "legacy": {
+            "mcp_status": "operational" if legacy_status.get("connected_servers", 0) > 0 else "available",
+            "connected_servers": legacy_status.get("connected_servers", 0),
+            "total_tools": legacy_status.get("total_tools", 0),
+            "servers": legacy_status.get("servers", {}),
+        },
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 

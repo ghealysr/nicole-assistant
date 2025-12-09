@@ -19,6 +19,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.config import settings
 from app.mcp import initialize_mcp, shutdown_mcp
+from app.mcp.docker_mcp_client import get_mcp_client, shutdown_mcp_client
 from app.middleware.alphawave_cors import configure_cors
 from app.middleware.alphawave_logging import logging_middleware
 from app.middleware.alphawave_auth import verify_jwt
@@ -120,7 +121,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Workflow scheduler failed to initialize (non-critical): {e}")
     
-    # Initialize MCP (Model Context Protocol) servers
+    # Initialize MCP (Model Context Protocol) servers - legacy (npx-based)
     try:
         mcp_results = await initialize_mcp()
         connected = [k for k, v in mcp_results.items() if v]
@@ -130,6 +131,14 @@ async def lifespan(app: FastAPI):
             logger.info("[STARTUP] MCP initialized (no servers connected yet)")
     except Exception as e:
         logger.warning(f"[STARTUP] MCP failed to initialize (non-critical): {e}")
+
+    # Initialize Docker MCP Gateway (if enabled)
+    if settings.MCP_ENABLED:
+        try:
+            mcp = await get_mcp_client()
+            logger.info(f"[STARTUP] MCP Gateway connected: {mcp.tool_count} tools available")
+        except Exception as e:
+            logger.warning(f"[STARTUP] MCP Gateway unavailable (non-critical): {e}")
     
     logger.info("[STARTUP] Nicole V7 API ready")
     
@@ -144,6 +153,13 @@ async def lifespan(app: FastAPI):
         logger.info("[SHUTDOWN] MCP servers disconnected")
     except Exception as e:
         logger.debug(f"[SHUTDOWN] MCP shutdown: {e}")
+
+    # Disconnect MCP Gateway
+    try:
+        await shutdown_mcp_client()
+        logger.info("[SHUTDOWN] MCP Gateway disconnected")
+    except Exception as e:
+        logger.debug(f"[SHUTDOWN] MCP Gateway shutdown: {e}")
     
     # Stop workflow scheduler
     try:
