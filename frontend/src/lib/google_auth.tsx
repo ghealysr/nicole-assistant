@@ -156,10 +156,25 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
 
   // Load Google Identity Services script
   useEffect(() => {
-    // Check if script already exists (e.g., from previous mount)
-    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existingScript) {
+    // If Google API is already available, we're good
+    if (typeof window !== 'undefined' && window.google?.accounts?.id) {
       setIsGsiLoaded(true);
+      return;
+    }
+
+    // Check if script already exists
+    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    
+    if (existingScript) {
+      // Script exists - poll for window.google to be ready
+      const checkGoogle = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          setIsGsiLoaded(true);
+          clearInterval(checkGoogle);
+        }
+      }, 100);
+      // Stop polling after 10 seconds
+      setTimeout(() => clearInterval(checkGoogle), 10000);
       return;
     }
 
@@ -168,14 +183,19 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     script.async = true;
     script.defer = true;
     script.onload = () => {
-      setIsGsiLoaded(true);
+      // Poll for window.google to be ready after script loads
+      const checkGoogle = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          setIsGsiLoaded(true);
+          clearInterval(checkGoogle);
+        }
+      }, 50);
+      setTimeout(() => clearInterval(checkGoogle), 5000);
     };
     script.onerror = () => {
       console.error('[GoogleAuth] Failed to load Google Identity Services script');
     };
     document.head.appendChild(script);
-
-    // Don't remove script on cleanup - it should persist
   }, []);
 
   // Initialize Google Sign-In when script loads
