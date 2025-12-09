@@ -235,6 +235,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                       : m
                   )
                 );
+                // Yield to the browser to allow paint between token updates
+                await new Promise((resolve) => setTimeout(resolve, 0));
               } else if (data.type === 'thinking_step') {
                 // Add or update thinking step
                 const step: ThinkingStep = {
