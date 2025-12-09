@@ -1,143 +1,181 @@
 #!/usr/bin/env node
 
 /**
- * MCP HTTP Bridge
+ * MCP HTTP Bridge - Stub Implementation
  * 
- * Exposes MCP servers (stdio-based) over HTTP with JSON-RPC interface.
- * Usage: node mcp-http-bridge.js
+ * Provides HTTP/JSON-RPC interface for MCP tools.
+ * This is a stub implementation until official MCP servers are available.
  */
 
 const express = require('express');
-const { spawn } = require('child_process');
+const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const { readdir, readFile, stat } = require('fs').promises;
+const { join } = require('path');
 
 const app = express();
 app.use(express.json());
 
-// MCP Server Configuration
-const MCP_SERVERS = {
-  'brave-search': {
-    command: 'npx',
-    args: ['@modelcontextprotocol/server-brave-search'],
-    env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY }
+// Tool implementations
+const TOOLS = [
+  {
+    name: 'brave_web_search',
+    description: 'Search the web using Brave Search API. Returns recent, relevant web results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query'
+        },
+        count: {
+          type: 'number',
+          description: 'Number of results (1-20, default 10)',
+          default: 10
+        }
+      },
+      required: ['query']
+    },
+    server: 'brave-search'
   },
-  'filesystem': {
-    command: 'npx',
-    args: ['@modelcontextprotocol/server-filesystem', '/data'],
-    env: {}
+  {
+    name: 'read_file',
+    description: 'Read contents of a file from the /data directory',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to /data'
+        }
+      },
+      required: ['path']
+    },
+    server: 'filesystem'
+  },
+  {
+    name: 'list_directory',
+    description: 'List files and directories in /data',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Directory path relative to /data (default: ".")',
+          default: '.'
+        }
+      }
+    },
+    server: 'filesystem'
   }
+];
+
+// Tool execution handlers
+async function executeBraveSearch(args) {
+  const apiKey = process.env.BRAVE_API_KEY;
+  if (!apiKey) {
+    throw new Error('BRAVE_API_KEY not configured');
+  }
+
+  const { query, count = 10 } = args;
+  
+  try {
+    const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey
+      },
+      params: {
+        q: query,
+        count: Math.min(count, 20)
+      }
+    });
+
+    const results = response.data.web?.results || [];
+    const formatted = results.map(r => ({
+      title: r.title,
+      url: r.url,
+      description: r.description
+    }));
+
+    return [{
+      type: 'text',
+      text: JSON.stringify(formatted, null, 2)
+    }];
+  } catch (error) {
+    throw new Error(`Brave Search failed: ${error.message}`);
+  }
+}
+
+async function executeReadFile(args) {
+  const { path } = args;
+  const fullPath = join('/data', path);
+
+  // Security: prevent path traversal
+  if (!fullPath.startsWith('/data/')) {
+    throw new Error('Access denied: path must be within /data');
+  }
+
+  try {
+    const content = await readFile(fullPath, 'utf-8');
+    return [{
+      type: 'text',
+      text: content
+    }];
+  } catch (error) {
+    throw new Error(`Failed to read file: ${error.message}`);
+  }
+}
+
+async function executeListDirectory(args) {
+  const { path = '.' } = args;
+  const fullPath = join('/data', path);
+
+  // Security: prevent path traversal
+  if (!fullPath.startsWith('/data')) {
+    throw new Error('Access denied: path must be within /data');
+  }
+
+  try {
+    const entries = await readdir(fullPath, { withFileTypes: true });
+    const formatted = await Promise.all(
+      entries.map(async (entry) => {
+        const entryPath = join(fullPath, entry.name);
+        const stats = await stat(entryPath);
+        return {
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          size: stats.size,
+          modified: stats.mtime.toISOString()
+        };
+      })
+    );
+
+    return [{
+      type: 'text',
+      text: JSON.stringify(formatted, null, 2)
+    }];
+  } catch (error) {
+    throw new Error(`Failed to list directory: ${error.message}`);
+  }
+}
+
+const TOOL_EXECUTORS = {
+  'brave_web_search': executeBraveSearch,
+  'read_file': executeReadFile,
+  'list_directory': executeListDirectory
 };
 
-// Active MCP server processes
-const serverProcesses = new Map();
-
-/**
- * Start an MCP server process
- */
-function startServer(serverId) {
-  const config = MCP_SERVERS[serverId];
-  if (!config) {
-    throw new Error(`Unknown server: ${serverId}`);
-  }
-
-  console.log(`[${serverId}] Starting MCP server...`);
-
-  const process = spawn(config.command, config.args, {
-    env: { ...process.env, ...config.env },
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  const serverState = {
-    process,
-    pendingRequests: new Map(),
-    buffer: ''
-  };
-
-  // Handle stdout (responses from MCP server)
-  process.stdout.on('data', (data) => {
-    serverState.buffer += data.toString();
-    
-    // Try to parse complete JSON-RPC messages
-    const lines = serverState.buffer.split('\n');
-    serverState.buffer = lines.pop(); // Keep incomplete line
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      
-      try {
-        const response = JSON.parse(line);
-        const requestId = response.id || response.result?.id;
-        
-        if (requestId && serverState.pendingRequests.has(requestId)) {
-          const { resolve } = serverState.pendingRequests.get(requestId);
-          resolve(response);
-          serverState.pendingRequests.delete(requestId);
-        }
-      } catch (err) {
-        console.error(`[${serverId}] Failed to parse response:`, err.message);
-      }
-    }
-  });
-
-  // Handle stderr (errors/logs)
-  process.stderr.on('data', (data) => {
-    console.error(`[${serverId}] stderr:`, data.toString());
-  });
-
-  // Handle process exit
-  process.on('exit', (code) => {
-    console.log(`[${serverId}] Process exited with code ${code}`);
-    serverProcesses.delete(serverId);
-  });
-
-  serverProcesses.set(serverId, serverState);
-  console.log(`[${serverId}] MCP server started`);
-}
-
-/**
- * Send JSON-RPC request to MCP server
- */
-function sendToServer(serverId, jsonRpcRequest) {
-  return new Promise((resolve, reject) => {
-    const serverState = serverProcesses.get(serverId);
-    if (!serverState) {
-      return reject(new Error(`Server ${serverId} not running`));
-    }
-
-    const requestId = jsonRpcRequest.id || uuidv4();
-    const requestWithId = { ...jsonRpcRequest, id: requestId };
-
-    // Store pending request
-    serverState.pendingRequests.set(requestId, { resolve, reject });
-
-    // Send to MCP server
-    serverState.process.stdin.write(JSON.stringify(requestWithId) + '\n');
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      if (serverState.pendingRequests.has(requestId)) {
-        serverState.pendingRequests.delete(requestId);
-        reject(new Error('Request timeout'));
-      }
-    }, 30000);
-  });
-}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  const status = {
+  res.json({
     status: 'healthy',
-    servers: {}
-  };
-
-  for (const [serverId, state] of serverProcesses.entries()) {
-    status.servers[serverId] = {
-      running: true,
-      pid: state.process.pid
-    };
-  }
-
-  res.json(status);
+    bridge: 'mcp-http-bridge',
+    version: '1.0.0',
+    tools: TOOLS.length
+  });
 });
 
 // JSON-RPC endpoint
@@ -146,45 +184,17 @@ app.post('/rpc', async (req, res) => {
     const { jsonrpc, method, params, id } = req.body;
 
     if (method === 'tools/list') {
-      // Aggregate tools from all servers
-      const allTools = [];
-
-      for (const serverId of Object.keys(MCP_SERVERS)) {
-        try {
-          if (!serverProcesses.has(serverId)) {
-            startServer(serverId);
-            // Give server time to start
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-
-          const response = await sendToServer(serverId, {
-            jsonrpc: '2.0',
-            method: 'tools/list',
-            id: uuidv4()
-          });
-
-          if (response.result?.tools) {
-            const tools = response.result.tools.map(tool => ({
-              ...tool,
-              _server: serverId
-            }));
-            allTools.push(...tools);
-          }
-        } catch (err) {
-          console.error(`Failed to get tools from ${serverId}:`, err.message);
-        }
-      }
-
       return res.json({
         jsonrpc: '2.0',
         id,
-        result: { tools: allTools }
+        result: { tools: TOOLS }
       });
     }
 
     if (method === 'tools/call') {
-      // Find which server has this tool
       const toolName = params?.name;
+      const toolArgs = params?.arguments || {};
+
       if (!toolName) {
         return res.status(400).json({
           jsonrpc: '2.0',
@@ -193,38 +203,30 @@ app.post('/rpc', async (req, res) => {
         });
       }
 
-      // Try each server until we find the tool
-      for (const serverId of Object.keys(MCP_SERVERS)) {
-        try {
-          if (!serverProcesses.has(serverId)) {
-            startServer(serverId);
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-
-          const response = await sendToServer(serverId, {
-            jsonrpc: '2.0',
-            method: 'tools/call',
-            params,
-            id: uuidv4()
-          });
-
-          if (response.result) {
-            return res.json({
-              jsonrpc: '2.0',
-              id,
-              result: response.result
-            });
-          }
-        } catch (err) {
-          console.error(`Failed to call tool on ${serverId}:`, err.message);
-        }
+      const executor = TOOL_EXECUTORS[toolName];
+      if (!executor) {
+        return res.status(404).json({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32601, message: `Tool not found: ${toolName}` }
+        });
       }
 
-      return res.status(404).json({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32601, message: `Tool not found: ${toolName}` }
-      });
+      try {
+        const result = await executor(toolArgs);
+        return res.json({
+          jsonrpc: '2.0',
+          id,
+          result: { content: result }
+        });
+      } catch (error) {
+        console.error(`Tool execution error (${toolName}):`, error.message);
+        return res.status(500).json({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32000, message: error.message }
+        });
+      }
     }
 
     return res.status(400).json({
@@ -247,16 +249,13 @@ app.post('/rpc', async (req, res) => {
 const PORT = process.env.PORT || 3100;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`MCP HTTP Bridge listening on port ${PORT}`);
-  console.log(`Available servers: ${Object.keys(MCP_SERVERS).join(', ')}`);
+  console.log(`Available tools: ${TOOLS.map(t => t.name).join(', ')}`);
+  console.log(`Brave API Key: ${process.env.BRAVE_API_KEY ? 'configured' : 'NOT CONFIGURED'}`);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('Shutting down...');
-  for (const [serverId, state] of serverProcesses.entries()) {
-    console.log(`Stopping ${serverId}...`);
-    state.process.kill();
-  }
+  console.log('Shutting down MCP HTTP Bridge...');
   process.exit(0);
 });
 
