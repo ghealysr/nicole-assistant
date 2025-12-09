@@ -549,6 +549,8 @@ async def send_message(
                 conversation_id,
             )
             
+            logger.info(f"[STREAM] Raw history rows fetched: {len(history_rows)} for conversation {conversation_id}")
+            
             # Reverse to chronological order (oldest first)
             history_rows = list(reversed(history_rows))
             
@@ -557,8 +559,11 @@ async def send_message(
                 for row in history_rows
             ]
             
-            # NOTE: Do NOT append chat_request.text here - it's already in history_rows
-            # (saved to DB in STEP 4 before this generator runs)
+            # FALLBACK: If history is empty (race condition), add current message directly
+            # This ensures Claude always has at least the user's message
+            if not messages:
+                logger.warning(f"[STREAM] History empty for conversation {conversation_id} - adding message directly")
+                messages = [{"role": "user", "content": chat_request.text}]
             
             logger.info(f"[STREAM] Messages for Claude: {len(messages)} (context window: 25)")
             
