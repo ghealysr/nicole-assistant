@@ -58,9 +58,12 @@ SUPPORTED_DOCUMENT_TYPES = {
 
 SUPPORTED_IMAGE_TYPES = {
     "image/jpeg": "jpg",
+    "image/jpg": "jpg",
     "image/png": "png",
     "image/gif": "gif",
     "image/webp": "webp",
+    "image/x-png": "png",  # Alternative PNG MIME type
+    "image/pjpeg": "jpg",  # Progressive JPEG
 }
 
 
@@ -195,22 +198,31 @@ class AlphawaveDocumentService:
         try:
             # Step 1: Extract text
             if content_type in SUPPORTED_IMAGE_TYPES:
-                logger.info(f"[DOCUMENT] Extracting from image: {content_type}")
+                logger.info(f"[DOCUMENT] Extracting from image: {content_type}, size: {len(content)} bytes")
                 extracted = await self._extract_from_image(content, content_type)
             elif content_type in SUPPORTED_DOCUMENT_TYPES:
-                logger.info(f"[DOCUMENT] Extracting from document: {content_type}")
+                logger.info(f"[DOCUMENT] Extracting from document: {content_type}, size: {len(content)} bytes")
                 extracted = await self._extract_from_document(content, content_type)
             else:
+                logger.warning(f"[DOCUMENT] Unsupported content type: {content_type}")
                 extracted = {"text": "", "error": f"Unsupported type: {content_type}"}
             
-            logger.info(f"[DOCUMENT] Extraction result: {extracted.keys() if extracted else 'None'}")
+            logger.info(f"[DOCUMENT] Extraction result keys: {list(extracted.keys()) if extracted else 'None'}")
             
             full_text = extracted.get("text", "")
             page_count = extracted.get("page_count", 1)
+            description = extracted.get("description", "")
             
-            if not full_text:
-                error_msg = extracted.get("error", "No text extracted")
-                logger.error(f"[DOCUMENT] Extraction failed: {error_msg}")
+            # For images without text, use description as minimum content
+            if not full_text and description:
+                full_text = f"Image content: {description}"
+                logger.info(f"[DOCUMENT] No text found, using description as content: {len(full_text)} chars")
+            
+            # Only fail if we have absolutely nothing
+            if not full_text and not description:
+                error_msg = extracted.get("error", "No text or description extracted")
+                logger.error(f"[DOCUMENT] Extraction completely failed: {error_msg}")
+                logger.error(f"[DOCUMENT] Extracted data: {extracted}")
                 raise ValueError(error_msg)
             
             logger.info(f"[DOCUMENT] Extracted {len(full_text)} chars, {page_count} pages")
@@ -412,19 +424,32 @@ class AlphawaveDocumentService:
         # Try Azure Vision for OCR
         if self._azure_vision_available:
             try:
-                logger.info(f"[DOCUMENT] Attempting Azure Vision extraction for {len(content)} bytes")
+                logger.info(f"[DOCUMENT] Attempting Azure Vision extraction for {len(content)} bytes, type: {content_type}")
                 result = await self._azure_vision_extract(content)
-                logger.info(f"[DOCUMENT] Azure Vision succeeded, extracted {len(result.get('text', ''))} chars")
+                text_len = len(result.get('text', ''))
+                logger.info(f"[DOCUMENT] Azure Vision succeeded, extracted {text_len} chars")
+                
+                # If Azure returned empty, still try Claude for description
+                if text_len == 0:
+                    logger.info(f"[DOCUMENT] Azure returned no text, trying Claude for description")
+                    claude_result = await self._claude_vision_extract(content, content_type)
+                    if claude_result.get('description'):
+                        result['description'] = claude_result['description']
+                        result['text'] = claude_result.get('text', result['text'])
+                        logger.info(f"[DOCUMENT] Added Claude description to Azure result")
+                
                 return result
             except Exception as e:
-                logger.warning(f"[DOCUMENT] Azure Vision failed, falling back to Claude: {e}")
+                logger.warning(f"[DOCUMENT] Azure Vision failed ({type(e).__name__}: {str(e)}), falling back to Claude")
         else:
             logger.info(f"[DOCUMENT] Azure Vision not configured, using Claude Vision")
         
         # Fallback to Claude Vision
         logger.info(f"[DOCUMENT] Using Claude Vision for extraction")
         result = await self._claude_vision_extract(content, content_type)
-        logger.info(f"[DOCUMENT] Claude Vision extracted {len(result.get('text', ''))} chars")
+        text_len = len(result.get('text', ''))
+        desc_len = len(result.get('description', ''))
+        logger.info(f"[DOCUMENT] Claude Vision extracted {text_len} chars text, {desc_len} chars description")
         return result
     
     async def _azure_vision_extract(self, content: bytes) -> Dict[str, Any]:
@@ -517,12 +542,29 @@ DESCRIPTION: [brief description]""",
                     if text_end == -1:
                         text_end = len(response)
                     text = response[text_start:text_end].strip()
+                    
+                    # Clean up common "no text" responses
+                    if text.lower() in ["none", "n/a", "no text", "no visible text", ""]:
+                        text = ""
                 
                 if "DESCRIPTION:" in response:
                     desc_start = response.find("DESCRIPTION:") + 12
                     description = response[desc_start:].strip()
+                
+                # If Claude didn't follow format, use entire response as description
+                if not text and not description and response:
+                    description = response.strip()
+                    logger.info(f"[DOCUMENT] Claude didn't follow format, using full response as description")
             
-            full_text = f"{text}\n\n[Image: {description}]" if description else text
+            # Build full text with both components
+            if text and description:
+                full_text = f"{text}\n\n[Image: {description}]"
+            elif text:
+                full_text = text
+            elif description:
+                full_text = f"[Image: {description}]"
+            else:
+                full_text = ""
             
             return {"text": full_text, "page_count": 1, "description": description}
             
