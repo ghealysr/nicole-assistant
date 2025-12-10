@@ -253,6 +253,9 @@ async function fetchMemoryStats(authToken?: string): Promise<MemoryStats | null>
       preferenceCount: data.by_type?.preference || 0,
       patternCount: data.by_type?.pattern || 0,
       otherCount: (data.by_type?.correction || 0) + (data.by_type?.relationship || 0) + (data.by_type?.goal || 0),
+      // New fields for charts and corrections
+      seven_day_access_frequency: data.seven_day_access_frequency || [0, 0, 0, 0, 0, 0, 0],
+      recent_corrections: data.recent_corrections || { total: 0, applied: 0, pending: 0 },
     };
   } catch (error) {
     console.error('[MEMORY DASHBOARD] Failed to fetch stats:', error);

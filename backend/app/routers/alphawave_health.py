@@ -196,9 +196,13 @@ async def system_health():
             pass
         
         # Scheduled Jobs Status
-        from app.schedulers.background_scheduler import scheduler
-        jobs_status = "running" if scheduler.running else "stopped"
-        job_count = len(scheduler.get_jobs())
+        try:
+            from app.main import scheduler
+            jobs_status = "running" if scheduler.running else "stopped"
+            job_count = len(scheduler.get_jobs())
+        except Exception:
+            jobs_status = "unknown"
+            job_count = 0
         
         # System Resources
         memory = psutil.virtual_memory()

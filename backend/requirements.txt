@@ -156,6 +156,15 @@ APScheduler==3.10.4
 # Features: Cron triggers, interval triggers, job stores, executors
 
 # ─────────────────────────────────────────────────────────────────────────
+# SYSTEM MONITORING
+# ─────────────────────────────────────────────────────────────────────────
+
+psutil>=5.9.0
+# System and process utilities for monitoring
+# Used for: CPU usage, memory usage, disk usage in dashboard
+# Features: Cross-platform system information
+
+# ─────────────────────────────────────────────────────────────────────────
 # UTILITIES
 # ─────────────────────────────────────────────────────────────────────────
 
