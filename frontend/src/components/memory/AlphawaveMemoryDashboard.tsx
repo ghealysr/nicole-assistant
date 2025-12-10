@@ -668,7 +668,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     <div className="mem-stat-label">Memories</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{diagnostics?.api_health.success_rate.toFixed(0) || '—'}%</div>
+                    <div className="mem-stat-value mem-small">{diagnostics?.api_health?.success_rate?.toFixed(0) ?? '—'}%</div>
                     <div className="mem-stat-label">Success Rate</div>
                   </div>
                 </div>
