@@ -62,6 +62,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   const memories = dashboardData.memories;
   const documents = dashboardData.documents;
   const conversations = dashboardData.conversations;
+  const systemHealth = dashboardData.systemHealth;
   const isOfflineMode = !authToken;
 
   // Resize handlers
@@ -323,13 +324,18 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                   </span>
                 </div>
                 <div className="mem-mini-chart">
-                  <div className="mem-chart-bar" style={{ height: '40%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '65%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '55%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '80%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '70%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '90%' }}></div>
-                  <div className="mem-chart-bar" style={{ height: '100%' }}></div>
+                  {(() => {
+                    const frequencies = stats.seven_day_access_frequency || [0, 0, 0, 0, 0, 0, 0];
+                    const maxFreq = Math.max(...frequencies, 1);
+                    return frequencies.map((freq, i) => (
+                      <div 
+                        key={i} 
+                        className="mem-chart-bar" 
+                        style={{ height: `${(freq / maxFreq) * 100}%` }}
+                        title={`${freq} accesses`}
+                      />
+                    ));
+                  })()}
                 </div>
                 <div className="mem-progress-labels">
                   <span>Mon</span>
@@ -352,19 +358,21 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </svg>
                     Corrections (Last 7 Days)
                   </span>
-                  <span className="mem-widget-badge mem-badge-warning">3 pending</span>
+                  <span className="mem-widget-badge mem-badge-warning">
+                    {stats.recent_corrections?.pending || 0} pending
+                  </span>
                 </div>
                 <div className="mem-stat-grid">
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">12</div>
+                    <div className="mem-stat-value mem-small">{stats.recent_corrections?.total || 0}</div>
                     <div className="mem-stat-label">Total</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small mem-success">9</div>
+                    <div className="mem-stat-value mem-small mem-success">{stats.recent_corrections?.applied || 0}</div>
                     <div className="mem-stat-label">Applied</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small mem-warning">3</div>
+                    <div className="mem-stat-value mem-small mem-warning">{stats.recent_corrections?.pending || 0}</div>
                     <div className="mem-stat-label">Pending</div>
                   </div>
                 </div>
@@ -586,121 +594,136 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           {/* System Tab */}
           {activeTab === 'system' && (
             <div className="mem-tab-panel">
-              {/* Database Status */}
-              <div className="mem-widget">
-                <div className="mem-widget-header">
-                  <span className="mem-widget-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                      <rect x="2" y="3" width="20" height="14" rx="2"/>
-                      <line x1="8" y1="21" x2="16" y2="21"/>
-                      <line x1="12" y1="17" x2="12" y2="21"/>
-                    </svg>
-                    Database Status
-                  </span>
-                  <span className="mem-widget-badge mem-badge-success">All Connected</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Supabase Postgres</span>
-                  <span className="mem-metric-value mem-good">● Online</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Tiger TimescaleDB</span>
-                  <span className="mem-metric-value mem-good">● Online</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Redis Cache</span>
-                  <span className="mem-metric-value mem-good">● Online</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Qdrant Vector Index</span>
-                  <span className="mem-metric-value mem-good">● Healthy</span>
-                </div>
-              </div>
+              {systemHealth ? (
+                <>
+                  {/* System Health */}
+                  <div className="mem-widget">
+                    <div className="mem-widget-header">
+                      <span className="mem-widget-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        System Status
+                      </span>
+                      <span className={`mem-widget-badge ${systemHealth.status === 'healthy' ? 'mem-badge-success' : 'mem-badge-warning'}`}>
+                        {systemHealth.status === 'healthy' ? 'All Systems Operational' : 'Degraded'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">CPU Usage</span>
+                      <span className={`mem-metric-value ${systemHealth.system.cpu_percent < 70 ? 'mem-good' : 'mem-warning'}`}>
+                        {systemHealth.system.cpu_percent}%
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Memory Usage</span>
+                      <span className={`mem-metric-value ${systemHealth.system.memory_percent < 80 ? 'mem-good' : 'mem-warning'}`}>
+                        {systemHealth.system.memory_percent}%
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Available Memory</span>
+                      <span className="mem-metric-value mem-good">{systemHealth.system.memory_available_gb} GB</span>
+                    </div>
+                  </div>
 
-              {/* Performance */}
-              <div className="mem-widget">
-                <div className="mem-widget-header">
-                  <span className="mem-widget-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                    </svg>
-                    Performance
-                  </span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Vector Search (avg)</span>
-                  <span className="mem-metric-value mem-good">47ms</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Text Search (avg)</span>
-                  <span className="mem-metric-value mem-good">23ms</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Hybrid Search (avg)</span>
-                  <span className="mem-metric-value mem-good">68ms</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Cache Hit Rate</span>
-                  <span className="mem-metric-value mem-good">94.2%</span>
-                </div>
-              </div>
+                  {/* Database Status */}
+                  <div className="mem-widget">
+                    <div className="mem-widget-header">
+                      <span className="mem-widget-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                        </svg>
+                        Database
+                      </span>
+                      <span className={`mem-widget-badge ${systemHealth.databases.tiger_timescaledb === 'online' ? 'mem-badge-success' : 'mem-badge-error'}`}>
+                        {systemHealth.databases.tiger_timescaledb === 'online' ? 'Connected' : 'Offline'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Tiger TimescaleDB</span>
+                      <span className={`mem-metric-value ${systemHealth.databases.tiger_timescaledb === 'online' ? 'mem-good' : 'mem-error'}`}>
+                        ● {systemHealth.databases.tiger_timescaledb === 'online' ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+                  </div>
 
-              {/* API Costs */}
-              <div className="mem-widget">
-                <div className="mem-widget-header">
-                  <span className="mem-widget-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                      <line x1="12" y1="1" x2="12" y2="23"/>
-                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                    </svg>
-                    API Costs (This Month)
-                  </span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Claude API</span>
-                  <span className="mem-metric-value">$42.17</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">OpenAI Embeddings</span>
-                  <span className="mem-metric-value">$8.34</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Supabase</span>
-                  <span className="mem-metric-value mem-good">$0.00</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Total</span>
-                  <span className="mem-metric-value" style={{ fontSize: '15px' }}>$50.51</span>
-                </div>
-              </div>
+                  {/* Services Status */}
+                  <div className="mem-widget">
+                    <div className="mem-widget-header">
+                      <span className="mem-widget-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                        Services
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">MCP Gateway</span>
+                      <span className={`mem-metric-value ${systemHealth.services.mcp_gateway === 'online' ? 'mem-good' : 'mem-small'}`}>
+                        ● {systemHealth.services.mcp_gateway === 'online' ? `Online (${systemHealth.services.mcp_tool_count} tools)` : 'Offline'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Background Jobs</span>
+                      <span className={`mem-metric-value ${systemHealth.services.background_jobs === 'running' ? 'mem-good' : 'mem-error'}`}>
+                        ● {systemHealth.services.background_jobs === 'running' ? `Running (${systemHealth.services.job_count} jobs)` : 'Stopped'}
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Scheduled Jobs */}
-              <div className="mem-widget">
-                <div className="mem-widget-header">
-                  <span className="mem-widget-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-                    </svg>
-                    Scheduled Jobs
-                  </span>
+                  {/* Configuration */}
+                  <div className="mem-widget">
+                    <div className="mem-widget-header">
+                      <span className="mem-widget-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                          <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.6 5.6l4.2 4.2m4.2 4.2l4.2 4.2M1 12h6m6 0h6M5.6 18.4l4.2-4.2m4.2-4.2l4.2-4.2"/>
+                        </svg>
+                        Configuration
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Claude (Anthropic)</span>
+                      <span className={`mem-metric-value ${systemHealth.configuration.claude ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration.claude ? '✓ Configured' : '✗ Missing'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">OpenAI Embeddings</span>
+                      <span className={`mem-metric-value ${systemHealth.configuration.openai_embeddings ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration.openai_embeddings ? '✓ Configured' : '✗ Missing'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Azure Document Intelligence</span>
+                      <span className={`mem-metric-value ${systemHealth.configuration.azure_document_intelligence ? 'mem-good' : 'mem-small'}`}>
+                        {systemHealth.configuration.azure_document_intelligence ? '✓ Configured' : '✗ Missing'}
+                      </span>
+                    </div>
+                    <div className="mem-metric-row">
+                      <span className="mem-metric-label">Google OAuth</span>
+                      <span className={`mem-metric-value ${systemHealth.configuration.google_oauth ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration.google_oauth ? '✓ Configured' : '✗ Missing'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mem-widget">
+                  <div className="mem-widget-header">
+                    <span className="mem-widget-title">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                      </svg>
+                      System Status
+                    </span>
+                    <span className="mem-widget-badge mem-badge-warning">Loading...</span>
+                  </div>
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--alphawave-text-secondary)' }}>
+                    Fetching system health data...
+                  </div>
                 </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Memory Decay</span>
-                  <span className="mem-metric-value">Sun 2:00 AM</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Weekly Reflection</span>
-                  <span className="mem-metric-value">Sun 3:00 AM</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Journal Response</span>
-                  <span className="mem-metric-value">Daily 11:59 PM</span>
-                </div>
-                <div className="mem-metric-row">
-                  <span className="mem-metric-label">Last Job Run</span>
-                  <span className="mem-metric-value mem-good">2h ago</span>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
