@@ -341,9 +341,9 @@ async def get_document(
             raise HTTPException(status_code=404, detail="Document not found")
         
         return DocumentDetailResponse(
-            id=document["document_id"],
+            id=document["doc_id"],
             title=document.get("title", "Untitled"),
-            filename=document.get("filename"),
+            filename=document.get("file_name"),
             source_type=document.get("upload_source", "upload"),
             source_url=document.get("source_url"),
             summary=document.get("summary"),
@@ -386,8 +386,8 @@ async def delete_document(
         # Verify ownership
         doc_row = await db.fetchrow(
             """
-            SELECT document_id FROM document_repository
-            WHERE document_id = $1 AND user_id = $2
+            SELECT doc_id FROM document_repository
+            WHERE doc_id = $1 AND user_id = $2
             """,
             document_id,
             tiger_user_id,
@@ -398,13 +398,13 @@ async def delete_document(
         
         # Delete chunks first (foreign key)
         await db.execute(
-            "DELETE FROM document_chunks WHERE document_id = $1",
+            "DELETE FROM document_chunks WHERE doc_id = $1",
             document_id,
         )
         
         # Delete document
         await db.execute(
-            "DELETE FROM document_repository WHERE document_id = $1",
+            "DELETE FROM document_repository WHERE doc_id = $1",
             document_id,
         )
         

@@ -153,43 +153,40 @@ class AlphawaveDocumentService:
         title = self._generate_title(filename)
         
         try:
-            # Insert into uploaded_files (Tiger schema)
+            # Insert into uploaded_files (Production schema)
             storage_path = f"documents/{effective_user_id}/{filename}"
             file_row = await db.fetchrow(
                 """
                 INSERT INTO uploaded_files (
-                    user_id, filename, original_filename, file_type, file_size, 
-                    storage_url, processing_status, metadata, uploaded_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    user_id, file_name, file_path, file_type, file_size, upload_source, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
                 RETURNING file_id
                 """,
                 effective_user_id,
                 filename,
-                filename,  # original_filename
+                storage_path,
                 content_type,
                 len(content),
-                storage_path,  # storage_url
-                'processing',  # processing_status
-                {'source_type': source_type, 'source_url': source_url},  # metadata
+                source_type,
             )
             file_id = file_row["file_id"]
             
-            # Insert into document_repository (Tiger schema)
+            # Insert into document_repository (Production schema)
             doc_row = await db.fetchrow(
                 """
                 INSERT INTO document_repository (
-                    user_id, file_id, title, document_type, created_at, updated_at
+                    user_id, file_id, title, doc_type, created_at, updated_at
                 ) VALUES ($1, $2, $3, $4, NOW(), NOW())
-                RETURNING document_id
+                RETURNING doc_id
                 """,
                 effective_user_id,
                 file_id,
                 title,
                 content_type.split("/")[-1],
             )
-            document_id = doc_row["document_id"]
+            doc_id = doc_row["doc_id"]
             
-            logger.info(f"[DOCUMENT] Created record: document_id={document_id}, file_id={file_id}")
+            logger.info(f"[DOCUMENT] Created record: doc_id={doc_id}, file_id={file_id}")
             
         except Exception as e:
             logger.error(f"[DOCUMENT] Failed to create record: {e}")
@@ -222,14 +219,14 @@ class AlphawaveDocumentService:
             # Step 3: Chunk and embed
             chunks = self._create_chunks(full_text, title)
             chunk_count = await self._embed_and_store_chunks(
-                chunks, document_id, effective_user_id, title
+                chunks, doc_id, effective_user_id, title
             )
             
             logger.info(f"[DOCUMENT] Created {chunk_count} embedded chunks")
             
             # Step 4: Create memories for key facts
             memories_created = await self._create_document_memories(
-                effective_user_id, title, summary, key_points, document_id
+                effective_user_id, title, summary, key_points, doc_id
             )
             
             logger.info(f"[DOCUMENT] Created {memories_created} memories")
@@ -239,25 +236,14 @@ class AlphawaveDocumentService:
                 """
                 UPDATE document_repository
                 SET summary = $1, updated_at = NOW()
-                WHERE document_id = $2
+                WHERE doc_id = $2
                 """,
                 summary,
-                document_id,
-            )
-            
-            # Update uploaded_files status
-            await db.execute(
-                """
-                UPDATE uploaded_files
-                SET processing_status = $1, processed_at = NOW()
-                WHERE file_id = $2
-                """,
-                'completed',
-                file_id,
+                doc_id,
             )
             
             return {
-                "document_id": document_id,
+                "document_id": doc_id,
                 "file_id": file_id,
                 "title": title,
                 "summary": summary,
@@ -272,7 +258,7 @@ class AlphawaveDocumentService:
         except Exception as e:
             logger.error(f"[DOCUMENT] Processing failed: {e}", exc_info=True)
             return {
-                "document_id": document_id if 'document_id' in locals() else None,
+                "document_id": doc_id if 'doc_id' in locals() else None,
                 "error": str(e),
                 "status": "failed",
             }
@@ -667,7 +653,7 @@ KEY_POINTS:
     async def _embed_and_store_chunks(
         self,
         chunks: List[Dict[str, Any]],
-        document_id: int,
+        doc_id: int,
         user_id: int,
         title: str,
     ) -> int:
@@ -687,16 +673,15 @@ KEY_POINTS:
                 texts = [f"Document: {c['title']}\n\n{c['content']}" for c in batch]
                 embeddings = await openai_client.generate_embeddings_batch(texts)
                 
-                # Store in Tiger (using correct Tiger schema column names)
+                # Store in Tiger (Production schema: doc_id, content)
                 for j, (chunk, embedding) in enumerate(zip(batch, embeddings)):
                     await db.execute(
                         """
                         INSERT INTO document_chunks (
-                            document_id, user_id, chunk_index, chunk_text, embedding, created_at
-                        ) VALUES ($1, $2, $3, $4, $5, NOW())
+                            doc_id, chunk_index, content, embedding, created_at
+                        ) VALUES ($1, $2, $3, $4, NOW())
                         """,
-                        document_id,
-                        user_id,
+                        doc_id,
                         chunk["index"],
                         chunk["content"],
                         embedding,
@@ -718,7 +703,7 @@ KEY_POINTS:
         title: str,
         summary: str,
         key_points: List[str],
-        document_id: int,
+        doc_id: int,
     ) -> int:
         """Create memories from document for persistent recall."""
         
@@ -731,7 +716,7 @@ KEY_POINTS:
                     user_id=user_id,
                     memory_type="fact",
                     content=f"Document '{title}': {summary}",
-                    context=f"From document {document_id}",
+                    context=f"From document {doc_id}",
                     importance=0.7,
                     source="system",
                 )
@@ -744,7 +729,7 @@ KEY_POINTS:
                         user_id=user_id,
                         memory_type="fact",
                         content=f"From '{title}': {point}",
-                        context=f"Key point from document {document_id}",
+                        context=f"Key point from document {doc_id}",
                         importance=0.6,
                         source="system",
                     )
@@ -790,17 +775,17 @@ KEY_POINTS:
             # Format as string for PostgreSQL vector type
             embedding_str = f'[{",".join(map(str, query_embedding))}]'
             
-            # Vector search in Tiger
+            # Vector search in Tiger (Production schema)
             rows = await db.fetch(
                 """
                 SELECT 
                     dc.chunk_id,
-                    dc.document_id,
-                    dc.chunk_text,
+                    dc.doc_id,
+                    dc.content,
                     dr.title,
                     1 - (dc.embedding <=> $1::vector) AS score
                 FROM document_chunks dc
-                JOIN document_repository dr ON dr.document_id = dc.document_id
+                JOIN document_repository dr ON dr.doc_id = dc.doc_id
                 WHERE dr.user_id = $2
                   AND dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> $1::vector
@@ -814,10 +799,10 @@ KEY_POINTS:
             for row in rows:
                 if row["score"] > 0.3:  # Minimum relevance threshold
                     results.append({
-                        "document_id": row["document_id"],
+                        "document_id": row["doc_id"],
                         "chunk_id": row["chunk_id"],
                         "title": row["title"],
-                        "content": row["chunk_text"],
+                        "content": row["content"],
                         "score": float(row["score"]),
                         "source": "vector",
                     })
@@ -825,13 +810,13 @@ KEY_POINTS:
         except Exception as e:
             logger.error(f"[DOCUMENT] Vector search failed: {e}")
         
-        # Fallback to text search if needed
+        # Fallback to text search if needed (Production schema)
         if len(results) < limit:
             try:
                 text_rows = await db.fetch(
                     """
                     SELECT 
-                        dr.document_id,
+                        dr.doc_id,
                         dr.title,
                         dr.summary AS content,
                         0.5 AS score
@@ -849,9 +834,9 @@ KEY_POINTS:
                 )
                 
                 for row in text_rows:
-                    if not any(r["document_id"] == row["document_id"] for r in results):
+                    if not any(r["document_id"] == row["doc_id"] for r in results):
                         results.append({
-                            "document_id": row["document_id"],
+                            "document_id": row["doc_id"],
                             "title": row["title"],
                             "content": row["content"] or "",
                             "score": float(row["score"]),
@@ -879,10 +864,10 @@ KEY_POINTS:
         try:
             row = await db.fetchrow(
                 """
-                SELECT dr.*, uf.filename, uf.file_type, uf.file_size
+                SELECT dr.*, uf.file_name, uf.file_type, uf.file_size
                 FROM document_repository dr
                 LEFT JOIN uploaded_files uf ON uf.file_id = dr.file_id
-                WHERE dr.document_id = $1 AND dr.user_id = $2
+                WHERE dr.doc_id = $1 AND dr.user_id = $2
                 """,
                 document_id,
                 user_id_int,
@@ -911,14 +896,14 @@ KEY_POINTS:
             rows = await db.fetch(
                 """
                 SELECT 
-                    dr.document_id,
+                    dr.doc_id,
                     dr.title,
-                    dr.document_type,
+                    dr.doc_type,
                     dr.summary,
                     dr.created_at,
-                    uf.filename,
+                    uf.file_name,
                     uf.file_size,
-                    (SELECT COUNT(*) FROM document_chunks WHERE document_id = dr.document_id) as chunks_count
+                    (SELECT COUNT(*) FROM document_chunks WHERE doc_id = dr.doc_id) as chunks_count
                 FROM document_repository dr
                 LEFT JOIN uploaded_files uf ON uf.file_id = dr.file_id
                 WHERE dr.user_id = $1
