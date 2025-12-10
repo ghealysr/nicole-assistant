@@ -67,6 +67,97 @@ const TOOLS = [
       }
     },
     server: 'filesystem'
+  },
+  {
+    name: 'notion_search',
+    description: 'Search across your Notion workspace',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        filter_type: { type: 'string', description: 'object type: page or database', enum: ['page', 'database'] },
+        page_size: { type: 'number', description: 'Number of results', default: 10 }
+      },
+      required: ['query']
+    },
+    server: 'notion'
+  },
+  {
+    name: 'notion_get_page',
+    description: 'Fetch a Notion page (metadata only)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        page_id: { type: 'string', description: 'Notion page ID' }
+      },
+      required: ['page_id']
+    },
+    server: 'notion'
+  },
+  {
+    name: 'notion_create_page',
+    description: 'Create a Notion page under a page or database',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parent: {
+          type: 'object',
+          description: 'Parent object, e.g., {page_id: \"...\"} or {database_id: \"...\"}'
+        },
+        properties: {
+          type: 'object',
+          description: 'Notion properties object (for database pages)'
+        },
+        children: {
+          type: 'array',
+          description: 'Notion block children (optional)'
+        }
+      },
+      required: ['parent']
+    },
+    server: 'notion'
+  },
+  {
+    name: 'notion_update_page',
+    description: 'Update Notion page properties',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        page_id: { type: 'string', description: 'Page ID' },
+        properties: { type: 'object', description: 'Properties to update' }
+      },
+      required: ['page_id', 'properties']
+    },
+    server: 'notion'
+  },
+  {
+    name: 'notion_query_database',
+    description: 'Query a Notion database',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        database_id: { type: 'string' },
+        filter: { type: 'object' },
+        sorts: { type: 'array' },
+        page_size: { type: 'number', default: 100 }
+      },
+      required: ['database_id']
+    },
+    server: 'notion'
+  },
+  {
+    name: 'notion_create_database_item',
+    description: 'Create an item in a Notion database',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        database_id: { type: 'string' },
+        properties: { type: 'object' },
+        children: { type: 'array' }
+      },
+      required: ['database_id', 'properties']
+    },
+    server: 'notion'
   }
 ];
 
@@ -161,10 +252,90 @@ async function executeListDirectory(args) {
   }
 }
 
+// Notion helpers
+function notionHeaders() {
+  const apiKey = process.env.NOTION_API_KEY;
+  if (!apiKey) {
+    throw new Error('NOTION_API_KEY not configured');
+  }
+  return {
+    'Authorization': `Bearer ${apiKey}`,
+    'Notion-Version': '2022-06-28',
+    'Content-Type': 'application/json'
+  };
+}
+
+async function executeNotionSearch(args) {
+  const { query, filter_type, page_size = 10 } = args;
+  const headers = notionHeaders();
+  const body = { query, page_size: Math.min(page_size, 100) };
+  if (filter_type) {
+    body.filter = { value: filter_type, property: 'object' };
+  }
+  const resp = await axios.post('https://api.notion.com/v1/search', body, { headers });
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
+async function executeNotionGetPage(args) {
+  const { page_id } = args;
+  const headers = notionHeaders();
+  const resp = await axios.get(`https://api.notion.com/v1/pages/${page_id}`, { headers });
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
+async function executeNotionCreatePage(args) {
+  const headers = notionHeaders();
+  const resp = await axios.post('https://api.notion.com/v1/pages', args, { headers });
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
+async function executeNotionUpdatePage(args) {
+  const { page_id, properties } = args;
+  const headers = notionHeaders();
+  const resp = await axios.patch(
+    `https://api.notion.com/v1/pages/${page_id}`,
+    { properties },
+    { headers }
+  );
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
+async function executeNotionQueryDatabase(args) {
+  const { database_id, filter, sorts, page_size = 100 } = args;
+  const headers = notionHeaders();
+  const body = { page_size: Math.min(page_size, 100) };
+  if (filter) body.filter = filter;
+  if (sorts) body.sorts = sorts;
+  const resp = await axios.post(
+    `https://api.notion.com/v1/databases/${database_id}/query`,
+    body,
+    { headers }
+  );
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
+async function executeNotionCreateDatabaseItem(args) {
+  const { database_id, properties, children } = args;
+  const headers = notionHeaders();
+  const body = {
+    parent: { database_id },
+    properties
+  };
+  if (children) body.children = children;
+  const resp = await axios.post('https://api.notion.com/v1/pages', body, { headers });
+  return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
+}
+
 const TOOL_EXECUTORS = {
   'brave_web_search': executeBraveSearch,
   'read_file': executeReadFile,
-  'list_directory': executeListDirectory
+  'list_directory': executeListDirectory,
+  'notion_search': executeNotionSearch,
+  'notion_get_page': executeNotionGetPage,
+  'notion_create_page': executeNotionCreatePage,
+  'notion_update_page': executeNotionUpdatePage,
+  'notion_query_database': executeNotionQueryDatabase,
+  'notion_create_database_item': executeNotionCreateDatabaseItem
 };
 
 
