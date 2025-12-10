@@ -72,7 +72,6 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   const usage = dashboardData.usage;
   const diagnostics = dashboardData.diagnostics;
   const isOfflineMode = !authToken;
-  const hasLoadedData = !dashboardData.loading && authToken;
   
   // Calculate health badge based on diagnostics or fallback to stats
   const getHealthBadge = (): { label: string; class: string } => {
