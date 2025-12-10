@@ -141,8 +141,8 @@ class AlphawaveMCPManager:
                 env={
                     "NOTION_API_KEY": os.getenv("NOTION_API_KEY", ""),
                 },
-                # Disabled by default - requires API key setup
-                enabled=False,
+                # Enabled when NOTION_API_KEY is present
+                enabled=bool(os.getenv("NOTION_API_KEY")),
             )
         )
         
