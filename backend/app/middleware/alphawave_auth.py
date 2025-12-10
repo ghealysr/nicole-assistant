@@ -54,6 +54,9 @@ def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
 PUBLIC_PATHS = {
     "/healthz",
     "/health/check",
+    "/health/ping",
+    "/health/system",
+    "/health/mcp",
     "/auth/login",
     "/auth/callback",
     "/auth/logout",
