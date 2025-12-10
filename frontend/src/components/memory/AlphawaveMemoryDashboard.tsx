@@ -401,26 +401,36 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
               </div>
 
               <div className="mem-memory-list">
-                {filteredMemories.map(memory => (
-                  <div key={memory.id} className="mem-memory-item">
-                    <span className={`mem-memory-type-badge ${getMemoryTypeBadgeClass(memory.type)}`}>
-                      {memory.type}
-                    </span>
-                    <div className="mem-memory-content">
-                      <div className="mem-memory-text">{memory.content}</div>
-                      <div className="mem-memory-meta">
-                        <span className="mem-memory-confidence">
-                          <div className="mem-confidence-bar">
-                            <div className="mem-confidence-fill" style={{ width: `${memory.confidence * 100}%` }}></div>
-                          </div>
-                          {Math.round(memory.confidence * 100)}%
-                        </span>
-                        <span>Accessed {memory.accessCount}x</span>
-                        <span>{memory.lastAccessed}</span>
+                {filteredMemories.length > 0 ? (
+                  filteredMemories.map(memory => (
+                    <div key={memory.id} className="mem-memory-item">
+                      <span className={`mem-memory-type-badge ${getMemoryTypeBadgeClass(memory.type)}`}>
+                        {memory.type}
+                      </span>
+                      <div className="mem-memory-content">
+                        <div className="mem-memory-text">{memory.content}</div>
+                        <div className="mem-memory-meta">
+                          <span className="mem-memory-confidence">
+                            <div className="mem-confidence-bar">
+                              <div className="mem-confidence-fill" style={{ width: `${memory.confidence * 100}%` }}></div>
+                            </div>
+                            {Math.round(memory.confidence * 100)}%
+                          </span>
+                          <span>Accessed {memory.accessCount}x</span>
+                          <span>{memory.lastAccessed}</span>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="skills-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    <p>{memorySearch || memoryFilter !== 'all' ? 'No memories match your filters' : 'No memories yet. Ask Nicole to remember something!'}</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}
@@ -444,22 +454,22 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
               <div className="mem-widget" style={{ marginBottom: '16px' }}>
                 <div className="mem-stat-grid">
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small mem-highlight">47</div>
+                    <div className="mem-stat-value mem-small mem-highlight">{documents.length}</div>
                     <div className="mem-stat-label">Total Files</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">1,842</div>
+                    <div className="mem-stat-value mem-small">{documents.reduce((sum, d) => sum + (d.chunks || 0), 0)}</div>
                     <div className="mem-stat-label">Chunks</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">156MB</div>
+                    <div className="mem-stat-value mem-small">—</div>
                     <div className="mem-stat-label">Storage</div>
                   </div>
                 </div>
               </div>
 
               <div className="mem-document-list">
-                {filteredDocuments.map(doc => (
+                {filteredDocuments.length > 0 ? filteredDocuments.map(doc => (
                   <div key={doc.id} className="mem-doc-item">
                     <div className={`mem-doc-icon ${getDocIconClass(doc.type)}`}>
                       {doc.type === 'pdf' && (
@@ -489,7 +499,15 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                       {doc.status}
                     </span>
                   </div>
-                ))}
+                )) : (
+                  <div className="skills-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <path d="M14 2v6h6"/>
+                    </svg>
+                    <p>{documentSearch ? 'No documents match your search' : 'No documents uploaded yet'}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -513,26 +531,26 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
               <div className="mem-widget" style={{ marginBottom: '16px' }}>
                 <div className="mem-stat-grid mem-stat-grid-4">
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small mem-highlight">234</div>
+                    <div className="mem-stat-value mem-small mem-highlight">{conversations.length}</div>
                     <div className="mem-stat-label">Chats</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">4,521</div>
+                    <div className="mem-stat-value mem-small">{conversations.reduce((sum, c) => sum + (c.messages || 0), 0)}</div>
                     <div className="mem-stat-label">Messages</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">847</div>
+                    <div className="mem-stat-value mem-small">{stats.total}</div>
                     <div className="mem-stat-label">Memories</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">98%</div>
+                    <div className="mem-stat-value mem-small">—</div>
                     <div className="mem-stat-label">Helpful</div>
                   </div>
                 </div>
               </div>
 
               <div className="mem-chat-history-list">
-                {filteredHistory.map(chat => (
+                {filteredHistory.length > 0 ? filteredHistory.map(chat => (
                   <div key={chat.id} className="mem-chat-item">
                     <div className="mem-chat-title">{chat.title}</div>
                     <div className="mem-chat-preview">{chat.preview}</div>
@@ -546,7 +564,14 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                       </span>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="skills-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <p>{historySearch ? 'No conversations match your search' : 'No conversations yet. Start chatting with Nicole!'}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -682,7 +707,16 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
 
         {/* Footer */}
         <div className="mem-dash-footer">
-          <div className="mem-dash-footer-text">Last synced: Just now • Supabase + Tiger TimescaleDB</div>
+          <div className="mem-dash-footer-text">
+            {authToken ? (
+              <>
+                Loaded: {memories.length} memories • {documents.length} docs • {conversations.length} chats
+                {dashboardData.loading && ' • Loading...'}
+              </>
+            ) : (
+              'Sign in to sync data'
+            )}
+          </div>
         </div>
       </div>
     </aside>

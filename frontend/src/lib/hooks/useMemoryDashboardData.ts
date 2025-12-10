@@ -313,6 +313,7 @@ export function useMemoryDashboardData(authToken?: string) {
   
   const loadData = useCallback(async () => {
     if (!authToken) {
+      console.log('[MEMORY DASHBOARD] No auth token, skipping data load');
       setData({
         stats: null,
         memories: [],
@@ -324,6 +325,7 @@ export function useMemoryDashboardData(authToken?: string) {
       return;
     }
     
+    console.log('[MEMORY DASHBOARD] Loading data with auth token:', authToken.substring(0, 20) + '...');
     setData(prev => ({ ...prev, loading: true, error: null }));
     
     try {
@@ -334,6 +336,13 @@ export function useMemoryDashboardData(authToken?: string) {
         fetchDocuments(authToken),
         fetchConversations(authToken),
       ]);
+      
+      console.log('[MEMORY DASHBOARD] Data loaded:', {
+        stats: stats ? 'OK' : 'NULL',
+        memoriesCount: memories.length,
+        documentsCount: documents.length,
+        conversationsCount: conversations.length,
+      });
       
       setData({
         stats,
