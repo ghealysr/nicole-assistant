@@ -10,33 +10,39 @@ interface AlphawaveMemoryDashboardProps {
   authToken?: string;
 }
 
-// Sample data for offline/preview mode
-const sampleStats: MemoryStats = {
-  total: 847,
-  active: 812,
-  archived: 35,
-  avgConfidence: 87,
-  highConfidenceCount: 624,
-  decayingCount: 42,
-  factCount: 342,
-  preferenceCount: 218,
-  patternCount: 156,
-  otherCount: 131,
+// Default empty stats - used for empty state display (NOT fake data)
+const emptyStats: MemoryStats = {
+  total: 0,
+  active: 0,
+  archived: 0,
+  avgConfidence: 0,
+  highConfidenceCount: 0,
+  decayingCount: 0,
+  factCount: 0,
+  preferenceCount: 0,
+  patternCount: 0,
+  otherCount: 0,
+  seven_day_access_frequency: [0, 0, 0, 0, 0, 0, 0],
+  recent_corrections: { total: 0, applied: 0, pending: 0 },
 };
 
 /**
  * Nicole V7 Memory Dashboard - Full featured memory system panel.
  * 
  * Backend Integration Points:
- * - GET /api/memories/stats - Fetch memory statistics ✅
- * - GET /api/memories - Fetch memories with filters ✅
- * - GET /api/documents/list - Fetch processed documents ✅
- * - GET /api/conversations - Fetch chat history ✅
+ * - GET /memories/stats - Fetch memory statistics
+ * - GET /memories - Fetch memories with filters
+ * - GET /documents/list - Fetch processed documents
+ * - GET /chat/conversations - Fetch chat history
+ * - GET /health/system - System health and configuration
+ * - GET /dashboard/usage - Usage and cost metrics
+ * - GET /dashboard/diagnostics - System diagnostics
  * 
  * QA Notes:
  * - Resizable panel (400px - 800px)
  * - All tabs functional with real backend data
- * - Offline mode with sample data when no auth token
+ * - Empty state when not logged in
+ * - NO fake/dummy data - all real or empty
  */
 export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: AlphawaveMemoryDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'documents' | 'history' | 'skills' | 'system'>('overview');
@@ -57,8 +63,8 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   // Fetch dashboard data from backend
   const dashboardData = useMemoryDashboardData(authToken);
   
-  // Use real data if available, otherwise fall back to sample data
-  const stats = dashboardData.stats || sampleStats;
+  // Use real data - fall back to empty stats, NOT fake sample data
+  const stats = dashboardData.stats || emptyStats;
   const memories = dashboardData.memories;
   const documents = dashboardData.documents;
   const conversations = dashboardData.conversations;
@@ -66,15 +72,35 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   const usage = dashboardData.usage;
   const diagnostics = dashboardData.diagnostics;
   const isOfflineMode = !authToken;
+  const hasLoadedData = !dashboardData.loading && authToken;
   
-  // Calculate health badge based on diagnostics
+  // Calculate health badge based on diagnostics or fallback to stats
   const getHealthBadge = (): { label: string; class: string } => {
-    if (!diagnostics) return { label: 'Loading...', class: 'mem-badge-info' };
-    const score = diagnostics.health.score;
-    if (score >= 90) return { label: 'Excellent', class: 'mem-badge-success' };
-    if (score >= 70) return { label: 'Healthy', class: 'mem-badge-success' };
-    if (score >= 50) return { label: 'Fair', class: 'mem-badge-warning' };
-    return { label: 'Needs Attention', class: 'mem-badge-error' };
+    // If still loading, show loading state
+    if (dashboardData.loading) return { label: 'Loading...', class: 'mem-badge-info' };
+    
+    // If no auth, show offline
+    if (!authToken) return { label: 'Sign In', class: 'mem-badge-warning' };
+    
+    // Use diagnostics if available
+    if (diagnostics?.health?.score !== undefined) {
+      const score = diagnostics.health.score;
+      if (score >= 90) return { label: 'Excellent', class: 'mem-badge-success' };
+      if (score >= 70) return { label: 'Healthy', class: 'mem-badge-success' };
+      if (score >= 50) return { label: 'Fair', class: 'mem-badge-warning' };
+      return { label: 'Needs Attention', class: 'mem-badge-error' };
+    }
+    
+    // Fallback: use stats to determine health
+    if (dashboardData.stats) {
+      const avgConf = dashboardData.stats.avgConfidence || 0;
+      if (avgConf >= 80) return { label: 'Healthy', class: 'mem-badge-success' };
+      if (avgConf >= 50) return { label: 'Fair', class: 'mem-badge-warning' };
+      if (avgConf > 0) return { label: 'Needs Attention', class: 'mem-badge-error' };
+    }
+    
+    // If no data at all
+    return { label: 'No Data', class: 'mem-badge-info' };
   };
   
   // Calculate actual day names for 7-day chart

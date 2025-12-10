@@ -252,6 +252,20 @@ class AlphawaveUsageService:
         period_end = date.today()
         
         try:
+            # Check if api_usage_log table exists
+            table_exists = await db.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'api_usage_log'
+                )
+                """
+            )
+            
+            if not table_exists:
+                logger.warning("[USAGE] api_usage_log table does not exist - returning empty usage")
+                return self._empty_usage_summary(period_start, period_end, days)
+            
             # Get aggregated usage data
             usage_row = await db.fetchrow(
                 """
@@ -283,28 +297,36 @@ class AlphawaveUsageService:
                 period_end,
             )
             
-            # Get storage usage
-            storage_row = await db.fetchrow(
-                """
-                SELECT
-                    COALESCE(SUM(file_size), 0) AS document_storage,
-                    COALESCE(COUNT(*), 0) AS document_count
-                FROM uploaded_files
-                WHERE user_id = $1
-                """,
-                user_id,
-            )
+            # Get storage usage - handle both schema variants
+            try:
+                storage_row = await db.fetchrow(
+                    """
+                    SELECT
+                        COALESCE(SUM(file_size), 0) AS document_storage,
+                        COALESCE(COUNT(*), 0) AS document_count
+                    FROM uploaded_files
+                    WHERE user_id = $1
+                    """,
+                    user_id,
+                )
+            except Exception as e:
+                logger.warning(f"[USAGE] Failed to get storage usage: {e}")
+                storage_row = {"document_storage": 0, "document_count": 0}
             
             # Estimate embedding storage (1536 dims * 4 bytes * chunk count)
-            chunk_row = await db.fetchrow(
-                """
-                SELECT COUNT(*) AS chunk_count
-                FROM document_chunks dc
-                JOIN document_repository dr ON dr.doc_id = dc.doc_id
-                WHERE dr.user_id = $1
-                """,
-                user_id,
-            )
+            try:
+                chunk_row = await db.fetchrow(
+                    """
+                    SELECT COUNT(*) AS chunk_count
+                    FROM document_chunks dc
+                    JOIN document_repository dr ON dr.doc_id = dc.doc_id
+                    WHERE dr.user_id = $1
+                    """,
+                    user_id,
+                )
+            except Exception as e:
+                logger.warning(f"[USAGE] Failed to get chunk count: {e}")
+                chunk_row = {"chunk_count": 0}
             
             embedding_storage = (chunk_row["chunk_count"] or 0) * 1536 * 4
             document_storage = storage_row["document_storage"] or 0
