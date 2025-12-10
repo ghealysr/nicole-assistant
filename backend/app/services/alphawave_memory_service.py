@@ -694,29 +694,56 @@ class MemoryService:
         except Exception:
             pass
         
-        # Fallback to direct query
+        # Fallback to comprehensive stats query
         row = await db.fetchrow(
             """
             SELECT
                 COUNT(*) FILTER (WHERE archived_at IS NULL) AS total_active,
                 COUNT(*) FILTER (WHERE archived_at IS NOT NULL) AS total_archived,
-                AVG(confidence) AS avg_confidence,
-                AVG(importance) AS avg_importance,
+                AVG(confidence_score) AS avg_confidence,
+                AVG(importance_score) AS avg_importance,
                 SUM(access_count) AS total_accesses,
-                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS recent_count
+                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS recent_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence_score >= 0.7) AS high_confidence,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence_score < 0.4) AS low_confidence,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'fact') AS fact_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'preference') AS preference_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'pattern') AS pattern_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'correction') AS correction_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'relationship') AS relationship_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'goal') AS goal_count,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type NOT IN ('fact', 'preference', 'pattern', 'correction', 'relationship', 'goal')) AS other_count
             FROM memory_entries
             WHERE user_id = $1
             """,
             user_id_int,
         )
         
+        total_active = row["total_active"] or 0
+        total_archived = row["total_archived"] or 0
+        
         return {
-            "total_active": row["total_active"] or 0,
-            "total_archived": row["total_archived"] or 0,
+            "total": total_active + total_archived,
+            "active": total_active,
+            "archived": total_archived,
             "avg_confidence": float(row["avg_confidence"] or 0),
             "avg_importance": float(row["avg_importance"] or 0),
             "total_accesses": row["total_accesses"] or 0,
             "recent_count": row["recent_count"] or 0,
+            "by_confidence": {
+                "high": row["high_confidence"] or 0,
+                "medium": total_active - (row["high_confidence"] or 0) - (row["low_confidence"] or 0),
+                "low": row["low_confidence"] or 0,
+            },
+            "by_type": {
+                "fact": row["fact_count"] or 0,
+                "preference": row["preference_count"] or 0,
+                "pattern": row["pattern_count"] or 0,
+                "correction": row["correction_count"] or 0,
+                "relationship": row["relationship_count"] or 0,
+                "goal": row["goal_count"] or 0,
+                "other": row["other_count"] or 0,
+            },
         }
     
     # =========================================================================

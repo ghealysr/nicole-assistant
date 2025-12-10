@@ -5,10 +5,10 @@
  * Handles authentication, loading states, and error handling.
  * 
  * Backend APIs:
- * - GET /api/memories/stats - Memory statistics
- * - GET /api/memories - Memory list
- * - GET /api/documents/list - Document list
- * - GET /api/conversations - Conversation history
+ * - GET /memories/stats - Memory statistics
+ * - GET /memories - Memory list
+ * - GET /documents/list - Document list
+ * - GET /chat/conversations - Conversation history
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -115,7 +115,7 @@ async function fetchMemoryStats(authToken?: string): Promise<MemoryStats | null>
   if (!authToken) return null;
   
   try {
-    const response = await fetch(`${API_BASE}/api/memories/stats`, {
+    const response = await fetch(`${API_BASE}/memories/stats`, {
       headers: getAuthHeaders(authToken),
     });
     
@@ -151,7 +151,7 @@ async function fetchMemories(authToken?: string, limit = 50): Promise<Memory[]> 
   if (!authToken) return [];
   
   try {
-    const response = await fetch(`${API_BASE}/api/memories?limit=${limit}`, {
+    const response = await fetch(`${API_BASE}/memories?limit=${limit}`, {
       headers: getAuthHeaders(authToken),
     });
     
@@ -184,7 +184,7 @@ async function fetchDocuments(authToken?: string, limit = 50): Promise<Document[
   if (!authToken) return [];
   
   try {
-    const response = await fetch(`${API_BASE}/api/documents/list?limit=${limit}`, {
+    const response = await fetch(`${API_BASE}/documents/list?limit=${limit}`, {
       headers: getAuthHeaders(authToken),
     });
     
@@ -218,7 +218,7 @@ async function fetchConversations(authToken?: string, limit = 50): Promise<Conve
   if (!authToken) return [];
   
   try {
-    const response = await fetch(`${API_BASE}/api/conversations?limit=${limit}`, {
+    const response = await fetch(`${API_BASE}/chat/conversations?limit=${limit}`, {
       headers: getAuthHeaders(authToken),
     });
     
