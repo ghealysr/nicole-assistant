@@ -32,6 +32,38 @@ export interface MemoryStats {
     medium: number;
     low: number;
   };
+  seven_day_access_frequency?: number[];
+  recent_corrections?: {
+    total: number;
+    applied: number;
+    pending: number;
+  };
+}
+
+export interface SystemHealth {
+  status: string;
+  timestamp: string;
+  databases: {
+    tiger_timescaledb: string;
+  };
+  services: {
+    mcp_gateway: string;
+    mcp_tool_count: number;
+    background_jobs: string;
+    job_count: number;
+  };
+  system: {
+    cpu_percent: number;
+    memory_percent: number;
+    memory_available_gb: number;
+  };
+  configuration: {
+    azure_document_intelligence: boolean;
+    openai_embeddings: boolean;
+    claude: boolean;
+    google_oauth: boolean;
+    mcp_gateway: boolean;
+  };
 }
 
 export interface Memory {
@@ -87,6 +119,7 @@ export interface DashboardData {
   memories: Memory[];
   documents: Document[];
   conversations: Conversation[];
+  systemHealth: SystemHealth | null;
   loading: boolean;
   error: string | null;
 }
@@ -245,6 +278,28 @@ async function fetchConversations(authToken?: string, limit = 50): Promise<Conve
 }
 
 /**
+ * Fetch system health
+ */
+async function fetchSystemHealth(authToken?: string): Promise<SystemHealth | null> {
+  if (!authToken) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE}/health/system`, {
+      headers: getAuthHeaders(authToken),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch system health: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[MEMORY DASHBOARD] Failed to fetch system health:', error);
+    return null;
+  }
+}
+
+/**
  * Helper: Infer document type from filename
  */
 function inferDocumentType(filename: string): 'pdf' | 'image' | 'code' {
@@ -305,6 +360,7 @@ export function useMemoryDashboardData(authToken?: string) {
     memories: [],
     documents: [],
     conversations: [],
+    systemHealth: null,
     loading: true,
     error: null,
   });
@@ -319,6 +375,7 @@ export function useMemoryDashboardData(authToken?: string) {
         memories: [],
         documents: [],
         conversations: [],
+        systemHealth: null,
         loading: false,
         error: null,
       });
@@ -330,11 +387,12 @@ export function useMemoryDashboardData(authToken?: string) {
     
     try {
       // Fetch all data in parallel
-      const [stats, memories, documents, conversations] = await Promise.all([
+      const [stats, memories, documents, conversations, systemHealth] = await Promise.all([
         fetchMemoryStats(authToken),
         fetchMemories(authToken),
         fetchDocuments(authToken),
         fetchConversations(authToken),
+        fetchSystemHealth(authToken),
       ]);
       
       console.log('[MEMORY DASHBOARD] Data loaded:', {
@@ -342,6 +400,7 @@ export function useMemoryDashboardData(authToken?: string) {
         memoriesCount: memories.length,
         documentsCount: documents.length,
         conversationsCount: conversations.length,
+        systemHealth: systemHealth ? 'OK' : 'NULL',
       });
       
       setData({
@@ -349,6 +408,7 @@ export function useMemoryDashboardData(authToken?: string) {
         memories,
         documents,
         conversations,
+        systemHealth,
         loading: false,
         error: null,
       });

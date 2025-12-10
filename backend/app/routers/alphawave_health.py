@@ -162,3 +162,79 @@ async def connect_mcp_server(server_name: str) -> dict:
         "server": server_name,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+@router.get("/system")
+async def system_health():
+    """Get comprehensive system health and status information."""
+    import psutil
+    from app.database import get_tiger_pool
+    
+    try:
+        # Database Status
+        db_status = "online"
+        try:
+            pool = await get_tiger_pool()
+            if pool:
+                async with pool.acquire() as conn:
+                    await conn.fetchval("SELECT 1")
+            else:
+                db_status = "offline"
+        except Exception:
+            db_status = "offline"
+        
+        # MCP Status
+        mcp_status = "offline"
+        mcp_tool_count = 0
+        try:
+            if settings.MCP_ENABLED:
+                mcp = await get_mcp_client()
+                if mcp.is_connected:
+                    mcp_status = "online"
+                    mcp_tool_count = mcp.tool_count
+        except Exception:
+            pass
+        
+        # Scheduled Jobs Status
+        from app.schedulers.background_scheduler import scheduler
+        jobs_status = "running" if scheduler.running else "stopped"
+        job_count = len(scheduler.get_jobs())
+        
+        # System Resources
+        memory = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        
+        # Configuration Check
+        services_configured = {
+            "azure_document_intelligence": bool(settings.AZURE_DOCUMENT_ENDPOINT and settings.AZURE_DOCUMENT_KEY),
+            "openai_embeddings": bool(settings.OPENAI_API_KEY),
+            "claude": bool(settings.ANTHROPIC_API_KEY),
+            "google_oauth": bool(settings.GOOGLE_CLIENT_ID),
+            "mcp_gateway": bool(settings.MCP_ENABLED),
+        }
+        
+        return {
+            "status": "healthy" if db_status == "online" else "degraded",
+            "timestamp": datetime.utcnow().isoformat(),
+            "databases": {
+                "tiger_timescaledb": db_status,
+            },
+            "services": {
+                "mcp_gateway": mcp_status,
+                "mcp_tool_count": mcp_tool_count,
+                "background_jobs": jobs_status,
+                "job_count": job_count,
+            },
+            "system": {
+                "cpu_percent": round(cpu_percent, 1),
+                "memory_percent": round(memory.percent, 1),
+                "memory_available_gb": round(memory.available / (1024**3), 2),
+            },
+            "configuration": services_configured,
+        }
+    except Exception as e:
+        logger.error(f"System health check failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }

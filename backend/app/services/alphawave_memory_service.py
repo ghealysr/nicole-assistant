@@ -719,6 +719,45 @@ class MemoryService:
             user_id_int,
         )
         
+        # Get 7-day access frequency
+        access_rows = await db.fetch(
+            """
+            SELECT 
+                DATE(last_accessed) as access_date,
+                COUNT(DISTINCT memory_id) as access_count
+            FROM memory_entries
+            WHERE user_id = $1 
+              AND last_accessed >= NOW() - INTERVAL '7 days'
+              AND last_accessed IS NOT NULL
+            GROUP BY DATE(last_accessed)
+            ORDER BY access_date
+            """,
+            user_id_int,
+        )
+        
+        # Build 7-day array (last 7 days including today)
+        from datetime import date, timedelta
+        today = date.today()
+        seven_day_frequency = [0] * 7
+        access_map = {r["access_date"]: r["access_count"] for r in access_rows}
+        for i in range(7):
+            day = today - timedelta(days=6-i)
+            seven_day_frequency[i] = access_map.get(day, 0)
+        
+        # Get corrections data (last 7 days)
+        corrections_row = await db.fetchrow(
+            """
+            SELECT
+                COUNT(*) AS total_corrections,
+                COUNT(*) FILTER (WHERE applied = TRUE) AS applied_corrections,
+                COUNT(*) FILTER (WHERE applied = FALSE) AS pending_corrections
+            FROM corrections
+            WHERE user_id = $1
+              AND created_at >= NOW() - INTERVAL '7 days'
+            """,
+            user_id_int,
+        )
+        
         total_active = row["total_active"] or 0
         total_archived = row["total_archived"] or 0
         
@@ -743,6 +782,12 @@ class MemoryService:
                 "relationship": row["relationship_count"] or 0,
                 "goal": row["goal_count"] or 0,
                 "other": row["other_count"] or 0,
+            },
+            "seven_day_access_frequency": seven_day_frequency,
+            "recent_corrections": {
+                "total": corrections_row["total_corrections"] or 0,
+                "applied": corrections_row["applied_corrections"] or 0,
+                "pending": corrections_row["pending_corrections"] or 0,
             },
         }
     
