@@ -87,7 +87,7 @@
       "id": "local-example-python-skill",
       "name": "Example Python Skill",
       "vendor": "local",
-      "description": "Sample python-based skill for QA",
+      "description": "Sample python-based skill for QA. Run this to test skill execution.",
       "version": "1.0.0",
       "checksum": "724ad5c89a742e6df1996093d55e7886c2ec6ca2c132670bdc7347712d8d05d6",
       "source": {
@@ -95,12 +95,12 @@
         "repo": "local/example-python-skill",
         "ref": "main",
         "license": "MIT",
-        "imported_at": null
+        "imported_at": "2025-12-03T02:07:00Z"
       },
       "executor": {
         "executor_type": "python_script",
         "entrypoint": "main.py",
-        "runtime": null,
+        "runtime": "python3",
         "timeout_seconds": 60,
         "env": {},
         "requires_gpu": false
@@ -108,25 +108,33 @@
       "capabilities": [
         {
           "domain": "testing",
-          "description": "Demonstrates python execution",
-          "trigger_phrases": [],
-          "tags": []
+          "description": "Demonstrates python script execution. Returns a greeting message.",
+          "trigger_phrases": ["run hello world", "test python skill", "execute example skill"],
+          "tags": ["testing", "demo", "python"]
         }
       ],
       "safety": {
         "risk_level": "low",
         "notes": [
-          "Sample skill"
+          "Sample skill - safe for testing"
         ],
-        "review_status": "unreviewed"
+        "review_status": "reviewed"
       },
       "usage_examples": [
-        "Run hello world"
+        "Run hello world",
+        "Test the example python skill",
+        "Execute the local example skill"
       ],
       "dependencies": [],
       "tests": [],
       "install_path": "skills/installed/local/example-python-skill",
-      "status": "installed"
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-10T19:30:00Z",
+      "health_notes": ["Manually verified - ready for execution"],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
     }
   ]
 }
