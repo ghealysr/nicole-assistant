@@ -197,11 +197,11 @@ async function fetchDocuments(authToken?: string, limit = 50): Promise<Document[
     
     // Normalize the response
     return documents.map((d: Record<string, unknown>) => ({
-      id: d.doc_id || d.id,
-      name: d.title || d.file_name || d.filename || 'Untitled',
-      type: inferDocumentType((d.file_name || d.filename || '') as string),
+      id: d.document_id || d.doc_id || d.id,  // Backend now returns document_id
+      name: d.title || d.filename || d.file_name || 'Untitled',  // Backend returns filename
+      type: inferDocumentType((d.filename || d.file_name || '') as string),
       size: formatFileSize((d.file_size || 0) as number),
-      chunks: d.chunk_count || d.chunks || 0,
+      chunks: d.chunks_count || d.chunk_count || d.chunks || 0,  // Backend returns chunks_count
       status: (d.status || 'processed') as 'processed' | 'processing' | 'pending',
       uploaded: formatDate(d.created_at as string | undefined),
     }));
