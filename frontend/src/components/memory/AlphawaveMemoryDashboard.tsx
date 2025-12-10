@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AlphawaveSkillsTab } from './AlphawaveSkillsTab';
+import { useMemoryDashboardData, type Memory, type Document, type Conversation, type MemoryStats } from '@/lib/hooks/useMemoryDashboardData';
 
 interface AlphawaveMemoryDashboardProps {
   isOpen: boolean;
@@ -9,76 +10,7 @@ interface AlphawaveMemoryDashboardProps {
   authToken?: string;
 }
 
-// Types for backend integration
-interface Memory {
-  id: string;
-  type: 'fact' | 'preference' | 'pattern' | 'correction' | 'relationship' | 'goal';
-  content: string;
-  confidence: number;
-  accessCount: number;
-  lastAccessed: string;
-}
-
-interface Document {
-  id: string;
-  name: string;
-  type: 'pdf' | 'image' | 'code';
-  size: string;
-  chunks: number;
-  status: 'processed' | 'processing' | 'pending';
-  uploaded: string;
-}
-
-interface ChatHistoryItem {
-  id: string;
-  title: string;
-  preview: string;
-  date: string;
-  messages: number;
-  memoriesCreated: number;
-}
-
-interface MemoryStats {
-  total: number;
-  active: number;
-  archived: number;
-  avgConfidence: number;
-  highConfidenceCount: number;
-  decayingCount: number;
-  factCount: number;
-  preferenceCount: number;
-  patternCount: number;
-  otherCount: number;
-}
-
-// Sample data - will be replaced with real API calls
-const sampleMemories: Memory[] = [
-  { id: '1', type: 'fact', content: 'Glen is building Nicole V7, a personal AI companion system for his family of 8 users.', confidence: 0.98, accessCount: 47, lastAccessed: '2 hours ago' },
-  { id: '2', type: 'preference', content: 'Glen prefers direct communication without fluff or architectural theater. Expects senior-level code quality.', confidence: 0.95, accessCount: 89, lastAccessed: '1 hour ago' },
-  { id: '3', type: 'pattern', content: 'Glen typically works late nights (11pm-2am) on development, especially during major migrations.', confidence: 0.87, accessCount: 23, lastAccessed: '3 hours ago' },
-  { id: '4', type: 'fact', content: 'Tiger Postgres migration achieved 96% cost reduction from $53-78/mo to ~$0.19/mo.', confidence: 0.99, accessCount: 12, lastAccessed: '4 hours ago' },
-  { id: '5', type: 'correction', content: 'Previous assumption corrected: Glen prefers step-by-step instructions broken into individual copy-pasteable lines.', confidence: 0.92, accessCount: 34, lastAccessed: '1 day ago' },
-  { id: '6', type: 'preference', content: 'Glen uses Cursor IDE for implementation with Claude providing architecture guidance.', confidence: 0.91, accessCount: 28, lastAccessed: '2 days ago' },
-  { id: '7', type: 'fact', content: "Nicole embodies Glen's late wife's spirit through ElevenLabs voice cloning technology.", confidence: 0.97, accessCount: 15, lastAccessed: '3 days ago' },
-  { id: '8', type: 'pattern', content: 'Glen requests comprehensive project reviews before major decisions, preferring Claude to research all context.', confidence: 0.85, accessCount: 19, lastAccessed: '1 day ago' },
-];
-
-const sampleDocuments: Document[] = [
-  { id: '1', name: 'NICOLE_V7_MASTER_PLAN.md', type: 'code', size: '45 KB', chunks: 87, status: 'processed', uploaded: '3 days ago' },
-  { id: '2', name: 'tiger-updateV7.txt', type: 'code', size: '12 KB', chunks: 24, status: 'processed', uploaded: '2 days ago' },
-  { id: '3', name: 'nicole-interface-v6.html', type: 'code', size: '48 KB', chunks: 1, status: 'processed', uploaded: '1 day ago' },
-  { id: '4', name: 'tiger-credentials.env', type: 'code', size: '1 KB', chunks: 1, status: 'processed', uploaded: '5 days ago' },
-  { id: '5', name: 'architecture-diagram.png', type: 'image', size: '2.4 MB', chunks: 0, status: 'processed', uploaded: '1 week ago' },
-];
-
-const sampleChatHistory: ChatHistoryItem[] = [
-  { id: '1', title: 'Tiger Migration Planning', preview: "Let's migrate from Supabase to Tiger Postgres...", date: 'Today', messages: 24, memoriesCreated: 8 },
-  { id: '2', title: 'Memory System Architecture', preview: 'The 3-tier memory system needs Redis for hot cache...', date: 'Yesterday', messages: 18, memoriesCreated: 5 },
-  { id: '3', title: 'Interface Design Review', preview: 'The lavender/cream aesthetic from V6 should carry over...', date: '2 days ago', messages: 31, memoriesCreated: 3 },
-  { id: '4', title: 'Agent System Planning', preview: 'Nicole needs 9 specialized agents for different tasks...', date: '3 days ago', messages: 42, memoriesCreated: 12 },
-  { id: '5', title: 'Cost Optimization Discussion', preview: "Current costs are too high, let's look at Tiger...", date: '4 days ago', messages: 15, memoriesCreated: 4 },
-];
-
+// Sample data for offline/preview mode
 const sampleStats: MemoryStats = {
   total: 847,
   active: 812,
@@ -96,16 +28,15 @@ const sampleStats: MemoryStats = {
  * Nicole V7 Memory Dashboard - Full featured memory system panel.
  * 
  * Backend Integration Points:
- * - GET /api/memories - Fetch memories with filters
- * - GET /api/memories/stats - Fetch memory statistics
- * - GET /api/documents - Fetch processed documents
- * - GET /api/conversations - Fetch chat history
- * - GET /api/system/status - Fetch database/system status
+ * - GET /api/memories/stats - Fetch memory statistics ✅
+ * - GET /api/memories - Fetch memories with filters ✅
+ * - GET /api/documents/list - Fetch processed documents ✅
+ * - GET /api/conversations - Fetch chat history ✅
  * 
  * QA Notes:
  * - Resizable panel (400px - 800px)
- * - All tabs functional with placeholder data
- * - Ready for backend integration
+ * - All tabs functional with real backend data
+ * - Offline mode with sample data when no auth token
  */
 export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: AlphawaveMemoryDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'documents' | 'history' | 'skills' | 'system'>('overview');
@@ -122,6 +53,16 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
 
   const MIN_WIDTH = 400;
   const MAX_WIDTH = 800;
+  
+  // Fetch dashboard data from backend
+  const dashboardData = useMemoryDashboardData(authToken);
+  
+  // Use real data if available, otherwise fall back to sample data
+  const stats = dashboardData.stats || sampleStats;
+  const memories = dashboardData.memories;
+  const documents = dashboardData.documents;
+  const conversations = dashboardData.conversations;
+  const isOfflineMode = !authToken;
 
   // Resize handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -159,22 +100,22 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   }, [isResizing]);
 
   // Filter memories based on search and type
-  const filteredMemories = sampleMemories.filter(m => {
+  const filteredMemories = memories.filter(m => {
     const matchesFilter = memoryFilter === 'all' || m.type === memoryFilter;
     const matchesSearch = memorySearch === '' || m.content.toLowerCase().includes(memorySearch.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
   // Filter documents
-  const filteredDocuments = sampleDocuments.filter(d => 
+  const filteredDocuments = documents.filter(d => 
     documentSearch === '' || d.name.toLowerCase().includes(documentSearch.toLowerCase())
   );
 
   // Filter history
-  const filteredHistory = sampleChatHistory.filter(h => 
+  const filteredHistory = conversations.filter(h => 
     historySearch === '' || 
     h.title.toLowerCase().includes(historySearch.toLowerCase()) ||
-    h.preview.toLowerCase().includes(historySearch.toLowerCase())
+    (h.preview && h.preview.toLowerCase().includes(historySearch.toLowerCase()))
   );
 
   const getMemoryTypeBadgeClass = (type: Memory['type']) => {
@@ -252,8 +193,43 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
 
         {/* Content */}
         <div className="mem-dash-content">
+          {/* Offline Mode Banner */}
+          {isOfflineMode && (
+            <div className="skills-offline-banner" style={{ margin: '12px 16px' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <div className="skills-offline-text">
+                <strong>Preview Mode</strong>
+                <span>Sign in to view your actual memories and documents.</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Error Banner */}
+          {dashboardData.error && (
+            <div className="skills-error-banner" style={{ margin: '12px 16px' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              <span>{dashboardData.error}</span>
+              <button onClick={() => dashboardData.refresh()}>Retry</button>
+            </div>
+          )}
+          
+          {/* Loading State */}
+          {dashboardData.loading && authToken && (
+            <div style={{ padding: '24px', textAlign: 'center', color: '#a78bfa' }}>
+              <div style={{ marginBottom: '8px' }}>Loading dashboard data...</div>
+            </div>
+          )}
+          
           {/* Overview Tab */}
-          {activeTab === 'overview' && (
+          {activeTab === 'overview' && !dashboardData.loading && (
             <div className="mem-tab-panel">
               {/* Memory Health */}
               <div className="mem-widget">
@@ -268,15 +244,15 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                 </div>
                 <div className="mem-stat-grid">
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-highlight">{sampleStats.total}</div>
+                    <div className="mem-stat-value mem-highlight">{stats.total}</div>
                     <div className="mem-stat-label">Total</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-success">{sampleStats.active}</div>
+                    <div className="mem-stat-value mem-success">{stats.active}</div>
                     <div className="mem-stat-label">Active</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{sampleStats.archived}</div>
+                    <div className="mem-stat-value mem-small">{stats.archived}</div>
                     <div className="mem-stat-label">Archived</div>
                   </div>
                 </div>
@@ -291,14 +267,14 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </svg>
                     Confidence Score
                   </span>
-                  <span className="mem-widget-badge mem-badge-info">Avg {sampleStats.avgConfidence}%</span>
+                  <span className="mem-widget-badge mem-badge-info">Avg {stats.avgConfidence}%</span>
                 </div>
                 <div className="mem-progress-bar">
-                  <div className="mem-progress-fill mem-progress-success" style={{ width: `${sampleStats.avgConfidence}%` }}></div>
+                  <div className="mem-progress-fill mem-progress-success" style={{ width: `${stats.avgConfidence}%` }}></div>
                 </div>
                 <div className="mem-progress-labels">
-                  <span>High Confidence (&gt;80%): {sampleStats.highConfidenceCount}</span>
-                  <span>Decaying: {sampleStats.decayingCount}</span>
+                  <span>High Confidence (&gt;80%): {stats.highConfidenceCount}</span>
+                  <span>Decaying: {stats.decayingCount}</span>
                 </div>
               </div>
 
@@ -314,24 +290,24 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                 </div>
                 <div className="mem-stat-grid mem-stat-grid-2">
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{sampleStats.factCount}</div>
+                    <div className="mem-stat-value mem-small">{stats.factCount}</div>
                     <div className="mem-stat-label">Facts</div>
-                    <div className="mem-stat-sublabel">{((sampleStats.factCount / sampleStats.total) * 100).toFixed(1)}%</div>
+                    <div className="mem-stat-sublabel">{stats.total > 0 ? ((stats.factCount / stats.total) * 100).toFixed(1) : 0}%</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{sampleStats.preferenceCount}</div>
+                    <div className="mem-stat-value mem-small">{stats.preferenceCount}</div>
                     <div className="mem-stat-label">Preferences</div>
-                    <div className="mem-stat-sublabel">{((sampleStats.preferenceCount / sampleStats.total) * 100).toFixed(1)}%</div>
+                    <div className="mem-stat-sublabel">{stats.total > 0 ? ((stats.preferenceCount / stats.total) * 100).toFixed(1) : 0}%</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{sampleStats.patternCount}</div>
+                    <div className="mem-stat-value mem-small">{stats.patternCount}</div>
                     <div className="mem-stat-label">Patterns</div>
-                    <div className="mem-stat-sublabel">{((sampleStats.patternCount / sampleStats.total) * 100).toFixed(1)}%</div>
+                    <div className="mem-stat-sublabel">{stats.total > 0 ? ((stats.patternCount / stats.total) * 100).toFixed(1) : 0}%</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">{sampleStats.otherCount}</div>
+                    <div className="mem-stat-value mem-small">{stats.otherCount}</div>
                     <div className="mem-stat-label">Other</div>
-                    <div className="mem-stat-sublabel">{((sampleStats.otherCount / sampleStats.total) * 100).toFixed(1)}%</div>
+                    <div className="mem-stat-sublabel">{stats.total > 0 ? ((stats.otherCount / stats.total) * 100).toFixed(1) : 0}%</div>
                   </div>
                 </div>
               </div>
@@ -397,7 +373,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           )}
 
           {/* Memories Tab */}
-          {activeTab === 'memories' && (
+          {activeTab === 'memories' && !dashboardData.loading && (
             <div className="mem-tab-panel">
               <div className="mem-search-input-wrapper">
                 <svg className="mem-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -450,7 +426,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           )}
 
           {/* Documents Tab */}
-          {activeTab === 'documents' && (
+          {activeTab === 'documents' && !dashboardData.loading && (
             <div className="mem-tab-panel">
               <div className="mem-search-input-wrapper">
                 <svg className="mem-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -519,7 +495,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           )}
 
           {/* History Tab */}
-          {activeTab === 'history' && (
+          {activeTab === 'history' && !dashboardData.loading && (
             <div className="mem-tab-panel">
               <div className="mem-search-input-wrapper">
                 <svg className="mem-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
