@@ -140,6 +140,15 @@ async def lifespan(app: FastAPI):
             logger.info(f"[STARTUP] MCP Gateway connected: {mcp.tool_count} tools available")
         except Exception as e:
             logger.warning(f"[STARTUP] MCP Gateway unavailable (non-critical): {e}")
+
+    # Initialize orchestrator MCP flag so tools can execute
+    try:
+        from app.services.agent_orchestrator import agent_orchestrator
+
+        await agent_orchestrator.initialize_mcp()
+        logger.info("[STARTUP] Agent orchestrator MCP initialized")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Agent orchestrator MCP init failed (non-critical): {e}")
     
     logger.info("[STARTUP] Nicole V7 API ready")
     
