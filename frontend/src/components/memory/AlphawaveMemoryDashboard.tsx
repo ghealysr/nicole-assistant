@@ -686,7 +686,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           {/* System Tab */}
           {activeTab === 'system' && (
             <div className="mem-tab-panel">
-              {systemHealth ? (
+              {systemHealth && systemHealth.system ? (
                 <>
                   {/* System Health */}
                   <div className="mem-widget">
@@ -703,19 +703,19 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">CPU Usage</span>
-                      <span className={`mem-metric-value ${systemHealth.system.cpu_percent < 70 ? 'mem-good' : 'mem-warning'}`}>
-                        {systemHealth.system.cpu_percent}%
+                      <span className={`mem-metric-value ${(systemHealth.system?.cpu_percent || 0) < 70 ? 'mem-good' : 'mem-warning'}`}>
+                        {systemHealth.system?.cpu_percent ?? '—'}%
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Memory Usage</span>
-                      <span className={`mem-metric-value ${systemHealth.system.memory_percent < 80 ? 'mem-good' : 'mem-warning'}`}>
-                        {systemHealth.system.memory_percent}%
+                      <span className={`mem-metric-value ${(systemHealth.system?.memory_percent || 0) < 80 ? 'mem-good' : 'mem-warning'}`}>
+                        {systemHealth.system?.memory_percent ?? '—'}%
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Available Memory</span>
-                      <span className="mem-metric-value mem-good">{systemHealth.system.memory_available_gb} GB</span>
+                      <span className="mem-metric-value mem-good">{systemHealth.system?.memory_available_gb ?? '—'} GB</span>
                     </div>
                   </div>
 
@@ -728,14 +728,14 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                         </svg>
                         Database
                       </span>
-                      <span className={`mem-widget-badge ${systemHealth.databases.tiger_timescaledb === 'online' ? 'mem-badge-success' : 'mem-badge-error'}`}>
-                        {systemHealth.databases.tiger_timescaledb === 'online' ? 'Connected' : 'Offline'}
+                      <span className={`mem-widget-badge ${systemHealth.databases?.tiger_timescaledb === 'online' ? 'mem-badge-success' : 'mem-badge-error'}`}>
+                        {systemHealth.databases?.tiger_timescaledb === 'online' ? 'Connected' : 'Offline'}
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Tiger TimescaleDB</span>
-                      <span className={`mem-metric-value ${systemHealth.databases.tiger_timescaledb === 'online' ? 'mem-good' : 'mem-error'}`}>
-                        ● {systemHealth.databases.tiger_timescaledb === 'online' ? 'Online' : 'Offline'}
+                      <span className={`mem-metric-value ${systemHealth.databases?.tiger_timescaledb === 'online' ? 'mem-good' : 'mem-error'}`}>
+                        ● {systemHealth.databases?.tiger_timescaledb === 'online' ? 'Online' : 'Offline'}
                       </span>
                     </div>
                   </div>
@@ -752,14 +752,14 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">MCP Gateway</span>
-                      <span className={`mem-metric-value ${systemHealth.services.mcp_gateway === 'online' ? 'mem-good' : 'mem-small'}`}>
-                        ● {systemHealth.services.mcp_gateway === 'online' ? `Online (${systemHealth.services.mcp_tool_count} tools)` : 'Offline'}
+                      <span className={`mem-metric-value ${systemHealth.services?.mcp_gateway === 'online' ? 'mem-good' : 'mem-small'}`}>
+                        ● {systemHealth.services?.mcp_gateway === 'online' ? `Online (${systemHealth.services?.mcp_tool_count || 0} tools)` : 'Offline'}
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Background Jobs</span>
-                      <span className={`mem-metric-value ${systemHealth.services.background_jobs === 'running' ? 'mem-good' : 'mem-error'}`}>
-                        ● {systemHealth.services.background_jobs === 'running' ? `Running (${systemHealth.services.job_count} jobs)` : 'Stopped'}
+                      <span className={`mem-metric-value ${systemHealth.services?.background_jobs === 'running' ? 'mem-good' : 'mem-error'}`}>
+                        ● {systemHealth.services?.background_jobs === 'running' ? `Running (${systemHealth.services?.job_count || 0} jobs)` : 'Stopped'}
                       </span>
                     </div>
                   </div>
@@ -776,26 +776,26 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Claude (Anthropic)</span>
-                      <span className={`mem-metric-value ${systemHealth.configuration.claude ? 'mem-good' : 'mem-error'}`}>
-                        {systemHealth.configuration.claude ? '✓ Configured' : '✗ Missing'}
+                      <span className={`mem-metric-value ${systemHealth.configuration?.claude ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration?.claude ? '✓ Configured' : '✗ Missing'}
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">OpenAI Embeddings</span>
-                      <span className={`mem-metric-value ${systemHealth.configuration.openai_embeddings ? 'mem-good' : 'mem-error'}`}>
-                        {systemHealth.configuration.openai_embeddings ? '✓ Configured' : '✗ Missing'}
+                      <span className={`mem-metric-value ${systemHealth.configuration?.openai_embeddings ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration?.openai_embeddings ? '✓ Configured' : '✗ Missing'}
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Azure Document Intelligence</span>
-                      <span className={`mem-metric-value ${systemHealth.configuration.azure_document_intelligence ? 'mem-good' : 'mem-small'}`}>
-                        {systemHealth.configuration.azure_document_intelligence ? '✓ Configured' : '✗ Missing'}
+                      <span className={`mem-metric-value ${systemHealth.configuration?.azure_document_intelligence ? 'mem-good' : 'mem-small'}`}>
+                        {systemHealth.configuration?.azure_document_intelligence ? '✓ Configured' : '✗ Missing'}
                       </span>
                     </div>
                     <div className="mem-metric-row">
                       <span className="mem-metric-label">Google OAuth</span>
-                      <span className={`mem-metric-value ${systemHealth.configuration.google_oauth ? 'mem-good' : 'mem-error'}`}>
-                        {systemHealth.configuration.google_oauth ? '✓ Configured' : '✗ Missing'}
+                      <span className={`mem-metric-value ${systemHealth.configuration?.google_oauth ? 'mem-good' : 'mem-error'}`}>
+                        {systemHealth.configuration?.google_oauth ? '✓ Configured' : '✗ Missing'}
                       </span>
                     </div>
                   </div>
