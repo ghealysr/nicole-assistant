@@ -795,7 +795,25 @@ async def shutdown_mcp() -> None:
 
 
 def get_mcp_tools() -> List[Dict[str, Any]]:
-    """Get all available MCP tools in Claude format."""
+    """Get all available MCP tools in Claude format.
+    
+    Priority:
+    1. Docker MCP Gateway (if connected) - includes Notion, Brave, Filesystem
+    2. Legacy MCP Manager (if npx available)
+    3. Fallback MCP Manager
+    """
+    # First, try Docker MCP Gateway (has Notion tools)
+    try:
+        from app.mcp.docker_mcp_client import _mcp_client
+        if _mcp_client and _mcp_client.is_connected and _mcp_client._tools_cache:
+            tools = _mcp_client.get_tools_for_claude()
+            if tools:
+                logger.info(f"[MCP] Using Docker Gateway: {len(tools)} tools")
+                return tools
+    except Exception as e:
+        logger.debug(f"[MCP] Docker Gateway not available: {e}")
+    
+    # Fall back to legacy MCP manager
     if isinstance(mcp_manager, AlphawaveMCPManager):
         return mcp_manager.get_claude_tools()
     elif isinstance(mcp_manager, FallbackMCPManager):
@@ -807,6 +825,10 @@ async def call_mcp_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, 
     """
     Call an MCP tool by name.
     
+    Priority:
+    1. Docker MCP Gateway (if connected) - includes Notion, Brave, Filesystem
+    2. Legacy MCP Manager
+    
     Args:
         tool_name: Name of the tool
         arguments: Tool arguments
@@ -814,4 +836,20 @@ async def call_mcp_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, 
     Returns:
         Tool execution result
     """
+    # First, try Docker MCP Gateway
+    try:
+        from app.mcp.docker_mcp_client import _mcp_client
+        if _mcp_client and _mcp_client.is_connected:
+            result = await _mcp_client.call_tool(tool_name, arguments)
+            if not result.is_error:
+                # Return in format expected by orchestrator
+                return {"content": result.content, "tool": tool_name}
+            else:
+                logger.warning(f"[MCP] Docker Gateway tool error: {result.error_message}")
+                return {"error": result.error_message, "tool": tool_name}
+    except Exception as e:
+        logger.debug(f"[MCP] Docker Gateway call failed: {e}")
+        # Fall through to legacy manager
+    
+    # Fall back to legacy MCP manager
     return await mcp_manager.call_tool(tool_name, arguments)
