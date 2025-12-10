@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AlphawaveSkillsTab } from './AlphawaveSkillsTab';
-import { useMemoryDashboardData, type Memory, type Document, type MemoryStats } from '@/lib/hooks/useMemoryDashboardData';
+import { useMemoryDashboardData, type Memory, type Document, type MemoryStats, type UsageData, type DiagnosticsData } from '@/lib/hooks/useMemoryDashboardData';
 
 interface AlphawaveMemoryDashboardProps {
   isOpen: boolean;
@@ -63,7 +63,32 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   const documents = dashboardData.documents;
   const conversations = dashboardData.conversations;
   const systemHealth = dashboardData.systemHealth;
+  const usage = dashboardData.usage;
+  const diagnostics = dashboardData.diagnostics;
   const isOfflineMode = !authToken;
+  
+  // Calculate health badge based on diagnostics
+  const getHealthBadge = (): { label: string; class: string } => {
+    if (!diagnostics) return { label: 'Loading...', class: 'mem-badge-info' };
+    const score = diagnostics.health.score;
+    if (score >= 90) return { label: 'Excellent', class: 'mem-badge-success' };
+    if (score >= 70) return { label: 'Healthy', class: 'mem-badge-success' };
+    if (score >= 50) return { label: 'Fair', class: 'mem-badge-warning' };
+    return { label: 'Needs Attention', class: 'mem-badge-error' };
+  };
+  
+  // Calculate actual day names for 7-day chart
+  const getDayLabels = (): string[] => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const labels: string[] = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      labels.push(i === 0 ? 'Today' : days[d.getDay()]);
+    }
+    return labels;
+  };
 
   // Resize handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -241,7 +266,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     </svg>
                     Memory Health
                   </span>
-                  <span className="mem-widget-badge mem-badge-success">Healthy</span>
+                  <span className={`mem-widget-badge ${getHealthBadge().class}`}>{getHealthBadge().label}</span>
                 </div>
                 <div className="mem-stat-grid">
                   <div className="mem-stat-box">
@@ -338,15 +363,82 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                   })()}
                 </div>
                 <div className="mem-progress-labels">
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Today</span>
+                  {getDayLabels().map((day, i) => (
+                    <span key={i}>{day}</span>
+                  ))}
                 </div>
               </div>
+
+              {/* Usage & Costs */}
+              {usage && (
+                <div className="mem-widget">
+                  <div className="mem-widget-header">
+                    <span className="mem-widget-title">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <line x1="12" y1="1" x2="12" y2="23"/>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                      </svg>
+                      Usage &amp; Costs (30 days)
+                    </span>
+                    <span className={`mem-widget-badge ${usage.projections.trend === 'increasing' ? 'mem-badge-warning' : 'mem-badge-info'}`}>
+                      ${usage.costs.total.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="mem-stat-grid mem-stat-grid-2">
+                    <div className="mem-stat-box">
+                      <div className="mem-stat-value mem-small">{(usage.tokens.total / 1000).toFixed(1)}K</div>
+                      <div className="mem-stat-label">Tokens</div>
+                      <div className="mem-stat-sublabel">${usage.costs.claude.toFixed(2)} Claude</div>
+                    </div>
+                    <div className="mem-stat-box">
+                      <div className="mem-stat-value mem-small">{usage.storage.total_formatted}</div>
+                      <div className="mem-stat-label">Storage</div>
+                      <div className="mem-stat-sublabel">{usage.storage.document_count} docs</div>
+                    </div>
+                    <div className="mem-stat-box">
+                      <div className="mem-stat-value mem-small">${usage.projections.monthly_estimate.toFixed(2)}</div>
+                      <div className="mem-stat-label">Est. Monthly</div>
+                      <div className="mem-stat-sublabel">{usage.projections.trend}</div>
+                    </div>
+                    <div className="mem-stat-box">
+                      <div className="mem-stat-value mem-small">{usage.requests.claude}</div>
+                      <div className="mem-stat-label">API Calls</div>
+                      <div className="mem-stat-sublabel">30 day period</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Diagnostics */}
+              {diagnostics && (diagnostics.issues.length > 0 || diagnostics.warnings.length > 0) && (
+                <div className="mem-widget">
+                  <div className="mem-widget-header">
+                    <span className="mem-widget-title">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                      Diagnostics
+                    </span>
+                    <span className={`mem-widget-badge ${diagnostics.issues.length > 0 ? 'mem-badge-error' : 'mem-badge-warning'}`}>
+                      {diagnostics.issues.length + diagnostics.warnings.length} items
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {diagnostics.issues.map((issue, i) => (
+                      <div key={`issue-${i}`} className="mem-metric-row" style={{ color: 'var(--alphawave-error)' }}>
+                        <span>⚠️ {issue.message}</span>
+                      </div>
+                    ))}
+                    {diagnostics.warnings.map((warning, i) => (
+                      <div key={`warn-${i}`} className="mem-metric-row" style={{ color: 'var(--alphawave-warning)' }}>
+                        <span>💡 {warning.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Recent Corrections */}
               <div className="mem-widget">
@@ -470,7 +562,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     <div className="mem-stat-label">Chunks</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">—</div>
+                    <div className="mem-stat-value mem-small">{usage?.storage.documents_formatted || '—'}</div>
                     <div className="mem-stat-label">Storage</div>
                   </div>
                 </div>
@@ -551,8 +643,8 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                     <div className="mem-stat-label">Memories</div>
                   </div>
                   <div className="mem-stat-box">
-                    <div className="mem-stat-value mem-small">—</div>
-                    <div className="mem-stat-label">Helpful</div>
+                    <div className="mem-stat-value mem-small">{diagnostics?.api_health.success_rate.toFixed(0) || '—'}%</div>
+                    <div className="mem-stat-label">Success Rate</div>
                   </div>
                 </div>
               </div>

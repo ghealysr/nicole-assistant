@@ -66,6 +66,87 @@ export interface SystemHealth {
   };
 }
 
+export interface UsageData {
+  period: {
+    start: string;
+    end: string;
+    days: number;
+  };
+  tokens: {
+    claude_input: number;
+    claude_output: number;
+    openai_embedding: number;
+    total: number;
+  };
+  requests: {
+    claude: number;
+    embedding: number;
+    document_pages: number;
+  };
+  costs: {
+    claude: number;
+    openai: number;
+    azure: number;
+    tiger_storage: number;
+    total: number;
+  };
+  storage: {
+    documents_bytes: number;
+    documents_formatted: string;
+    embeddings_bytes: number;
+    embeddings_formatted: string;
+    total_bytes: number;
+    total_formatted: string;
+    document_count: number;
+    chunk_count: number;
+  };
+  projections: {
+    daily_average: number;
+    monthly_estimate: number;
+    annual_estimate: number;
+    trend: string;
+    trend_percentage: number;
+  };
+  daily_breakdown: Array<{ date: string; cost: number }>;
+}
+
+export interface DiagnosticsData {
+  health: {
+    score: number;
+    status: string;
+  };
+  memory_system: {
+    total_memories: number;
+    low_confidence_count: number;
+    archived_count: number;
+    avg_confidence: number;
+    last_memory_created: string | null;
+    last_memory_accessed: string | null;
+  };
+  api_health: {
+    requests_24h: number;
+    potential_failures: number;
+    success_rate: number;
+  };
+  activity: {
+    last_conversation: string | null;
+    last_message: string | null;
+    last_memory: string | null;
+    last_upload: string | null;
+  };
+  issues: Array<{
+    type: string;
+    severity: string;
+    message: string;
+    details?: unknown;
+  }>;
+  warnings: Array<{
+    type: string;
+    severity: string;
+    message: string;
+  }>;
+}
+
 export interface Memory {
   id: string | number;
   memory_id?: number;
@@ -120,6 +201,8 @@ export interface DashboardData {
   documents: Document[];
   conversations: Conversation[];
   systemHealth: SystemHealth | null;
+  usage: UsageData | null;
+  diagnostics: DiagnosticsData | null;
   loading: boolean;
   error: string | null;
 }
@@ -300,6 +383,53 @@ async function fetchSystemHealth(authToken?: string): Promise<SystemHealth | nul
 }
 
 /**
+ * Fetch usage data (tokens, costs, storage)
+ */
+async function fetchUsageData(authToken?: string): Promise<UsageData | null> {
+  if (!authToken) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE}/dashboard/usage?days=30`, {
+      headers: getAuthHeaders(authToken),
+    });
+    
+    if (!response.ok) {
+      // Don't throw error for usage - it may not have data yet
+      console.warn(`[MEMORY DASHBOARD] Usage endpoint returned ${response.status}`);
+      return null;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[MEMORY DASHBOARD] Failed to fetch usage data:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch diagnostics data
+ */
+async function fetchDiagnosticsData(authToken?: string): Promise<DiagnosticsData | null> {
+  if (!authToken) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE}/dashboard/diagnostics`, {
+      headers: getAuthHeaders(authToken),
+    });
+    
+    if (!response.ok) {
+      console.warn(`[MEMORY DASHBOARD] Diagnostics endpoint returned ${response.status}`);
+      return null;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[MEMORY DASHBOARD] Failed to fetch diagnostics:', error);
+    return null;
+  }
+}
+
+/**
  * Helper: Infer document type from filename
  */
 function inferDocumentType(filename: string): 'pdf' | 'image' | 'code' {
@@ -361,6 +491,8 @@ export function useMemoryDashboardData(authToken?: string) {
     documents: [],
     conversations: [],
     systemHealth: null,
+    usage: null,
+    diagnostics: null,
     loading: true,
     error: null,
   });
@@ -376,6 +508,8 @@ export function useMemoryDashboardData(authToken?: string) {
         documents: [],
         conversations: [],
         systemHealth: null,
+        usage: null,
+        diagnostics: null,
         loading: false,
         error: null,
       });
@@ -387,12 +521,14 @@ export function useMemoryDashboardData(authToken?: string) {
     
     try {
       // Fetch all data in parallel
-      const [stats, memories, documents, conversations, systemHealth] = await Promise.all([
+      const [stats, memories, documents, conversations, systemHealth, usage, diagnostics] = await Promise.all([
         fetchMemoryStats(authToken),
         fetchMemories(authToken),
         fetchDocuments(authToken),
         fetchConversations(authToken),
         fetchSystemHealth(authToken),
+        fetchUsageData(authToken),
+        fetchDiagnosticsData(authToken),
       ]);
       
       console.log('[MEMORY DASHBOARD] Data loaded:', {
@@ -401,6 +537,8 @@ export function useMemoryDashboardData(authToken?: string) {
         documentsCount: documents.length,
         conversationsCount: conversations.length,
         systemHealth: systemHealth ? 'OK' : 'NULL',
+        usage: usage ? 'OK' : 'NULL',
+        diagnostics: diagnostics ? 'OK' : 'NULL',
       });
       
       setData({
@@ -409,6 +547,8 @@ export function useMemoryDashboardData(authToken?: string) {
         documents,
         conversations,
         systemHealth,
+        usage,
+        diagnostics,
         loading: false,
         error: null,
       });

@@ -191,6 +191,28 @@ class AgentOrchestrator:
                     "required": ["query"]
                 }
             }),
+            
+            # Dashboard Status - Nicole's self-awareness
+            tool_examples_service.enhance_tool_schema({
+                "name": "dashboard_status",
+                "description": "Get Nicole's current system status, usage metrics, costs, and diagnostics. Use this when the user asks about: your status, how you're doing, system health, API costs, token usage, storage usage, monthly costs, any issues or problems with you, or when they want to troubleshoot something.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "include_usage": {
+                            "type": "boolean",
+                            "description": "Include token usage and cost data (default: true)",
+                            "default": True
+                        },
+                        "include_diagnostics": {
+                            "type": "boolean",
+                            "description": "Include system diagnostics and health info (default: true)",
+                            "default": True
+                        }
+                    },
+                    "required": []
+                }
+            }),
         ]
         
         # Add skill tools
@@ -445,6 +467,70 @@ class AgentOrchestrator:
                     "documents_found": len(results) if results else 0,
                     "documents": results or []
                 }
+            
+            # Dashboard Status - Nicole's self-awareness
+            elif tool_name == "dashboard_status":
+                from app.services.alphawave_usage_service import usage_service
+                
+                include_usage = tool_input.get("include_usage", True)
+                include_diagnostics = tool_input.get("include_diagnostics", True)
+                
+                result = {
+                    "status": "healthy",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                
+                if include_usage:
+                    try:
+                        usage_data = await usage_service.get_usage_summary(user_id, 30)
+                        result["usage"] = {
+                            "period": f"{usage_data['period']['days']} days",
+                            "tokens": {
+                                "total": usage_data['tokens']['total'],
+                                "claude": usage_data['tokens']['claude_input'] + usage_data['tokens']['claude_output'],
+                                "embeddings": usage_data['tokens']['openai_embedding'],
+                            },
+                            "costs": {
+                                "total": f"${usage_data['costs']['total']:.2f}",
+                                "claude": f"${usage_data['costs']['claude']:.2f}",
+                                "openai": f"${usage_data['costs']['openai']:.2f}",
+                                "azure": f"${usage_data['costs']['azure']:.2f}",
+                                "storage": f"${usage_data['costs']['tiger_storage']:.2f}",
+                            },
+                            "projections": {
+                                "monthly_estimate": f"${usage_data['projections']['monthly_estimate']:.2f}",
+                                "trend": usage_data['projections']['trend'],
+                            },
+                            "storage": {
+                                "total": usage_data['storage']['total_formatted'],
+                                "documents": usage_data['storage']['document_count'],
+                                "chunks": usage_data['storage']['chunk_count'],
+                            },
+                        }
+                    except Exception as e:
+                        result["usage"] = {"error": str(e)}
+                
+                if include_diagnostics:
+                    try:
+                        diagnostics = await usage_service.get_diagnostics(user_id)
+                        result["diagnostics"] = {
+                            "health_score": diagnostics['health']['score'],
+                            "health_status": diagnostics['health']['status'],
+                            "memory_system": {
+                                "total_memories": diagnostics['memory_system']['total_memories'],
+                                "avg_confidence": diagnostics['memory_system']['avg_confidence'],
+                            },
+                            "api_health": {
+                                "requests_24h": diagnostics['api_health']['requests_24h'],
+                                "success_rate": f"{diagnostics['api_health']['success_rate']}%",
+                            },
+                            "issues": diagnostics['issues'],
+                            "warnings": diagnostics['warnings'],
+                        }
+                    except Exception as e:
+                        result["diagnostics"] = {"error": str(e)}
+                
+                return result
             
             else:
                 # Try to execute a registered skill first
