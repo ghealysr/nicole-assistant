@@ -689,6 +689,9 @@ KEY_POINTS:
                 
                 # Store in Tiger (Production schema: doc_id, content)
                 for j, (chunk, embedding) in enumerate(zip(batch, embeddings)):
+                    # Convert embedding list to PostgreSQL vector string format
+                    embedding_str = f'[{",".join(map(str, embedding))}]'
+                    
                     await db.execute(
                         """
                         INSERT INTO document_chunks (
@@ -698,7 +701,7 @@ KEY_POINTS:
                         doc_id,
                         chunk["index"],
                         chunk["content"],
-                        embedding,
+                        embedding_str,
                     )
                     count += 1
                     
