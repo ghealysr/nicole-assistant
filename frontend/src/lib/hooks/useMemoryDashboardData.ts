@@ -163,7 +163,7 @@ async function fetchMemories(authToken?: string, limit = 50): Promise<Memory[]> 
     const memories = data.memories || [];
     
     // Normalize the response
-    return memories.map((m: any) => ({
+    return memories.map((m: Record<string, unknown>) => ({
       id: m.memory_id || m.id,
       type: m.memory_type || m.type,
       content: m.content,
@@ -196,14 +196,14 @@ async function fetchDocuments(authToken?: string, limit = 50): Promise<Document[
     const documents = data.documents || [];
     
     // Normalize the response
-    return documents.map((d: any) => ({
+    return documents.map((d: Record<string, unknown>) => ({
       id: d.doc_id || d.id,
       name: d.title || d.file_name || d.filename || 'Untitled',
-      type: inferDocumentType(d.file_name || d.filename || ''),
-      size: formatFileSize(d.file_size || 0),
+      type: inferDocumentType((d.file_name || d.filename || '') as string),
+      size: formatFileSize((d.file_size || 0) as number),
       chunks: d.chunk_count || d.chunks || 0,
-      status: d.status || 'processed',
-      uploaded: formatDate(d.created_at),
+      status: (d.status || 'processed') as 'processed' | 'processing' | 'pending',
+      uploaded: formatDate(d.created_at as string | undefined),
     }));
   } catch (error) {
     console.error('[MEMORY DASHBOARD] Failed to fetch documents:', error);
@@ -230,11 +230,11 @@ async function fetchConversations(authToken?: string, limit = 50): Promise<Conve
     const conversations = data.conversations || [];
     
     // Normalize the response
-    return conversations.map((c: any) => ({
+    return conversations.map((c: Record<string, unknown>) => ({
       id: c.conversation_id || c.id,
       title: c.title || 'Untitled',
       preview: c.first_message_preview || c.preview || '',
-      date: formatDate(c.updated_at || c.created_at),
+      date: formatDate((c.updated_at || c.created_at) as string | undefined),
       messages: c.message_count || c.messages || 0,
       memoriesCreated: 0, // This data isn't available from the API yet
     }));

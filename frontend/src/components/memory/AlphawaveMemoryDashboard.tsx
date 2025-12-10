@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AlphawaveSkillsTab } from './AlphawaveSkillsTab';
-import { useMemoryDashboardData, type Memory, type Document, type Conversation, type MemoryStats } from '@/lib/hooks/useMemoryDashboardData';
+import { useMemoryDashboardData, type Memory, type Document, type MemoryStats } from '@/lib/hooks/useMemoryDashboardData';
 
 interface AlphawaveMemoryDashboardProps {
   isOpen: boolean;
