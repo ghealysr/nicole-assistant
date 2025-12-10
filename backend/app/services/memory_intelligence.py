@@ -1260,3 +1260,6 @@ Respond with ONLY the consolidated memory text (no explanations)."""
 
 memory_intelligence = MemoryIntelligenceService()
 
+# Alias for backward compatibility with imports
+memory_intelligence_service = memory_intelligence
+
