@@ -195,17 +195,23 @@ class AlphawaveDocumentService:
         try:
             # Step 1: Extract text
             if content_type in SUPPORTED_IMAGE_TYPES:
+                logger.info(f"[DOCUMENT] Extracting from image: {content_type}")
                 extracted = await self._extract_from_image(content, content_type)
             elif content_type in SUPPORTED_DOCUMENT_TYPES:
+                logger.info(f"[DOCUMENT] Extracting from document: {content_type}")
                 extracted = await self._extract_from_document(content, content_type)
             else:
                 extracted = {"text": "", "error": f"Unsupported type: {content_type}"}
+            
+            logger.info(f"[DOCUMENT] Extraction result: {extracted.keys() if extracted else 'None'}")
             
             full_text = extracted.get("text", "")
             page_count = extracted.get("page_count", 1)
             
             if not full_text:
-                raise ValueError(extracted.get("error", "No text extracted"))
+                error_msg = extracted.get("error", "No text extracted")
+                logger.error(f"[DOCUMENT] Extraction failed: {error_msg}")
+                raise ValueError(error_msg)
             
             logger.info(f"[DOCUMENT] Extracted {len(full_text)} chars, {page_count} pages")
             
@@ -406,12 +412,20 @@ class AlphawaveDocumentService:
         # Try Azure Vision for OCR
         if self._azure_vision_available:
             try:
-                return await self._azure_vision_extract(content)
+                logger.info(f"[DOCUMENT] Attempting Azure Vision extraction for {len(content)} bytes")
+                result = await self._azure_vision_extract(content)
+                logger.info(f"[DOCUMENT] Azure Vision succeeded, extracted {len(result.get('text', ''))} chars")
+                return result
             except Exception as e:
-                logger.warning(f"[DOCUMENT] Azure Vision failed: {e}")
+                logger.warning(f"[DOCUMENT] Azure Vision failed, falling back to Claude: {e}")
+        else:
+            logger.info(f"[DOCUMENT] Azure Vision not configured, using Claude Vision")
         
         # Fallback to Claude Vision
-        return await self._claude_vision_extract(content, content_type)
+        logger.info(f"[DOCUMENT] Using Claude Vision for extraction")
+        result = await self._claude_vision_extract(content, content_type)
+        logger.info(f"[DOCUMENT] Claude Vision extracted {len(result.get('text', ''))} chars")
+        return result
     
     async def _azure_vision_extract(self, content: bytes) -> Dict[str, Any]:
         """Extract text from image using Azure Computer Vision."""
