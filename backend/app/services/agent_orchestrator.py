@@ -773,6 +773,20 @@ class AgentOrchestrator:
             logger.debug(f"[ORCHESTRATOR] MCP not initialized, skipping for {tool_name}")
             return None
         
+        # Check if Docker MCP Gateway has this tool (priority)
+        try:
+            from app.mcp.docker_mcp_client import _mcp_client
+            if _mcp_client and _mcp_client.is_connected and _mcp_client._tools_cache:
+                # Check if tool exists in Docker Gateway
+                docker_tool = next((t for t in _mcp_client._tools_cache if t.name == tool_name), None)
+                if docker_tool:
+                    logger.debug(f"[ORCHESTRATOR] Found {tool_name} in Docker Gateway, executing via MCP")
+                    # Execute via call_mcp_tool which will route to Docker Gateway
+                    result = await call_mcp_tool(tool_name, tool_input)
+                    return result
+        except Exception as e:
+            logger.debug(f"[ORCHESTRATOR] Docker Gateway check failed: {e}")
+        
         # Check if MCP manager is the full implementation
         if not isinstance(mcp_manager, AlphawaveMCPManager):
             logger.debug(f"[ORCHESTRATOR] MCP using fallback manager, skipping for {tool_name}")
