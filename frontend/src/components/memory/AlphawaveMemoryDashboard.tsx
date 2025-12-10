@@ -108,7 +108,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
 
   // Filter documents
   const filteredDocuments = documents.filter(d => 
-    documentSearch === '' || d.name.toLowerCase().includes(documentSearch.toLowerCase())
+    documentSearch === '' || (d.name && d.name.toLowerCase().includes(documentSearch.toLowerCase()))
   );
 
   // Filter history
