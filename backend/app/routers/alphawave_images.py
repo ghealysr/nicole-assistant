@@ -374,8 +374,8 @@ async def delete_preset(
 # ============================================================================
 
 @router.get("/models")
-async def list_models(user=Depends(get_current_user)):
-    """List available models with their capabilities."""
+async def list_models():
+    """List available models with their capabilities (public endpoint)."""
     models = []
     for key, cfg in image_service.MODEL_CONFIGS.items():
         models.append({

@@ -58,6 +58,8 @@ PUBLIC_PATHS = {
     "/health/system",
     "/health/mcp",
     "/auth/login",
+    "/images/models",
+    "/images/presets",
     "/auth/callback",
     "/auth/logout",
     "/docs",
