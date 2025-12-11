@@ -423,6 +423,8 @@ const TOOL_EXECUTORS = {
   'notion_create_database_item': executeNotionCreateDatabaseItem,
   'recraft_generate_image': executeRecraftGenerateImage
 };
+  'recraft_generate_image': executeRecraftGenerateImage
+};
 
 
 // Health check endpoint
