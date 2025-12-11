@@ -17,13 +17,13 @@ import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
 import Image from 'next/image';
 import type { ActivityStatus, ThinkingContent } from '@/lib/hooks/alphawave_use_chat';
 
-// Nicole's color palette
+// Nicole's color palette - Light purple theme
 const colors = {
-  lavender: '#B8A8D4',
-  lavenderLight: '#E8E0F0',
-  lavenderMid: '#D4C8E8',
-  lavenderDark: '#9B8AB8',
-  teal: '#7A9B93',
+  lavender: '#D4C8E8',           // Primary accent (lighter)
+  lavenderLight: '#F3F0F8',      // Background (very light)
+  lavenderMid: '#E8E0F0',        // Header background (light)
+  lavenderDark: '#B8A8D4',       // Borders and accents
+  teal: '#7A9B93',               // Completion checkmark
   white: '#FFFFFF',
   textPrimary: '#374151',
   textSecondary: '#6b7280',
