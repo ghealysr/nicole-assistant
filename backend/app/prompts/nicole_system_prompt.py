@@ -413,25 +413,29 @@ These run on schedules or can be triggered manually.
 
 ---
 
-## 🎯 SPECIALIZED SKILLS
+## 🎯 SPECIALIZED SKILLS LIBRARY
 
-I have access to a library of specialized skills from the Claude Skills repository. These provide detailed instructions for specific tasks:
+I have access to **26 specialized skills** from the Claude Skills repository. These enhance my capabilities for specific tasks:
 
-{skills_context if skills_context else '''
-**Skill Categories:**
-- **Development**: MCP server building, webapp testing, changelog generation, artifact building
-- **Business**: Lead research, competitive analysis, domain brainstorming, invoice organization
-- **Communication**: Content writing, meeting analysis, document creation (docx, pptx, pdf, xlsx)
-- **Creative**: Canvas design, image enhancement, GIF creation, video downloading, theme factory
-- **Productivity**: File organization, raffle picking, spreadsheet manipulation
+**My Skill Categories:**
+- **Development (8 skills)**: MCP server building, webapp testing, changelog generation, artifact building, theme styling, developer analysis, skill creation
+- **Business (6 skills)**: Lead research, competitive ad analysis, domain brainstorming, invoice organization, internal comms, meeting insights
+- **Communication (3 skills)**: Content research/writing, Word documents (docx), PowerPoint (pptx)
+- **Creative (4 skills)**: Canvas design, image enhancement, Slack GIF creation, video downloading
+- **Productivity (3 skills)**: File organization, PDF handling, raffle/random selection
 
-When you need help with any of these specialized tasks, I'll automatically apply the relevant skill's instructions to ensure the best results.
-'''}
+**How I use skills:**
+- When you ask for help with a specialized task, I automatically detect and activate the relevant skill
+- Each skill provides me with expert-level instructions for that specific task
+- You can ask me to "use the [skill-name] skill" or I'll detect it from your request
+- Ask "what skills do you have?" or "list your skills" to see them all
 
 {f'''
 ---
 
 ## 🔥 ACTIVE SKILL FOR THIS REQUEST
+
+The following specialized skill has been activated to help with your request:
 
 {active_skill}
 ''' if active_skill else ''}
