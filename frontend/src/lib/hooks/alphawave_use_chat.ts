@@ -34,6 +34,11 @@ export interface ThinkingContent {
 
 /**
  * Activity status for real-time display
+ * 
+ * Visibility is controlled by `shouldShow` which accounts for:
+ * - Active processing (isActive)
+ * - Pending content (thinkingSteps, currentThinking)
+ * - Grace period after completion
  */
 export interface ActivityStatus {
   isActive: boolean;
@@ -42,6 +47,8 @@ export interface ActivityStatus {
   displayText: string;
   thinkingSteps: ThinkingContent[];     // Completed steps (collapsible)
   currentThinking: string | null;        // Currently streaming thought
+  shouldShow: boolean;                   // Master visibility control
+  completedAt: number | null;            // Timestamp when processing completed
 }
 
 /**
@@ -143,6 +150,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     displayText: '',
     thinkingSteps: [],
     currentThinking: null,
+    shouldShow: false,
+    completedAt: null,
   });
   
   // Flag to prevent loading history when we just created a new conversation during streaming
@@ -234,6 +243,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       displayText: 'Thinking...',
       thinkingSteps: [],
       currentThinking: null,
+      shouldShow: true,
+      completedAt: null,
     });
 
     try {
@@ -396,8 +407,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
                 
-                // First token - finalize any pending thinking and hide activity
+                // First token - finalize any pending thinking and start hide transition
                 setActivityStatus(prev => {
+                  // Skip if already responding (prevents re-triggering on each token)
+                  if (prev.type === 'responding') return prev;
+                  
                   // If we have current thinking, save it as final step
                   const finalSteps = prev.currentThinking
                     ? [...prev.thinkingSteps, {
@@ -416,6 +430,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     displayText: '',
                     thinkingSteps: finalSteps,
                     currentThinking: null,
+                    // Keep showing briefly if we have thinking steps
+                    shouldShow: finalSteps.length > 0,
+                    completedAt: Date.now(),
                   };
                 });
                 
@@ -471,14 +488,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
       setIsPendingAssistant(false);
-      // Reset activity status but keep thinking steps for display
+      // Finalize activity status - mark as completed
       setActivityStatus(prev => ({
         ...prev,
         isActive: false,
         type: 'idle',
         displayText: '',
         currentThinking: null,
-        // Keep thinkingSteps - they'll be cleared on next message
+        // Start hide timer - component will handle the fade out
+        completedAt: prev.completedAt || Date.now(),
+        // shouldShow is managed by the component based on completedAt
       }));
     }
   }, [conversationId, onError]);
