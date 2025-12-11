@@ -130,29 +130,19 @@ export function AlphawaveImageStudio({
   };
 
   // Handle generation
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
     if (!prompt.trim()) return;
     
-    try {
-      const job = await createJob({
-        prompt: prompt.trim(),
-        model: selectedModel,
-        width: width_px,
-        height: height_px,
-        style: style || undefined,
-        batch_count: batchCount,
-        enhance_prompt: smartPrompt,
-        preset_id: selectedPreset ? parseInt(selectedPreset) : undefined,
-      });
-      
-      if (job) {
-        setActiveJobId(job.id);
-        // Start SSE generation stream
-        startGeneration(job.id);
-      }
-    } catch (err) {
-      console.error('Failed to create job:', err);
-    }
+    // Start SSE generation stream with all parameters
+    startGeneration({
+      prompt: prompt.trim(),
+      model: selectedModel,
+      width: width_px,
+      height: height_px,
+      style: style || undefined,
+      batch_count: batchCount,
+      enhance_prompt: smartPrompt,
+    });
   };
 
   // Handle variant selection

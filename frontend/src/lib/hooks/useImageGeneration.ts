@@ -215,22 +215,37 @@ export function useImageGeneration() {
   }, []);
 
   // Start generation with SSE streaming
-  const startGeneration = useCallback((jobId: number) => {
+  const startGeneration = useCallback((params: CreateJobParams) => {
     setIsGenerating(true);
     setProgress(null);
     setError(null);
 
     const token = getStoredToken();
     
+    // Map frontend params to backend GenerateRequest format
+    const requestBody = {
+      prompt: params.prompt,
+      model_key: params.model,
+      parameters: {
+        width: params.width,
+        height: params.height,
+        ...(params.style ? { style: params.style } : {}),
+      },
+      batch_count: params.batch_count,
+      enhance_prompt: params.enhance_prompt,
+    };
+    
     // Using fetch for SSE since EventSource doesn't support custom headers
     abortControllerRef.current = new AbortController();
     
-    fetch(`${API_BASE}/images/generate/stream?job_id=${jobId}`, {
+    fetch(`${API_BASE}/images/generate/stream`, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      body: JSON.stringify(requestBody),
       signal: abortControllerRef.current.signal,
     })
       .then(async (response) => {
