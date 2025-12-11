@@ -29,6 +29,7 @@ from app.skills.skill_runner import skill_runner
 from app.skills.skill_memory import get_skill_memory_manager
 from app.services.skill_run_service import skill_run_service
 from app.skills.adapters.base import SkillExecutionError
+from app.services.alphawave_claude_skills_service import claude_skills_service
 
 # MCP imports
 from app.mcp import (
@@ -86,6 +87,92 @@ class AgentOrchestrator:
         if isinstance(mcp_manager, AlphawaveMCPManager):
             return mcp_manager.get_status_summary()
         return {"status": "fallback", "servers": {}}
+    
+    # =========================================================================
+    # CLAUDE SKILLS INTEGRATION
+    # =========================================================================
+    
+    def detect_relevant_skills(self, user_message: str) -> List[Dict[str, Any]]:
+        """
+        Detect which Claude Skills might be relevant for the user's request.
+        
+        Args:
+            user_message: The user's message/request
+            
+        Returns:
+            List of relevant skills with their metadata
+        """
+        try:
+            return claude_skills_service.search_skills(user_message, max_results=3)
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Skill detection failed: {e}")
+            return []
+    
+    def get_skill_context(self, user_message: str) -> Optional[str]:
+        """
+        Get skill-enhanced context for a user request.
+        
+        If the user's message matches a specialized skill, this returns
+        the skill's instructions to be added to Nicole's context.
+        
+        Args:
+            user_message: The user's message/request
+            
+        Returns:
+            Skill activation prompt if a relevant skill is found, else None
+        """
+        try:
+            relevant = self.detect_relevant_skills(user_message)
+            if relevant and relevant[0].get('relevance_score', 0) >= 5.0:
+                skill = relevant[0]
+                activation = claude_skills_service.get_skill_activation_prompt(skill['id'])
+                if activation:
+                    logger.info(f"[ORCHESTRATOR] Activating skill: {skill['name']}")
+                    return activation
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Skill context retrieval failed: {e}")
+        return None
+    
+    def get_skills_summary(self) -> str:
+        """
+        Get a summary of available skills for Nicole's system prompt.
+        
+        Returns:
+            Markdown-formatted skills summary
+        """
+        try:
+            return claude_skills_service.get_skills_summary_for_prompt()
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Skills summary failed: {e}")
+            return ""
+    
+    def get_skill_details(self, skill_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get full details of a specific skill.
+        
+        Args:
+            skill_id: The skill identifier
+            
+        Returns:
+            Full skill data or None
+        """
+        return claude_skills_service.get_skill(skill_id)
+    
+    def list_all_skills(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List all available Claude Skills.
+        
+        Args:
+            category: Optional category filter
+            
+        Returns:
+            List of skill summaries
+        """
+        return claude_skills_service.list_skills(category)
+    
+    # =========================================================================
+    # CORE TOOLS
+    # =========================================================================
     
     def get_core_tools(self) -> List[Dict[str, Any]]:
         """

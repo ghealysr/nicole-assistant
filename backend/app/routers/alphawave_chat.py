@@ -580,6 +580,20 @@ async def send_message(
             # Use document_context that was already built in the DOCUMENT SEARCH section
             formatted_document_context = document_context
             
+            # Detect relevant skills for this request
+            active_skill = None
+            skills_summary = ""
+            try:
+                skill_context = agent_orchestrator.get_skill_context(message)
+                if skill_context:
+                    active_skill = skill_context
+                    logger.info(f"[STREAM] Activated skill for request")
+                else:
+                    # Get general skills summary for awareness
+                    skills_summary = agent_orchestrator.get_skills_summary()
+            except Exception as e:
+                logger.warning(f"[STREAM] Skill detection failed: {e}")
+            
             # Build the complete system prompt
             system_prompt = build_nicole_system_prompt(
                 user_name=user_name,
@@ -587,6 +601,8 @@ async def send_message(
                 user_data=user_data,
                 memory_context=formatted_memory_context,
                 document_context=formatted_document_context,
+                skills_context=skills_summary,
+                active_skill=active_skill,
             )
             
             # Generate streaming response

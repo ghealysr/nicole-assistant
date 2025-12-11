@@ -1,0 +1,75 @@
+{
+  "by_keyword": {
+    "branding": [
+      "brand-guidelines"
+    ],
+    "corporate identity": [
+      "brand-guidelines"
+    ],
+    "visual identity": [
+      "brand-guidelines"
+    ],
+    "post-processing": [
+      "brand-guidelines"
+    ],
+    "styling": [
+      "brand-guidelines"
+    ],
+    "brand colors": [
+      "brand-guidelines"
+    ],
+    "typography": [
+      "brand-guidelines"
+    ],
+    "anthropic brand": [
+      "brand-guidelines"
+    ],
+    "visual formatting": [
+      "brand-guidelines"
+    ],
+    "visual design": [
+      "brand-guidelines"
+    ]
+  },
+  "by_category": {
+    "communication": [
+      "content-research-writer",
+      "pptx",
+      "docx"
+    ],
+    "general": [
+      "xlsx",
+      "skill-share"
+    ],
+    "productivity": [
+      "pdf",
+      "raffle-winner-picker",
+      "file-organizer"
+    ],
+    "creative": [
+      "video-downloader",
+      "image-enhancer",
+      "canvas-design",
+      "slack-gif-creator"
+    ],
+    "development": [
+      "theme-factory",
+      "developer-growth-analysis",
+      "skill-creator",
+      "changelog-generator",
+      "artifacts-builder",
+      "webapp-testing",
+      "mcp-builder",
+      "brand-guidelines"
+    ],
+    "business": [
+      "domain-name-brainstormer",
+      "internal-comms",
+      "invoice-organizer",
+      "competitive-ads-extractor",
+      "meeting-insights-analyzer",
+      "lead-research-assistant"
+    ]
+  },
+  "by_use_case": {}
+}

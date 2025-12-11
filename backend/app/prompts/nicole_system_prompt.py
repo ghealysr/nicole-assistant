@@ -28,6 +28,8 @@ def build_nicole_system_prompt(
     memory_context: str = "",
     document_context: str = "",
     family_context: Optional[Dict[str, Any]] = None,
+    skills_context: str = "",
+    active_skill: Optional[str] = None,
 ) -> str:
     """
     Build Nicole's complete system prompt with full context.
@@ -39,6 +41,8 @@ def build_nicole_system_prompt(
         memory_context: Formatted relevant memories
         document_context: Formatted relevant documents
         family_context: Optional family member information
+        skills_context: Summary of available Claude Skills
+        active_skill: If a specific skill is activated for this request
         
     Returns:
         Complete system prompt string
@@ -406,6 +410,31 @@ I can execute multi-step automated workflows:
 - **Memory consolidation**: Find duplicates → Merge → Decay old → Generate insights
 
 These run on schedules or can be triggered manually.
+
+---
+
+## 🎯 SPECIALIZED SKILLS
+
+I have access to a library of specialized skills from the Claude Skills repository. These provide detailed instructions for specific tasks:
+
+{skills_context if skills_context else '''
+**Skill Categories:**
+- **Development**: MCP server building, webapp testing, changelog generation, artifact building
+- **Business**: Lead research, competitive analysis, domain brainstorming, invoice organization
+- **Communication**: Content writing, meeting analysis, document creation (docx, pptx, pdf, xlsx)
+- **Creative**: Canvas design, image enhancement, GIF creation, video downloading, theme factory
+- **Productivity**: File organization, raffle picking, spreadsheet manipulation
+
+When you need help with any of these specialized tasks, I'll automatically apply the relevant skill's instructions to ensure the best results.
+'''}
+
+{f'''
+---
+
+## 🔥 ACTIVE SKILL FOR THIS REQUEST
+
+{active_skill}
+''' if active_skill else ''}
 
 ---
 
