@@ -10,6 +10,7 @@ services:
     environment:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - NOTION_API_KEY=${NOTION_API_KEY}
+      - RECRAFT_API_KEY=${RECRAFT_API_KEY}
       - PORT=3100
     ports:
       - "127.0.0.1:3100:3100"

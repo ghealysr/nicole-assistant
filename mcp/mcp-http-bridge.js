@@ -158,6 +158,39 @@ const TOOLS = [
       required: ['database_id', 'properties']
     },
     server: 'notion'
+  },
+  {
+    name: 'recraft_generate_image',
+    description: 'Generate images using Recraft AI. Supports multiple styles: realistic_image, digital_illustration, vector_illustration, 3d_render, pixel_art, anime, logo, icon, and more.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Detailed description of the image to generate'
+        },
+        style: {
+          type: 'string',
+          enum: ['realistic_image', 'digital_illustration', 'vector_illustration', '3d_render', 'pixel_art', 'anime', 'logo', 'icon'],
+          description: 'Image style (default: realistic_image)',
+          default: 'realistic_image'
+        },
+        model: {
+          type: 'string',
+          description: 'Model to use (default: recraftv3)',
+          default: 'recraftv3'
+        },
+        n: {
+          type: 'number',
+          description: 'Number of images to generate (1-4, default: 1)',
+          default: 1,
+          minimum: 1,
+          maximum: 4
+        }
+      },
+      required: ['prompt']
+    },
+    server: 'recraft'
   }
 ];
 
@@ -326,6 +359,58 @@ async function executeNotionCreateDatabaseItem(args) {
   return [{ type: 'text', text: JSON.stringify(resp.data, null, 2) }];
 }
 
+// Recraft helpers
+function recraftHeaders() {
+  const apiKey = process.env.RECRAFT_API_KEY;
+  if (!apiKey) {
+    throw new Error('RECRAFT_API_KEY not configured');
+  }
+  return {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  };
+}
+
+async function executeRecraftGenerateImage(args) {
+  const { prompt, style = 'realistic_image', model = 'recraftv3', n = 1 } = args;
+  const headers = recraftHeaders();
+  
+  // Recraft API uses OpenAI-compatible format
+  const body = {
+    model,
+    prompt,
+    style,
+    n: Math.min(Math.max(1, n), 4), // Clamp between 1-4
+    response_format: 'url'
+  };
+  
+  try {
+    const resp = await axios.post(
+      'https://external.api.recraft.ai/v1/images/generations',
+      body,
+      { headers }
+    );
+    
+    // Return image URLs and metadata
+    const images = resp.data.data || [];
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        images: images.map(img => ({
+          url: img.url,
+          revised_prompt: img.revised_prompt || prompt
+        })),
+        style,
+        model,
+        count: images.length
+      }, null, 2)
+    }];
+  } catch (error) {
+    throw new Error(`Recraft API error: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
 const TOOL_EXECUTORS = {
   'brave_web_search': executeBraveSearch,
   'read_file': executeReadFile,
@@ -335,7 +420,8 @@ const TOOL_EXECUTORS = {
   'notion_create_page': executeNotionCreatePage,
   'notion_update_page': executeNotionUpdatePage,
   'notion_query_database': executeNotionQueryDatabase,
-  'notion_create_database_item': executeNotionCreateDatabaseItem
+  'notion_create_database_item': executeNotionCreateDatabaseItem,
+  'recraft_generate_image': executeRecraftGenerateImage
 };
 
 
