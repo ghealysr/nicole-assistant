@@ -128,6 +128,39 @@ def get_current_tiger_user_id(request: Request) -> Optional[int]:
     return getattr(request.state, "tiger_user_id", None)
 
 
+async def get_current_user(request: Request):
+    """
+    FastAPI dependency to get the current authenticated user.
+    
+    Returns a user object with user_id and other attributes from request state.
+    Raises HTTPException if user is not authenticated.
+    
+    Usage:
+        @router.get("/endpoint")
+        async def endpoint(user = Depends(get_current_user)):
+            print(user.user_id, user.email)
+    """
+    tiger_user_id = getattr(request.state, "tiger_user_id", None)
+    
+    if not tiger_user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated"
+        )
+    
+    # Return a simple namespace object with user attributes
+    class UserContext:
+        def __init__(self):
+            self.user_id = tiger_user_id
+            self.google_id = getattr(request.state, "user_id", None)
+            self.email = getattr(request.state, "user_email", None)
+            self.name = getattr(request.state, "user_name", None)
+            self.role = getattr(request.state, "user_role", "standard")
+            self.picture = getattr(request.state, "user_picture", None)
+    
+    return UserContext()
+
+
 def get_correlation_id(request: Request) -> str:
     """Helper to get correlation ID from request state."""
     return getattr(request.state, "correlation_id", "unknown")
