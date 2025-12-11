@@ -300,31 +300,48 @@ export function useImageGeneration() {
             if (data) {
               try {
                 const parsed = JSON.parse(data);
+                // Backend uses 'status' field in data, not SSE event type
+                const status = parsed.status || eventType;
                 
-                if (eventType === 'progress' || eventType === 'enhancing' || eventType === 'generating') {
-                  setProgress(parsed);
-                } else if (eventType === 'variant_complete') {
-                  // Add completed variant
-                  setVariants(prev => {
-                    const existing = prev.findIndex(v => v.id === parsed.id);
-                    if (existing >= 0) {
-                      const updated = [...prev];
-                      updated[existing] = parsed;
-                      return updated;
-                    }
-                    return [...prev, parsed];
+                if (status === 'starting' || status === 'enhancing' || status === 'generating') {
+                  setProgress({
+                    job_id: 0,
+                    variant_index: 0,
+                    total_variants: 1,
+                    progress: status === 'generating' ? 50 : (status === 'enhancing' ? 25 : 10),
+                    status: status as 'enhancing_prompt' | 'generating',
                   });
-                  setProgress(prev => prev ? { ...prev, progress: Math.round(((parsed.variant_number) / prev.total_variants) * 100) } : null);
-                } else if (eventType === 'complete') {
+                } else if (status === 'complete') {
+                  // Extract variants from response and transform to frontend format
+                  const rawVariants = parsed.variants || [];
+                  const transformedVariants: ImageVariant[] = rawVariants.map((v: Record<string, unknown>, index: number) => ({
+                    id: v.variant_id || v.id || index,
+                    job_id: v.job_id || parsed.job_id || 0,
+                    variant_number: v.version_number || index + 1,
+                    image_url: v.cdn_url || v.image_url,
+                    thumbnail_url: v.thumbnail_url,
+                    enhanced_prompt: v.enhanced_prompt,
+                    model_used: v.model_key || v.model_used || 'recraft',
+                    generation_time_ms: v.generation_time_ms,
+                    cost: v.cost_usd || v.cost,
+                    status: 'completed' as const,
+                    is_favorite: v.is_favorite || false,
+                    user_rating: v.user_rating,
+                    created_at: v.created_at || new Date().toISOString(),
+                  }));
+                  
+                  if (transformedVariants.length > 0) {
+                    setVariants(prev => [...prev, ...transformedVariants]);
+                  }
                   setIsGenerating(false);
                   setProgress(null);
                   // Refresh job data
                   fetchJobs();
-                } else if (eventType === 'error') {
-                  const errorMsg = typeof parsed.error === 'string' 
-                    ? parsed.error 
-                    : (parsed.error?.message || parsed.message || JSON.stringify(parsed.error) || 'Generation failed');
-                  setError(errorMsg);
+                } else if (status === 'error') {
+                  const errorMsg = typeof parsed.message === 'string' 
+                    ? parsed.message 
+                    : (parsed.error?.message || parsed.error || 'Generation failed');
+                  setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
                   setIsGenerating(false);
                   setProgress(null);
                 }
