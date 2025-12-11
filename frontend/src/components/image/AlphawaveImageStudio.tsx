@@ -335,7 +335,7 @@ export function AlphawaveImageStudio({
                 />
                 {smartPrompt && (
                   <div className="img-enhance-hint">
-                    ✨ Claude will enhance your prompt for better results
+                    ✨ Nicole will enhance your prompt for better results
                   </div>
                 )}
               </div>

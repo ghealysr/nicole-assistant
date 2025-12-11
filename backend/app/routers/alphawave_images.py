@@ -380,6 +380,7 @@ async def list_models():
     for key, cfg in image_service.MODEL_CONFIGS.items():
         models.append({
             "key": key,
+            "name": cfg.get("name", key.replace("_", " ").title()),
             "mode": cfg.get("mode"),
             "supports_batch": cfg.get("supports_batch", False),
             "max_batch": cfg.get("max_batch", 1),

@@ -66,6 +66,7 @@ class ImageGenerationService:
     # Model configurations with provider-specific settings
     MODEL_CONFIGS = {
         "recraft": {
+            "name": "Recraft V3",
             "mode": "mcp",
             "supports_batch": True,
             "max_batch": 4,
@@ -76,6 +77,7 @@ class ImageGenerationService:
             "default_style": "realistic_image",
         },
         "flux_pro": {
+            "name": "FLUX 1.1 Pro",
             "mode": "replicate",
             "replicate_model": "black-forest-labs/flux-1.1-pro",
             "supports_batch": False,
@@ -93,6 +95,7 @@ class ImageGenerationService:
             },
         },
         "flux_schnell": {
+            "name": "FLUX Schnell",
             "mode": "replicate",
             "replicate_model": "black-forest-labs/flux-schnell",
             "supports_batch": False,
@@ -105,6 +108,7 @@ class ImageGenerationService:
             },
         },
         "ideogram": {
+            "name": "Ideogram V2",
             "mode": "replicate",
             "replicate_model": "ideogram-ai/ideogram-v2",
             "supports_batch": False,
