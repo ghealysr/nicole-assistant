@@ -300,6 +300,35 @@ class AgentOrchestrator:
                     "required": []
                 }
             }),
+            
+            # Claude Skills Library - Knowledge enhancement skills
+            tool_examples_service.enhance_tool_schema({
+                "name": "skills_library",
+                "description": "Search Nicole's Claude Skills Library - 26 specialized knowledge skills that enhance my capabilities. Use this when the user asks: 'what skills do you have?', 'list your skills', 'can you help with X?', or when you want to find specialized instructions for tasks like lead research, changelog generation, MCP building, content writing, file organization, etc.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["search", "list", "categories", "details"],
+                            "description": "Action: 'search' to find skills by query, 'list' to list all, 'categories' to see categories, 'details' for specific skill info"
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Search query (for action='search')"
+                        },
+                        "skill_id": {
+                            "type": "string",
+                            "description": "Skill ID (for action='details')"
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Filter by category (for action='list')"
+                        }
+                    },
+                    "required": ["action"]
+                }
+            }),
         ]
         
         # Add skill tools
@@ -618,6 +647,89 @@ class AgentOrchestrator:
                         result["diagnostics"] = {"error": str(e)}
                 
                 return result
+            
+            # Skills Library - Claude Skills knowledge base
+            elif tool_name == "skills_library":
+                action = tool_input.get("action", "list")
+                
+                if action == "categories":
+                    categories = claude_skills_service.get_categories()
+                    return {
+                        "action": "categories",
+                        "total_skills": sum(categories.values()),
+                        "categories": categories,
+                        "message": f"I have {sum(categories.values())} specialized skills across {len(categories)} categories: {', '.join(categories.keys())}"
+                    }
+                
+                elif action == "list":
+                    category = tool_input.get("category")
+                    skills = claude_skills_service.list_skills(category)
+                    return {
+                        "action": "list",
+                        "filter": category or "all",
+                        "count": len(skills),
+                        "skills": [
+                            {
+                                "id": s["id"],
+                                "name": s["name"],
+                                "description": s["description"],
+                                "category": s["category"],
+                                "keywords": s.get("keywords", [])[:5]
+                            }
+                            for s in skills
+                        ],
+                        "message": f"Found {len(skills)} skills" + (f" in category '{category}'" if category else "")
+                    }
+                
+                elif action == "search":
+                    query = tool_input.get("query", "")
+                    if not query:
+                        return {"error": "Search query is required for action='search'"}
+                    
+                    results = claude_skills_service.search_skills(query, max_results=5)
+                    return {
+                        "action": "search",
+                        "query": query,
+                        "count": len(results),
+                        "results": [
+                            {
+                                "id": r["id"],
+                                "name": r["name"],
+                                "description": r["description"],
+                                "category": r["category"],
+                                "relevance_score": r["relevance_score"],
+                                "keywords": r.get("keywords", [])[:5]
+                            }
+                            for r in results
+                        ],
+                        "message": f"Found {len(results)} skills matching '{query}'"
+                    }
+                
+                elif action == "details":
+                    skill_id = tool_input.get("skill_id", "")
+                    if not skill_id:
+                        return {"error": "skill_id is required for action='details'"}
+                    
+                    skill = claude_skills_service.get_skill(skill_id)
+                    if not skill:
+                        return {"error": f"Skill '{skill_id}' not found"}
+                    
+                    return {
+                        "action": "details",
+                        "skill": {
+                            "id": skill["id"],
+                            "name": skill["name"],
+                            "description": skill["description"],
+                            "category": skill["category"],
+                            "keywords": skill.get("keywords", []),
+                            "instructions": skill.get("instructions", "")[:2000],
+                            "has_resources": bool(skill.get("resources")),
+                        },
+                        "message": f"Details for skill: {skill['name']}"
+                    }
+                
+                else:
+                    return {"error": f"Unknown action: {action}. Use: search, list, categories, or details"}
             
             else:
                 # Try to execute a registered skill first
