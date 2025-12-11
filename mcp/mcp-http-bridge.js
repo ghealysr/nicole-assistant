@@ -505,9 +505,28 @@ app.post('/rpc', async (req, res) => {
 // Start the bridge
 const PORT = process.env.PORT || 3100;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`MCP HTTP Bridge listening on port ${PORT}`);
-  console.log(`Available tools: ${TOOLS.map(t => t.name).join(', ')}`);
-  console.log(`Brave API Key: ${process.env.BRAVE_API_KEY ? 'configured' : 'NOT CONFIGURED'}`);
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`MCP HTTP Bridge v1.0.0 - Started on port ${PORT}`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(`\nAvailable tools (${TOOLS.length}):`);
+  
+  // Group tools by server
+  const byServer = TOOLS.reduce((acc, t) => {
+    const srv = t.server || 'unknown';
+    if (!acc[srv]) acc[srv] = [];
+    acc[srv].push(t.name);
+    return acc;
+  }, {});
+  
+  Object.entries(byServer).forEach(([server, tools]) => {
+    console.log(`  [${server}] ${tools.join(', ')}`);
+  });
+  
+  console.log(`\nAPI Key Status:`);
+  console.log(`  BRAVE_API_KEY:   ${process.env.BRAVE_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  NOTION_API_KEY:  ${process.env.NOTION_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  RECRAFT_API_KEY: ${process.env.RECRAFT_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`\n${'='.repeat(60)}\n`);
 });
 
 // Graceful shutdown

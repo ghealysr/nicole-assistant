@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     MCP_GATEWAY_URL: str = "http://127.0.0.1:3100"
     MCP_ENABLED: bool = True
     BRAVE_API_KEY: str = ""
+    RECRAFT_API_KEY: str = ""  # For image generation via MCP bridge
 
     class Config:
         env_file = ".env" if os.path.exists(".env") else "/opt/nicole/.env"
