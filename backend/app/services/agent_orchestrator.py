@@ -301,6 +301,23 @@ class AgentOrchestrator:
                 }
             }),
             
+            # MCP Status - Show connected MCP servers and tools
+            tool_examples_service.enhance_tool_schema({
+                "name": "mcp_status",
+                "description": "Check MCP (Model Context Protocol) connections and available tools. Use this when the user asks: 'what tools do you have?', 'what MCP connections?', 'show MCP status', 'what APIs are connected?', 'can you use Brave search?', 'can you use Notion?', 'what integrations do you have?', or to see all available external tools.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "show_tools": {
+                            "type": "boolean",
+                            "description": "Include list of all available tools (default: true)",
+                            "default": True
+                        }
+                    },
+                    "required": []
+                }
+            }),
+            
             # Claude Skills Library - Knowledge enhancement skills
             tool_examples_service.enhance_tool_schema({
                 "name": "skills_library",
@@ -645,6 +662,76 @@ class AgentOrchestrator:
                         }
                     except Exception as e:
                         result["diagnostics"] = {"error": str(e)}
+                
+                return result
+            
+            # MCP Status - Show connected MCP servers and tools
+            elif tool_name == "mcp_status":
+                show_tools = tool_input.get("show_tools", True)
+                
+                result = {
+                    "status": "checking",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                
+                # Check Docker MCP Gateway first (primary)
+                docker_gateway = {
+                    "name": "Docker MCP Gateway",
+                    "type": "http_bridge",
+                    "status": "disconnected",
+                    "tools": []
+                }
+                
+                try:
+                    from app.mcp.docker_mcp_client import _mcp_client
+                    if _mcp_client and _mcp_client.is_connected:
+                        docker_gateway["status"] = "connected"
+                        docker_gateway["tool_count"] = _mcp_client.tool_count
+                        if show_tools and _mcp_client._tools_cache:
+                            docker_gateway["tools"] = [
+                                {
+                                    "name": t.name,
+                                    "description": t.description[:100] + "..." if len(t.description) > 100 else t.description,
+                                    "server": t.server
+                                }
+                                for t in _mcp_client._tools_cache
+                            ]
+                except Exception as e:
+                    docker_gateway["error"] = str(e)
+                
+                result["docker_gateway"] = docker_gateway
+                
+                # Check legacy MCP manager
+                legacy_mcp = {
+                    "name": "Legacy MCP Manager",
+                    "type": "npx_subprocess",
+                    "status": "unavailable"
+                }
+                
+                try:
+                    mcp_status = self.get_mcp_status()
+                    if mcp_status:
+                        legacy_mcp["status"] = "available"
+                        legacy_mcp["servers"] = mcp_status.get("servers", {})
+                        legacy_mcp["total_tools"] = mcp_status.get("total_tools", 0)
+                        legacy_mcp["connected_servers"] = mcp_status.get("connected_servers", 0)
+                except Exception as e:
+                    legacy_mcp["error"] = str(e)
+                
+                result["legacy_mcp"] = legacy_mcp
+                
+                # Summary
+                total_tools = docker_gateway.get("tool_count", 0)
+                result["summary"] = {
+                    "primary_gateway": "Docker MCP Gateway" if docker_gateway["status"] == "connected" else "None",
+                    "total_tools_available": total_tools,
+                    "can_search_web": any(t.get("name", "").lower().startswith("brave") for t in docker_gateway.get("tools", [])),
+                    "can_access_notion": any("notion" in t.get("name", "").lower() for t in docker_gateway.get("tools", [])),
+                    "can_generate_images": any("recraft" in t.get("name", "").lower() for t in docker_gateway.get("tools", [])),
+                    "can_access_filesystem": any("file" in t.get("name", "").lower() or "directory" in t.get("name", "").lower() for t in docker_gateway.get("tools", [])),
+                }
+                
+                result["status"] = "connected" if docker_gateway["status"] == "connected" else "limited"
                 
                 return result
             
