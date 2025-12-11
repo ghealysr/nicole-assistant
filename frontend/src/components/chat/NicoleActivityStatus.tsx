@@ -60,7 +60,7 @@ function ActivityDots() {
 /**
  * Tool icon based on activity type
  */
-function ActivityIcon({ type, toolName }: { type: string; toolName?: string }) {
+function ActivityIcon({ toolName }: { toolName?: string }) {
   // Determine icon based on tool type
   const getIcon = () => {
     if (toolName) {
@@ -222,7 +222,7 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
           
           {/* Activity Icon (for tool type) */}
           {status.type === 'tool' && (
-            <ActivityIcon type={status.type} toolName={status.toolName} />
+            <ActivityIcon toolName={status.toolName} />
           )}
           
           {/* Status Text */}
