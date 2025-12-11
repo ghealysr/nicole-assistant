@@ -619,8 +619,14 @@ async def send_message(
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
             
+            # Emit interpretation step - "Glen is asking me to..."
+            # Create a brief interpretation of what the user is asking
+            user_query_preview = chat_request.text[:150] + ('...' if len(chat_request.text) > 150 else '')
+            interpretation = f"Glen is asking me to help with: {user_query_preview}"
+            yield f"data: {json.dumps({'type': 'thinking_step', 'description': interpretation, 'category': 'Understanding Request', 'status': 'complete'})}\n\n"
+            
             # Emit thinking step for response generation
-            yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'Analyzing your request and formulating my response...', 'category': 'Thinking', 'status': 'running'})}\n\n"
+            yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'Formulating my response based on context and memories...', 'category': 'Generating Response', 'status': 'running'})}\n\n"
             
             # Send conversation_id for new conversations so frontend can track
             if is_new_conversation:

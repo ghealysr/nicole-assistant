@@ -1,138 +1,110 @@
 'use client';
 
 /**
- * NicoleActivityStatus - Real-time thinking display
+ * NicoleActivityStatus - Claude-style Extended Thinking Display
  * 
- * Optimized implementation with:
- * - Single source of truth for visibility
- * - Smooth enter/exit transitions
- * - Auto-hide after completion with configurable delay
- * - Collapsible completed steps
- * - Efficient re-renders
+ * Mimics Claude's extended thinking UI:
+ * - Compact main view with "Thinking..." label
+ * - Current thought streams in real-time (3 lines visible, fades)
+ * - Completed steps collapse into expandable sections
+ * - Final interpretation: "Glen is asking me to..."
+ * - Everything folds into a single clean box
  * 
- * Styled with Nicole's lavender color palette
+ * Styled with Nicole's light lavender palette
  */
 
 import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
-import Image from 'next/image';
 import type { ActivityStatus, ThinkingContent } from '@/lib/hooks/alphawave_use_chat';
 
-// Nicole's color palette - Light purple theme
+// Nicole's light purple palette
 const colors = {
-  lavender: '#D4C8E8',           // Primary accent (lighter)
-  lavenderLight: '#F3F0F8',      // Background (very light)
-  lavenderMid: '#E8E0F0',        // Header background (light)
-  lavenderDark: '#B8A8D4',       // Borders and accents
-  teal: '#7A9B93',               // Completion checkmark
-  white: '#FFFFFF',
-  textPrimary: '#374151',
-  textSecondary: '#6b7280',
-  textLight: '#9ca3af',
+  bg: '#FAFAFA',              // Very light gray background
+  bgHover: '#F5F5F5',         // Hover state
+  border: '#E5E5E5',          // Subtle border
+  accent: '#9B8AB8',          // Purple accent
+  accentLight: '#E8E0F0',     // Light purple
+  text: '#374151',            // Primary text
+  textMuted: '#6B7280',       // Muted text
+  textLight: '#9CA3AF',       // Light text
 } as const;
 
-// How long to keep the box visible after completion (ms)
-const COMPLETION_DISPLAY_DURATION = 2000;
+// How long to keep visible after completion (ms)
+const COMPLETION_DELAY = 1500;
 
 interface NicoleActivityStatusProps {
   status: ActivityStatus;
 }
 
 /**
- * Pulsing dots animation - memoized for performance
+ * Chevron icon for expand/collapse
  */
-const ActivityDots = memo(function ActivityDots() {
+const ChevronIcon = memo(function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
-    <div className="flex items-center gap-1 ml-2">
-      {[0, 1, 2].map((i) => (
-        <span 
-          key={i}
-          className="w-1.5 h-1.5 rounded-full animate-pulse"
-          style={{ 
-            backgroundColor: colors.lavender,
-            animationDelay: `${i * 150}ms`,
-          }}
-        />
-      ))}
-    </div>
+    <svg 
+      className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+      fill="none" 
+      viewBox="0 0 24 24" 
+      stroke="currentColor" 
+      strokeWidth={2}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
   );
 });
 
 /**
- * Collapsible thinking step accordion - memoized
+ * Completed thinking step - Collapsible accordion
  */
-const ThinkingStepAccordion = memo(function ThinkingStepAccordion({ 
-  step 
+const CompletedStep = memo(function CompletedStep({ 
+  step,
+  isLast,
 }: { 
-  step: ThinkingContent 
+  step: ThinkingContent;
+  isLast: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Truncate title to ~40 chars
+  const shortTitle = step.title.length > 40 
+    ? step.title.slice(0, 37) + '...' 
+    : step.title;
+  
   return (
-    <div 
-      className="rounded-lg overflow-hidden mb-2 last:mb-0 transition-shadow"
-      style={{ 
-        backgroundColor: colors.white,
-        border: `1px solid ${colors.lavenderLight}`,
-      }}
-    >
-      {/* Header - Always visible, clickable */}
+    <div className={`${isLast ? '' : 'border-b'}`} style={{ borderColor: colors.border }}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-3 py-2 text-left transition-colors hover:bg-gray-50"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
         aria-expanded={isExpanded}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Checkmark */}
-          <div 
-            className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: colors.lavender }}
-          >
-            <svg 
-              className="w-2.5 h-2.5 text-white" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor" 
-              strokeWidth={3}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          
-          {/* Title */}
-          <span 
-            className="text-xs font-medium truncate"
-            style={{ color: colors.textPrimary }}
-          >
-            {step.title}
-          </span>
-        </div>
+        {/* Completion dot */}
+        <div 
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: colors.accent }}
+        />
         
-        {/* Expand/Collapse arrow */}
-        <svg 
-          className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${
-            isExpanded ? 'rotate-180' : ''
-          }`}
-          style={{ color: colors.textSecondary }}
-          fill="none" 
-          viewBox="0 0 24 24" 
-          stroke="currentColor" 
-          strokeWidth={2}
+        {/* Step title */}
+        <span 
+          className="flex-1 text-xs truncate"
+          style={{ color: colors.textMuted }}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+          {shortTitle}
+        </span>
+        
+        {/* Expand arrow */}
+        <ChevronIcon expanded={isExpanded} />
       </button>
       
       {/* Expandable content */}
       <div 
         className={`overflow-hidden transition-all duration-200 ease-out ${
-          isExpanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'
+          isExpanded ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
         }`}
       >
         <div 
-          className="px-3 pb-3 pt-1 text-xs overflow-y-auto max-h-40 whitespace-pre-wrap"
+          className="px-3 pb-3 pt-1 text-xs whitespace-pre-wrap overflow-y-auto max-h-48"
           style={{ 
-            color: colors.textSecondary,
-            borderTop: `1px solid ${colors.lavenderLight}`,
+            color: colors.textMuted,
+            marginLeft: '18px', // Align with text after dot
           }}
         >
           {step.content}
@@ -143,66 +115,68 @@ const ThinkingStepAccordion = memo(function ThinkingStepAccordion({
 });
 
 /**
- * Current thinking content - streaming display
+ * Current thinking - Streaming display with 3-line fade
  */
-const CurrentThinkingDisplay = memo(function CurrentThinkingDisplay({
+const CurrentThinking = memo(function CurrentThinking({
   content,
+  category,
 }: {
   content: string;
+  category: string;
 }) {
+  // Show last ~3 lines worth of content (roughly 200 chars)
+  const visibleContent = content.length > 200 
+    ? '...' + content.slice(-197)
+    : content;
+  
   return (
-    <div 
-      className="rounded-lg px-3 py-2"
-      style={{ 
-        backgroundColor: colors.white,
-        border: `1px solid ${colors.lavender}`,
-      }}
-    >
-      <div className="flex items-start gap-2">
-        {/* Running indicator */}
-        <div 
-          className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ backgroundColor: colors.lavender }}
-        >
-          <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-        </div>
-        
-        {/* Thinking content */}
-        <div 
-          className="text-xs flex-1 whitespace-pre-wrap"
-          style={{ color: colors.textSecondary }}
-        >
-          {content}
-        </div>
+    <div className="px-3 py-2 border-t" style={{ borderColor: colors.border }}>
+      {/* Category label */}
+      <div 
+        className="text-xs font-medium mb-1 flex items-center gap-1.5"
+        style={{ color: colors.accent }}
+      >
+        <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: colors.accent }} />
+        {category}
+      </div>
+      
+      {/* Streaming content - 3 lines max with fade */}
+      <div 
+        className="text-xs leading-relaxed overflow-hidden"
+        style={{ 
+          color: colors.textMuted,
+          maxHeight: '4.5em', // ~3 lines
+          maskImage: content.length > 150 
+            ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
+            : undefined,
+          WebkitMaskImage: content.length > 150 
+            ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
+            : undefined,
+        }}
+      >
+        {visibleContent}
       </div>
     </div>
   );
 });
 
 /**
- * Main activity status component
- * Uses internal visibility state with smooth transitions
+ * Main activity status component - Claude-style extended thinking
  */
 export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isExpanded, setIsExpanded] = useState(true); // Main box expansion
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  // Calculate if we should be visible based on activity status
+  // Calculate visibility
   const shouldBeVisible = useCallback(() => {
-    // Always show while active
     if (status.isActive) return true;
-    
-    // Show while there's current thinking
     if (status.currentThinking) return true;
-    
-    // If completed recently and has steps, show briefly
     if (status.completedAt && status.thinkingSteps.length > 0) {
       const elapsed = Date.now() - status.completedAt;
-      return elapsed < COMPLETION_DISPLAY_DURATION;
+      return elapsed < COMPLETION_DELAY;
     }
-    
     return false;
   }, [status.isActive, status.currentThinking, status.completedAt, status.thinkingSteps.length]);
   
@@ -210,37 +184,31 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
   useEffect(() => {
     const shouldShow = shouldBeVisible();
     
-    // Clear any existing timer
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
     
     if (shouldShow && !isVisible) {
-      // Show immediately
       setIsExiting(false);
       setIsVisible(true);
+      setIsExpanded(true); // Auto-expand when new thinking starts
     } else if (!shouldShow && isVisible && !isExiting) {
-      // Start exit animation
       setIsExiting(true);
-      
-      // Hide after animation completes
       hideTimerRef.current = setTimeout(() => {
         setIsVisible(false);
         setIsExiting(false);
-      }, 300); // Match CSS animation duration
+      }, 200);
     } else if (shouldShow && status.completedAt) {
-      // Schedule auto-hide after completion
       const elapsed = Date.now() - status.completedAt;
-      const remaining = COMPLETION_DISPLAY_DURATION - elapsed;
-      
+      const remaining = COMPLETION_DELAY - elapsed;
       if (remaining > 0) {
         hideTimerRef.current = setTimeout(() => {
           setIsExiting(true);
           hideTimerRef.current = setTimeout(() => {
             setIsVisible(false);
             setIsExiting(false);
-          }, 300);
+          }, 200);
         }, remaining);
       }
     }
@@ -252,105 +220,112 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
     };
   }, [shouldBeVisible, isVisible, isExiting, status.completedAt]);
   
-  // Auto-scroll to bottom when new content arrives
-  useEffect(() => {
-    if (scrollRef.current && (status.currentThinking || status.thinkingSteps.length > 0)) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [status.currentThinking, status.thinkingSteps.length]);
-  
-  // Don't render if not visible
   if (!isVisible) {
     return null;
   }
   
-  const hasThinkingContent = status.thinkingSteps.length > 0 || status.currentThinking;
+  const hasSteps = status.thinkingSteps.length > 0;
+  const hasCurrentThinking = !!status.currentThinking;
+  const hasContent = hasSteps || hasCurrentThinking;
   
   return (
-    <div className="py-4 px-6">
+    <div className="py-3 px-6">
       <div className="max-w-[800px] mx-auto">
         <div 
           className={`
-            rounded-xl overflow-hidden
-            transition-all duration-300 ease-out
-            ${isExiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}
+            rounded-lg overflow-hidden
+            transition-all duration-200 ease-out
+            ${isExiting ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}
           `}
           style={{
-            backgroundColor: colors.lavenderLight,
-            border: `1px solid ${colors.lavenderMid}`,
-            boxShadow: '0 4px 16px rgba(184, 168, 212, 0.2)',
+            backgroundColor: colors.bg,
+            border: `1px solid ${colors.border}`,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
-          {/* Header bar */}
-          <div 
-            className="flex items-center gap-3 px-4 py-3"
-            style={{ 
-              backgroundColor: colors.lavenderMid,
-              borderBottom: hasThinkingContent ? `1px solid ${colors.lavender}` : 'none',
-            }}
+          {/* Header - Always visible, clickable to expand/collapse */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-50"
+            disabled={!hasContent}
           >
-            {/* Nicole Avatar - spins while active */}
-            <div className={`w-6 h-6 flex-shrink-0 ${status.isActive ? 'animate-spin-slow' : ''}`}>
-              <Image 
-                src="/images/nicole-thinking-avatar.png" 
-                alt="Nicole thinking" 
-                width={24} 
-                height={24}
-                className="w-6 h-6 rounded-full"
-              />
-            </div>
-            
-            {/* Status Text */}
-            <div 
-              className="flex-1 text-sm font-medium transition-all duration-200"
-              style={{ color: colors.textPrimary }}
-            >
-              {status.isActive 
-                ? (status.displayText || 'Thinking...')
-                : (status.thinkingSteps.length > 0 ? 'Completed' : 'Done')
-              }
-            </div>
-            
-            {/* Pulsing Dots (only when active) */}
-            {status.isActive && <ActivityDots />}
-            
-            {/* Completion checkmark (when done with steps) */}
-            {!status.isActive && status.thinkingSteps.length > 0 && (
-              <div 
-                className="w-5 h-5 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: colors.teal }}
-              >
-                <svg 
-                  className="w-3 h-3 text-white" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor" 
-                  strokeWidth={3}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
+            {/* Thinking indicator */}
+            {status.isActive ? (
+              <div className="flex items-center gap-1">
+                <span 
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: colors.accent }}
+                />
+                <span 
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: colors.accent, animationDelay: '0.15s' }}
+                />
+                <span 
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: colors.accent, animationDelay: '0.3s' }}
+                />
               </div>
+            ) : (
+              <svg 
+                className="w-4 h-4" 
+                style={{ color: colors.accent }}
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor" 
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            
+            {/* Status text */}
+            <span 
+              className="flex-1 text-sm font-medium"
+              style={{ color: colors.text }}
+            >
+              {status.isActive ? 'Thinking...' : 'Thought process'}
+            </span>
+            
+            {/* Step count badge */}
+            {hasSteps && (
+              <span 
+                className="text-xs px-1.5 py-0.5 rounded"
+                style={{ 
+                  backgroundColor: colors.accentLight,
+                  color: colors.accent,
+                }}
+              >
+                {status.thinkingSteps.length}
+              </span>
+            )}
+            
+            {/* Expand arrow */}
+            {hasContent && <ChevronIcon expanded={isExpanded} />}
+          </button>
+          
+          {/* Expandable content area */}
+          <div 
+            className={`overflow-hidden transition-all duration-200 ease-out ${
+              isExpanded && hasContent ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            {/* Completed steps - Each collapsible */}
+            {status.thinkingSteps.map((step, index) => (
+              <CompletedStep 
+                key={step.id} 
+                step={step}
+                isLast={index === status.thinkingSteps.length - 1 && !hasCurrentThinking}
+              />
+            ))}
+            
+            {/* Current streaming thought */}
+            {hasCurrentThinking && (
+              <CurrentThinking 
+                content={status.currentThinking!}
+                category={status.displayText || 'Thinking'}
+              />
             )}
           </div>
-          
-          {/* Content area - scrollable */}
-          {hasThinkingContent && (
-            <div 
-              ref={scrollRef}
-              className="p-3 overflow-y-auto transition-all duration-200"
-              style={{ maxHeight: '300px' }}
-            >
-              {/* Completed steps as accordions */}
-              {status.thinkingSteps.map((step) => (
-                <ThinkingStepAccordion key={step.id} step={step} />
-              ))}
-              
-              {/* Current thinking - streaming */}
-              {status.currentThinking && (
-                <CurrentThinkingDisplay content={status.currentThinking} />
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
