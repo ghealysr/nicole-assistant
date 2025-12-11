@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
+from decimal import Decimal
 import json
 import logging
 
@@ -16,6 +17,17 @@ from app.middleware.alphawave_auth import get_current_user
 from app.services.alphawave_image_generation_service import image_service
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_for_json(obj: Any) -> Any:
+    """Convert Decimal and other non-JSON-serializable types."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: serialize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_for_json(v) for v in obj]
+    return obj
 
 router = APIRouter(tags=["images"])
 
@@ -169,7 +181,7 @@ async def generate_image_stream(
                 enhance_prompt_enabled=request.enhance_prompt,
             )
             
-            yield f"data: {json.dumps({'status': 'complete', **result})}\n\n"
+            yield f"data: {json.dumps(serialize_for_json({'status': 'complete', **result}))}\n\n"
             
         except Exception as e:
             logger.exception(f"[IMAGE API] Stream generation error: {e}")
