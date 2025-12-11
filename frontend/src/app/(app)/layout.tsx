@@ -7,6 +7,7 @@ import { AlphawaveVibeWorkspace } from '@/components/vibe/AlphawaveVibeWorkspace
 import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDashboard';
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
+import { AlphawaveImageStudio } from '@/components/image/AlphawaveImageStudio';
 import { ConversationProvider, useConversation } from '@/lib/context/ConversationContext';
 import { useGoogleAuth } from '@/lib/google_auth';
 
@@ -53,6 +54,9 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isChatsOpen, setIsChatsOpen] = useState(false);
+  const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
+  const [imageStudioPrompt, setImageStudioPrompt] = useState('');
+  const [imageStudioPreset, setImageStudioPreset] = useState<string | undefined>();
   
   const { currentConversationId, setCurrentConversationId, clearConversation } = useConversation();
   const { token } = useGoogleAuth();
@@ -63,6 +67,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     setIsMemoryOpen(false);
     setIsJournalOpen(false);
     setIsChatsOpen(false);
+    setIsImageStudioOpen(false);
   }, []);
 
   // Toggle Vibe - closes others if open
@@ -105,6 +110,27 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [isChatsOpen, closeAllPanels]);
 
+  // Toggle Image Studio - closes others if open
+  const toggleImageStudio = useCallback((prompt?: string, preset?: string) => {
+    if (isImageStudioOpen && !prompt) {
+      setIsImageStudioOpen(false);
+    } else {
+      closeAllPanels();
+      if (prompt) setImageStudioPrompt(prompt);
+      if (preset) setImageStudioPreset(preset);
+      setIsImageStudioOpen(true);
+    }
+  }, [isImageStudioOpen, closeAllPanels]);
+
+  // Expose toggleImageStudio for slash commands
+  useEffect(() => {
+    // Make the toggle function available globally for slash commands
+    (window as unknown as { openImageStudio?: typeof toggleImageStudio }).openImageStudio = toggleImageStudio;
+    return () => {
+      delete (window as unknown as { openImageStudio?: typeof toggleImageStudio }).openImageStudio;
+    };
+  }, [toggleImageStudio]);
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar: 240px fixed */}
@@ -117,6 +143,8 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         isJournalOpen={isJournalOpen}
         onChatsClick={toggleChats}
         isChatsOpen={isChatsOpen}
+        onImageStudioClick={() => toggleImageStudio()}
+        isImageStudioOpen={isImageStudioOpen}
         onNewChat={clearConversation}
       />
 
@@ -141,6 +169,14 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         onSelectConversation={setCurrentConversationId}
         onNewChat={clearConversation}
         currentConversationId={currentConversationId}
+      />
+
+      {/* Image Studio - slides in from right */}
+      <AlphawaveImageStudio 
+        isOpen={isImageStudioOpen} 
+        onClose={() => setIsImageStudioOpen(false)}
+        initialPrompt={imageStudioPrompt}
+        initialPreset={imageStudioPreset}
       />
     </div>
   );

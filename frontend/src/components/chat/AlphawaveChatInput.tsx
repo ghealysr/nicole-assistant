@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { getStoredToken } from '@/lib/google_auth';
 import { API_URL } from '@/lib/alphawave_config';
+import { parseSlashCommand } from '@/lib/hooks/useImageGeneration';
 
 /**
  * File attachment with metadata for Claude-style display.
@@ -174,11 +175,37 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
   /**
    * Handles form submission - sends CLEAN message + attachment metadata.
    * No [Uploaded: ...] blocks - Azure analysis stays invisible.
+   * Also handles slash commands for image generation.
    */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     const messageText = content.trim();
+    
+    // Check for image generation slash commands
+    const slashCommand = parseSlashCommand(messageText);
+    if (slashCommand) {
+      // Open Image Studio with the prompt and preset
+      const openImageStudio = (window as unknown as { 
+        openImageStudio?: (prompt?: string, preset?: string) => void 
+      }).openImageStudio;
+      
+      if (openImageStudio) {
+        // Map command to preset slash command
+        const presetMap: Record<string, string> = {
+          logo: '1',
+          hero: '2',
+          ig: '3',
+          poster: '4',
+          thumb: '5',
+          image: '1', // default to logo
+        };
+        openImageStudio(slashCommand.prompt, presetMap[slashCommand.command]);
+        setContent('');
+        return;
+      }
+    }
+    
     const readyFiles = pendingFiles.filter(f => f.status === 'ready');
     
     // Build clean attachments array (no Azure metadata exposed)

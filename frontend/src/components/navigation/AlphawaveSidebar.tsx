@@ -12,6 +12,8 @@ interface AlphawaveSidebarProps {
   isJournalOpen?: boolean;
   onChatsClick?: () => void;
   isChatsOpen?: boolean;
+  onImageStudioClick?: () => void;
+  isImageStudioOpen?: boolean;
   onNewChat?: () => void;
 }
 
@@ -34,6 +36,8 @@ export function AlphawaveSidebar({
   isJournalOpen,
   onChatsClick,
   isChatsOpen,
+  onImageStudioClick,
+  isImageStudioOpen,
   onNewChat,
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
@@ -92,6 +96,19 @@ export function AlphawaveSidebar({
           Journal
         </button>
         
+        {/* Image Studio Button - Opens Image Generation Panel */}
+        <button
+          onClick={onImageStudioClick}
+          className={`menu-item ${isImageStudioOpen ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <path d="M21 15l-5-5L5 21"/>
+          </svg>
+          Images
+        </button>
+
         {/* Vibe Button - Special styling, opens workspace */}
         <button
           onClick={onVibeClick}
