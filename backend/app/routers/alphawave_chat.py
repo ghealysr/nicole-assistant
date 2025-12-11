@@ -442,8 +442,8 @@ async def send_message(
             relevant_memories = []
             memory_context = ""
             
-            # Emit thinking step for memory search
-            yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'Searching my memories for relevant context...', 'category': 'Memory Search', 'status': 'running'})}\n\n"
+            # Emit status: Searching memories
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Searching memories...'})}\n\n"
             
             try:
                 logger.info(f"[MEMORY RETRIEVAL] Searching for user {tiger_user_id}...")
@@ -457,7 +457,6 @@ async def send_message(
                 if memories:
                     relevant_memories = memories
                     logger.info(f"[MEMORY RETRIEVAL] ✅ Found {len(memories)} memories!")
-                    yield f"data: {json.dumps({'type': 'thinking_step', 'description': f'Found {len(memories)} relevant memories about this topic.', 'category': 'Memory Search', 'status': 'complete'})}\n\n"
                     
                     memory_items = []
                     for mem in memories[:7]:
@@ -482,7 +481,6 @@ async def send_message(
                                 pass
                 else:
                     logger.info(f"[MEMORY RETRIEVAL] No memories found for query")
-                    yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'No specific memories found for this topic.', 'category': 'Memory Search', 'status': 'complete'})}\n\n"
                     
             except Exception as mem_err:
                 logger.error(f"[MEMORY RETRIEVAL] ERROR: {mem_err}")
@@ -493,8 +491,8 @@ async def send_message(
             
             document_context = ""
             
-            # Emit thinking step for document search
-            yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'Checking uploaded documents for relevant information...', 'category': 'Document Search', 'status': 'running'})}\n\n"
+            # Emit status: Reviewing documents
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Reviewing documents...'})}\n\n"
             
             try:
                 doc_results = await document_service.search_documents(
@@ -505,7 +503,6 @@ async def send_message(
                 
                 if doc_results:
                     logger.info(f"[DOCUMENT] Found {len(doc_results)} relevant documents")
-                    yield f"data: {json.dumps({'type': 'thinking_step', 'description': f'Found {len(doc_results)} relevant document sections.', 'category': 'Document Search', 'status': 'complete'})}\n\n"
                     
                     doc_items = []
                     for doc in doc_results:
@@ -517,8 +514,6 @@ async def send_message(
                     
                     if doc_items:
                         document_context = "\n\n## 📄 RELEVANT DOCUMENTS:\n" + "\n".join(doc_items)
-                else:
-                    yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'No relevant documents found.', 'category': 'Document Search', 'status': 'complete'})}\n\n"
                         
             except Exception as doc_err:
                 logger.debug(f"[DOCUMENT] Error searching documents: {doc_err}")
@@ -619,14 +614,8 @@ async def send_message(
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
             
-            # Emit interpretation step - "Glen is asking me to..."
-            # Create a brief interpretation of what the user is asking
-            user_query_preview = chat_request.text[:150] + ('...' if len(chat_request.text) > 150 else '')
-            interpretation = f"Glen is asking me to help with: {user_query_preview}"
-            yield f"data: {json.dumps({'type': 'thinking_step', 'description': interpretation, 'category': 'Understanding Request', 'status': 'complete'})}\n\n"
-            
-            # Emit thinking step for response generation
-            yield f"data: {json.dumps({'type': 'thinking_step', 'description': 'Formulating my response based on context and memories...', 'category': 'Generating Response', 'status': 'running'})}\n\n"
+            # Emit status: Thinking
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Thinking...'})}\n\n"
             
             # Send conversation_id for new conversations so frontend can track
             if is_new_conversation:

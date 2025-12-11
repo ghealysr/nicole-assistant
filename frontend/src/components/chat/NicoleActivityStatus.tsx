@@ -1,186 +1,106 @@
 'use client';
 
 /**
- * NicoleActivityStatus - Claude-style Extended Thinking Display
+ * NicoleActivityStatus - Simple Activity Indicator
  * 
- * Mimics Claude's extended thinking UI:
- * - Compact main view with "Thinking..." label
- * - Current thought streams in real-time (3 lines visible, fades)
- * - Completed steps collapse into expandable sections
- * - Final interpretation: "Glen is asking me to..."
- * - Everything folds into a single clean box
+ * Clean, minimal status display showing what Nicole is doing:
+ * - Processing, Thinking, Researching, Loading Skill, Calling Tool
+ * - No expansion, no accordions - just flows through states
+ * - Nicole avatar below with progress-based spinner
+ * - Stops spinning right before response starts
  * 
- * Styled with Nicole's light lavender palette
+ * Anthropic-quality: Simple, focused, efficient
  */
 
-import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
-import type { ActivityStatus, ThinkingContent } from '@/lib/hooks/alphawave_use_chat';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Image from 'next/image';
+import type { ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
-// Nicole's light purple palette
+// Clean, minimal color palette
 const colors = {
-  bg: '#FAFAFA',              // Very light gray background
-  bgHover: '#F5F5F5',         // Hover state
-  border: '#E5E5E5',          // Subtle border
-  accent: '#9B8AB8',          // Purple accent
-  accentLight: '#E8E0F0',     // Light purple
-  text: '#374151',            // Primary text
-  textMuted: '#6B7280',       // Muted text
-  textLight: '#9CA3AF',       // Light text
+  bg: '#FFFFFF',
+  border: '#E5E7EB',
+  text: '#374151',
+  textMuted: '#6B7280',
+  accent: '#9B8AB8',
 } as const;
 
-// How long to keep visible after completion (ms)
-const COMPLETION_DELAY = 1500;
+// Visibility duration after completion (ms)
+const HIDE_DELAY = 800;
 
 interface NicoleActivityStatusProps {
   status: ActivityStatus;
 }
 
 /**
- * Chevron icon for expand/collapse
+ * Get display text for current activity
  */
-const ChevronIcon = memo(function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg 
-      className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-      fill="none" 
-      viewBox="0 0 24 24" 
-      stroke="currentColor" 
-      strokeWidth={2}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-});
+function getActivityLabel(status: ActivityStatus): string {
+  // If we have a specific display text, use it
+  if (status.displayText) {
+    // Clean up common patterns
+    const text = status.displayText;
+    
+    // Tool-specific labels
+    if (text.toLowerCase().includes('memory')) return 'Searching memories...';
+    if (text.toLowerCase().includes('document')) return 'Reviewing documents...';
+    if (text.toLowerCase().includes('web') || text.toLowerCase().includes('brave')) return 'Researching...';
+    if (text.toLowerCase().includes('notion')) return 'Checking Notion...';
+    if (text.toLowerCase().includes('skill')) return 'Loading skill...';
+    if (text.toLowerCase().includes('image') || text.toLowerCase().includes('recraft')) return 'Generating image...';
+    if (text.toLowerCase().includes('file')) return 'Reading files...';
+    if (text.toLowerCase().includes('mcp')) return 'Calling MCP tool...';
+    if (text.toLowerCase().includes('understanding')) return 'Processing request...';
+    if (text.toLowerCase().includes('generating') || text.toLowerCase().includes('formulating')) return 'Thinking...';
+    
+    return text;
+  }
+  
+  // Default based on type
+  switch (status.type) {
+    case 'thinking':
+      return 'Thinking...';
+    case 'tool':
+      if (status.toolName) {
+        const name = status.toolName.toLowerCase();
+        if (name.includes('brave') || name.includes('search')) return 'Researching...';
+        if (name.includes('memory')) return 'Searching memories...';
+        if (name.includes('document')) return 'Reviewing documents...';
+        if (name.includes('notion')) return 'Checking Notion...';
+        if (name.includes('skill')) return 'Loading skill...';
+        if (name.includes('mcp')) return 'Calling MCP tool...';
+        return `Using ${status.toolName}...`;
+      }
+      return 'Using tool...';
+    case 'responding':
+      return 'Responding...';
+    default:
+      return 'Processing...';
+  }
+}
 
 /**
- * Completed thinking step - Collapsible accordion
- */
-const CompletedStep = memo(function CompletedStep({ 
-  step,
-  isLast,
-}: { 
-  step: ThinkingContent;
-  isLast: boolean;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  // Truncate title to ~40 chars
-  const shortTitle = step.title.length > 40 
-    ? step.title.slice(0, 37) + '...' 
-    : step.title;
-  
-  return (
-    <div className={`${isLast ? '' : 'border-b'}`} style={{ borderColor: colors.border }}>
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
-        aria-expanded={isExpanded}
-      >
-        {/* Completion dot */}
-        <div 
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: colors.accent }}
-        />
-        
-        {/* Step title */}
-        <span 
-          className="flex-1 text-xs truncate"
-          style={{ color: colors.textMuted }}
-        >
-          {shortTitle}
-        </span>
-        
-        {/* Expand arrow */}
-        <ChevronIcon expanded={isExpanded} />
-      </button>
-      
-      {/* Expandable content */}
-      <div 
-        className={`overflow-hidden transition-all duration-200 ease-out ${
-          isExpanded ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
-        }`}
-      >
-        <div 
-          className="px-3 pb-3 pt-1 text-xs whitespace-pre-wrap overflow-y-auto max-h-48"
-          style={{ 
-            color: colors.textMuted,
-            marginLeft: '18px', // Align with text after dot
-          }}
-        >
-          {step.content}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-/**
- * Current thinking - Streaming display with 3-line fade
- */
-const CurrentThinking = memo(function CurrentThinking({
-  content,
-  category,
-}: {
-  content: string;
-  category: string;
-}) {
-  // Show last ~3 lines worth of content (roughly 200 chars)
-  const visibleContent = content.length > 200 
-    ? '...' + content.slice(-197)
-    : content;
-  
-  return (
-    <div className="px-3 py-2 border-t" style={{ borderColor: colors.border }}>
-      {/* Category label */}
-      <div 
-        className="text-xs font-medium mb-1 flex items-center gap-1.5"
-        style={{ color: colors.accent }}
-      >
-        <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: colors.accent }} />
-        {category}
-      </div>
-      
-      {/* Streaming content - 3 lines max with fade */}
-      <div 
-        className="text-xs leading-relaxed overflow-hidden"
-        style={{ 
-          color: colors.textMuted,
-          maxHeight: '4.5em', // ~3 lines
-          maskImage: content.length > 150 
-            ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
-            : undefined,
-          WebkitMaskImage: content.length > 150 
-            ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
-            : undefined,
-        }}
-      >
-        {visibleContent}
-      </div>
-    </div>
-  );
-});
-
-/**
- * Main activity status component - Claude-style extended thinking
+ * Main activity status component
+ * Simple status bar + spinning avatar
  */
 export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true); // Main box expansion
+  const [shouldSpin, setShouldSpin] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Calculate visibility
   const shouldBeVisible = useCallback(() => {
     if (status.isActive) return true;
     if (status.currentThinking) return true;
-    if (status.completedAt && status.thinkingSteps.length > 0) {
+    if (status.completedAt) {
       const elapsed = Date.now() - status.completedAt;
-      return elapsed < COMPLETION_DELAY;
+      return elapsed < HIDE_DELAY;
     }
     return false;
-  }, [status.isActive, status.currentThinking, status.completedAt, status.thinkingSteps.length]);
+  }, [status.isActive, status.currentThinking, status.completedAt]);
   
-  // Manage visibility transitions
+  // Manage visibility and spinner
   useEffect(() => {
     const shouldShow = shouldBeVisible();
     
@@ -190,18 +110,29 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
     }
     
     if (shouldShow && !isVisible) {
+      // Show and start spinning
       setIsExiting(false);
       setIsVisible(true);
-      setIsExpanded(true); // Auto-expand when new thinking starts
+      setShouldSpin(true);
     } else if (!shouldShow && isVisible && !isExiting) {
-      setIsExiting(true);
+      // Stop spinning first, then fade out
+      setShouldSpin(false);
+      
+      // Brief pause before hiding
       hideTimerRef.current = setTimeout(() => {
-        setIsVisible(false);
-        setIsExiting(false);
-      }, 200);
+        setIsExiting(true);
+        hideTimerRef.current = setTimeout(() => {
+          setIsVisible(false);
+          setIsExiting(false);
+        }, 200);
+      }, 100);
     } else if (shouldShow && status.completedAt) {
+      // Completed - stop spinning but stay visible briefly
+      setShouldSpin(false);
+      
       const elapsed = Date.now() - status.completedAt;
-      const remaining = COMPLETION_DELAY - elapsed;
+      const remaining = HIDE_DELAY - elapsed;
+      
       if (remaining > 0) {
         hideTimerRef.current = setTimeout(() => {
           setIsExiting(true);
@@ -213,119 +144,77 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
       }
     }
     
+    // Keep spinning while actively processing
+    if (status.isActive && isVisible) {
+      setShouldSpin(true);
+    }
+    
     return () => {
       if (hideTimerRef.current) {
         clearTimeout(hideTimerRef.current);
       }
     };
-  }, [shouldBeVisible, isVisible, isExiting, status.completedAt]);
+  }, [shouldBeVisible, isVisible, isExiting, status.isActive, status.completedAt]);
   
   if (!isVisible) {
     return null;
   }
   
-  const hasSteps = status.thinkingSteps.length > 0;
-  const hasCurrentThinking = !!status.currentThinking;
-  const hasContent = hasSteps || hasCurrentThinking;
+  const activityLabel = getActivityLabel(status);
   
   return (
-    <div className="py-3 px-6">
-      <div className="max-w-[800px] mx-auto">
+    <div 
+      className={`
+        py-4 px-6
+        transition-all duration-200 ease-out
+        ${isExiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}
+      `}
+    >
+      <div className="max-w-[800px] mx-auto flex flex-col items-center gap-3">
+        {/* Status Box */}
         <div 
-          className={`
-            rounded-lg overflow-hidden
-            transition-all duration-200 ease-out
-            ${isExiting ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}
-          `}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full"
           style={{
             backgroundColor: colors.bg,
             border: `1px solid ${colors.border}`,
             boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
-          {/* Header - Always visible, clickable to expand/collapse */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-50"
-            disabled={!hasContent}
-          >
-            {/* Thinking indicator */}
-            {status.isActive ? (
-              <div className="flex items-center gap-1">
-                <span 
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: colors.accent }}
-                />
-                <span 
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: colors.accent, animationDelay: '0.15s' }}
-                />
-                <span 
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: colors.accent, animationDelay: '0.3s' }}
-                />
-              </div>
-            ) : (
-              <svg 
-                className="w-4 h-4" 
-                style={{ color: colors.accent }}
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor" 
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            )}
-            
-            {/* Status text */}
-            <span 
-              className="flex-1 text-sm font-medium"
-              style={{ color: colors.text }}
-            >
-              {status.isActive ? 'Thinking...' : 'Thought process'}
-            </span>
-            
-            {/* Step count badge */}
-            {hasSteps && (
-              <span 
-                className="text-xs px-1.5 py-0.5 rounded"
-                style={{ 
-                  backgroundColor: colors.accentLight,
-                  color: colors.accent,
-                }}
-              >
-                {status.thinkingSteps.length}
-              </span>
-            )}
-            
-            {/* Expand arrow */}
-            {hasContent && <ChevronIcon expanded={isExpanded} />}
-          </button>
-          
-          {/* Expandable content area */}
+          {/* Pulsing dot indicator */}
           <div 
-            className={`overflow-hidden transition-all duration-200 ease-out ${
-              isExpanded && hasContent ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
-            }`}
+            className={`w-2 h-2 rounded-full ${status.isActive ? 'animate-pulse' : ''}`}
+            style={{ backgroundColor: colors.accent }}
+          />
+          
+          {/* Status text */}
+          <span 
+            className="text-sm font-medium"
+            style={{ color: colors.text }}
           >
-            {/* Completed steps - Each collapsible */}
-            {status.thinkingSteps.map((step, index) => (
-              <CompletedStep 
-                key={step.id} 
-                step={step}
-                isLast={index === status.thinkingSteps.length - 1 && !hasCurrentThinking}
-              />
-            ))}
-            
-            {/* Current streaming thought */}
-            {hasCurrentThinking && (
-              <CurrentThinking 
-                content={status.currentThinking!}
-                category={status.displayText || 'Thinking'}
-              />
-            )}
-          </div>
+            {activityLabel}
+          </span>
+        </div>
+        
+        {/* Nicole Avatar - spins while processing */}
+        <div 
+          className={`
+            w-10 h-10 rounded-full overflow-hidden
+            transition-all duration-300
+            ${shouldSpin ? 'animate-spin-slow' : ''}
+          `}
+          style={{
+            boxShadow: shouldSpin 
+              ? `0 0 12px ${colors.accent}40` 
+              : '0 1px 3px rgba(0,0,0,0.1)',
+          }}
+        >
+          <Image 
+            src="/images/nicole-thinking-avatar.png" 
+            alt="Nicole" 
+            width={40} 
+            height={40}
+            className="w-full h-full object-cover"
+          />
         </div>
       </div>
     </div>

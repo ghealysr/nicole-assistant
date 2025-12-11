@@ -338,7 +338,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   ...prev,
                   isActive: true,
                   type: 'thinking',
-                  displayText: 'Thinking...',
+                  displayText: 'Processing...',
+                }));
+              } else if (data.type === 'status') {
+                // Simple status update - just update display text
+                const statusText = data.text || 'Processing...';
+                setActivityStatus(prev => ({
+                  ...prev,
+                  isActive: true,
+                  type: 'thinking',
+                  displayText: statusText,
                 }));
               } else if (data.type === 'tool_start') {
                 // Tool execution started
@@ -359,79 +368,36 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   displayText: 'Processing...',
                 }));
               } else if (data.type === 'thinking_step') {
-                // New thinking content from Nicole
-                const thought = data.description || data.thought || '';
-                const category = data.category || 'Thinking';
-                
-                if (thought) {
-                  setActivityStatus(prev => {
-                    // If we had current thinking, move it to completed steps
-                    const newSteps = prev.currentThinking 
-                      ? [...prev.thinkingSteps, {
-                          id: crypto.randomUUID(),
-                          title: prev.displayText || 'Thinking',
-                          content: prev.currentThinking,
-                          status: 'complete' as const,
-                          timestamp: new Date(),
-                        }]
-                      : prev.thinkingSteps;
-                    
-                    return {
-                      ...prev,
-                      isActive: true,
-                      type: 'thinking',
-                      displayText: category,
-                      thinkingSteps: newSteps,
-                      currentThinking: thought,
-                    };
-                  });
-                }
+                // Simple status update from thinking step
+                const category = data.category || data.description || 'Thinking';
+                setActivityStatus(prev => ({
+                  ...prev,
+                  isActive: true,
+                  type: 'thinking',
+                  displayText: category.includes('...') ? category : `${category}...`,
+                }));
               } else if (data.type === 'thinking_complete') {
-                // Finalize current thinking as a completed step
-                setActivityStatus(prev => {
-                  if (prev.currentThinking) {
-                    return {
-                      ...prev,
-                      thinkingSteps: [...prev.thinkingSteps, {
-                        id: crypto.randomUUID(),
-                        title: prev.displayText || 'Complete',
-                        content: prev.currentThinking,
-                        status: 'complete' as const,
-                        timestamp: new Date(),
-                      }],
-                      currentThinking: null,
-                    };
-                  }
-                  return prev;
-                });
+                // Thinking done - will transition to responding soon
+                setActivityStatus(prev => ({
+                  ...prev,
+                  displayText: 'Responding...',
+                }));
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
                 
-                // First token - finalize any pending thinking and start hide transition
+                // First token - mark as completed, stop activity
                 setActivityStatus(prev => {
                   // Skip if already responding (prevents re-triggering on each token)
                   if (prev.type === 'responding') return prev;
-                  
-                  // If we have current thinking, save it as final step
-                  const finalSteps = prev.currentThinking
-                    ? [...prev.thinkingSteps, {
-                        id: crypto.randomUUID(),
-                        title: prev.displayText || 'Analysis complete',
-                        content: prev.currentThinking,
-                        status: 'complete' as const,
-                        timestamp: new Date(),
-                      }]
-                    : prev.thinkingSteps;
                   
                   return {
                     ...prev,
                     isActive: false,
                     type: 'responding',
                     displayText: '',
-                    thinkingSteps: finalSteps,
+                    thinkingSteps: [],
                     currentThinking: null,
-                    // Keep showing briefly if we have thinking steps
-                    shouldShow: finalSteps.length > 0,
+                    shouldShow: false,
                     completedAt: Date.now(),
                   };
                 });
