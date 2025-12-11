@@ -235,7 +235,18 @@ export function useImageGeneration() {
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`Generation failed: ${response.status}`);
+          // Try to get error message from response body
+          let errorMsg = `Generation failed: ${response.status}`;
+          try {
+            const errorBody = await response.json();
+            errorMsg = errorBody.detail || errorBody.error || errorBody.message || errorMsg;
+            if (typeof errorMsg === 'object') {
+              errorMsg = JSON.stringify(errorMsg);
+            }
+          } catch {
+            // Ignore JSON parse errors
+          }
+          throw new Error(errorMsg);
         }
         
         const reader = response.body?.getReader();
@@ -295,7 +306,10 @@ export function useImageGeneration() {
                   // Refresh job data
                   fetchJobs();
                 } else if (eventType === 'error') {
-                  setError(parsed.error || 'Generation failed');
+                  const errorMsg = typeof parsed.error === 'string' 
+                    ? parsed.error 
+                    : (parsed.error?.message || parsed.message || JSON.stringify(parsed.error) || 'Generation failed');
+                  setError(errorMsg);
                   setIsGenerating(false);
                   setProgress(null);
                 }
