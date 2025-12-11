@@ -20,9 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 def serialize_for_json(obj: Any) -> Any:
-    """Convert Decimal and other non-JSON-serializable types."""
+    """Convert Decimal, datetime, and other non-JSON-serializable types."""
+    from datetime import datetime, date
     if isinstance(obj, Decimal):
         return float(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
     if isinstance(obj, dict):
         return {k: serialize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, list):
