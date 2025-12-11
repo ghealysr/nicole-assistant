@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { getStoredToken } from '@/lib/google_auth';
 
 // Types
 export interface ImageJob {
@@ -87,7 +88,7 @@ export interface CreateJobParams {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
 
 async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('google_token') : null;
+  const token = getStoredToken();
   
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -214,7 +215,7 @@ export function useImageGeneration() {
     setProgress(null);
     setError(null);
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('google_token') : null;
+    const token = getStoredToken();
     
     // Using fetch for SSE since EventSource doesn't support custom headers
     abortControllerRef.current = new AbortController();
