@@ -122,6 +122,94 @@ body {
   animation-delay: 0.3s;
 }
 
+/* ============================================
+   NICOLE ACTIVITY STATUS ANIMATIONS
+   Real-time activity indicator for chat
+   ============================================ */
+
+/* Activity status enter animation */
+@keyframes activityStatusEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Activity status exit animation */
+@keyframes activityStatusExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+.activity-status-enter {
+  animation: activityStatusEnter 0.3s ease-out forwards;
+}
+
+.activity-status-exit {
+  animation: activityStatusExit 0.2s ease-out forwards;
+}
+
+/* Activity dots pulsing animation */
+@keyframes activityDotPulse {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.activity-dot {
+  animation: activityDotPulse 1.2s infinite;
+}
+
+.activity-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.activity-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* Activity text smooth transition */
+.activity-text-transition {
+  transition: opacity 0.2s ease-out;
+}
+
+/* Nicole activity status container styles */
+.nicole-activity-status {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Subtle glow effect on the status box */
+.nicole-activity-status::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(184, 168, 212, 0.3) 0%, rgba(188, 209, 203, 0.3) 100%);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.nicole-activity-status:hover::before {
+  opacity: 1;
+}
+
 /* Toast animations */
 @keyframes slide-in-from-right-full {
   from {

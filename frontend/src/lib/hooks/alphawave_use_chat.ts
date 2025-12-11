@@ -21,6 +21,68 @@ export interface ThinkingStep {
   file?: string;
 }
 
+/**
+ * Activity status for real-time display
+ */
+export interface ActivityStatus {
+  isActive: boolean;
+  type: 'idle' | 'thinking' | 'tool' | 'responding';
+  toolName?: string;
+  displayText: string;
+}
+
+/**
+ * Map tool names to user-friendly display text
+ */
+function getToolDisplayText(toolName: string): string {
+  const toolDisplayMap: Record<string, string> = {
+    // Core tools
+    'think': 'Reasoning through this...',
+    'memory_search': 'Searching memories...',
+    'memory_store': 'Saving to memory...',
+    'document_search': 'Analyzing documents...',
+    'search_tools': 'Finding the right tools...',
+    'dashboard_status': 'Checking system status...',
+    'skills_library': 'Checking skills...',
+    
+    // MCP tools
+    'bravewebsearch': 'Searching the web...',
+    'brave_web_search': 'Searching the web...',
+    'recraftgenerateimage': 'Generating image...',
+    'recraft_generate_image': 'Generating image...',
+    
+    // Notion tools
+    'notion_search': 'Searching Notion...',
+    'notion_get_page': 'Loading Notion page...',
+    'notion_create_page': 'Creating Notion page...',
+    'notion_update_page': 'Updating Notion page...',
+    
+    // File tools
+    'readfile': 'Reading file...',
+    'read_file': 'Reading file...',
+    'listdirectory': 'Listing files...',
+    'list_directory': 'Listing files...',
+  };
+  
+  // Check for exact match first
+  const lowerName = toolName.toLowerCase();
+  if (toolDisplayMap[lowerName]) {
+    return toolDisplayMap[lowerName];
+  }
+  
+  // Check for partial matches
+  if (lowerName.includes('notion')) return 'Loading Notion...';
+  if (lowerName.includes('brave') || lowerName.includes('search')) return 'Searching the web...';
+  if (lowerName.includes('memory')) return 'Accessing memories...';
+  if (lowerName.includes('document')) return 'Analyzing documents...';
+  if (lowerName.includes('file') || lowerName.includes('directory')) return 'Accessing files...';
+  if (lowerName.includes('image') || lowerName.includes('recraft')) return 'Generating image...';
+  if (lowerName.includes('skill')) return 'Using skill...';
+  
+  // Default: capitalize tool name
+  return `Using ${toolName.replace(/_/g, ' ')}...`;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -47,6 +109,7 @@ export interface UseChatReturn {
   clearMessages: () => void;
   conversationId: number | null;
   setConversationId: (id: number | null) => void;
+  activityStatus: ActivityStatus;
 }
 
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
@@ -59,6 +122,13 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId ? parseInt(initialConversationId) : null
   );
+  
+  // Activity status for real-time display
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus>({
+    isActive: false,
+    type: 'idle',
+    displayText: '',
+  });
   
   // Flag to prevent loading history when we just created a new conversation during streaming
   const isNewConversationRef = useRef(false);
@@ -141,6 +211,13 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
     setIsLoading(true);
     setIsPendingAssistant(true);
+    
+    // Start activity status
+    setActivityStatus({
+      isActive: true,
+      type: 'thinking',
+      displayText: 'Thinking...',
+    });
 
     try {
       const token = getStoredToken();
@@ -227,8 +304,38 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               
               const data = JSON.parse(jsonStr);
 
-              if (data.type === 'token' || data.type === 'content') {
+              if (data.type === 'start') {
+                // Initial acknowledgment - keep thinking status
+                setActivityStatus({
+                  isActive: true,
+                  type: 'thinking',
+                  displayText: 'Thinking...',
+                });
+              } else if (data.type === 'tool_start') {
+                // Tool execution started
+                const toolName = data.tool_name || 'tool';
+                setActivityStatus({
+                  isActive: true,
+                  type: 'tool',
+                  toolName,
+                  displayText: getToolDisplayText(toolName),
+                });
+              } else if (data.type === 'tool_complete') {
+                // Tool finished - back to thinking
+                setActivityStatus({
+                  isActive: true,
+                  type: 'thinking',
+                  displayText: 'Processing...',
+                });
+              } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
+                
+                // First token - switch to responding and hide activity box
+                setActivityStatus({
+                  isActive: false,
+                  type: 'responding',
+                  displayText: '',
+                });
                 
                 setMessages((prev) => 
                   prev.map((m) => 
@@ -326,6 +433,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
       setIsPendingAssistant(false);
+      // Reset activity status
+      setActivityStatus({
+        isActive: false,
+        type: 'idle',
+        displayText: '',
+      });
     }
   }, [conversationId, onError]);
 
@@ -339,5 +452,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     clearMessages,
     conversationId,
     setConversationId,
+    activityStatus,
   };
 }

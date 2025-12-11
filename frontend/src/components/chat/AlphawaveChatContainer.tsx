@@ -11,6 +11,7 @@ import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { ThinkingBox, type ThinkingStep } from './NicoleThinkingUI';
+import { NicoleActivityStatus } from './NicoleActivityStatus';
 
 interface Message {
   id: string;
@@ -24,10 +25,11 @@ interface Message {
 }
 
 /**
- * Thinking indicator component - shows thinking steps or spinning avatar
+ * Thinking indicator component - shows thinking steps when available
+ * (The spinning avatar is now shown in NicoleActivityStatus)
  */
 function ThinkingIndicator({ steps }: { steps?: ThinkingStep[] }) {
-  // If we have thinking steps, show the ThinkingBox
+  // Only show ThinkingBox if we have actual thinking steps
   if (steps && steps.length > 0) {
     return (
       <div className="py-4 px-6 animate-fade-in-up">
@@ -47,22 +49,8 @@ function ThinkingIndicator({ steps }: { steps?: ThinkingStep[] }) {
     );
   }
   
-  // Default: spinning avatar
-  return (
-    <div className="py-6 px-6 animate-fade-in-up">
-      <div className="max-w-[800px] mx-auto flex justify-center">
-        <div className="w-12 h-12 animate-spin-slow">
-          <Image 
-            src="/images/nicole-thinking-avatar.png" 
-            alt="Nicole thinking" 
-            width={48} 
-            height={48}
-            className="w-12 h-12"
-          />
-        </div>
-      </div>
-    </div>
-  );
+  // Return null - activity status box handles the loading state now
+  return null;
 }
 
 /**
@@ -281,6 +269,7 @@ export function AlphawaveChatContainer() {
     clearError,
     conversationId,
     setConversationId,
+    activityStatus,
   } = useChat({
     conversationId: currentConversationId ? String(currentConversationId) : undefined,
     onError: (err) => {
@@ -348,6 +337,11 @@ export function AlphawaveChatContainer() {
               {messages.map((message) => (
                 <MessageBubble key={message.id} message={message as Message} />
               ))}
+              {/* Real-time activity status box */}
+              {activityStatus.isActive && (
+                <NicoleActivityStatus status={activityStatus} />
+              )}
+              {/* Thinking steps (shown after activity completes if available) */}
               {(isLoading || isPendingAssistant) && <ThinkingIndicator />}
             </div>
           ) : (
