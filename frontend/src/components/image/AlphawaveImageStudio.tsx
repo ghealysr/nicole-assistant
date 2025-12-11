@@ -64,7 +64,6 @@ export function AlphawaveImageStudio({
     fetchVariants,
     fetchPresets,
     fetchModels,
-    createJob,
     toggleFavorite,
     rateVariant,
     startGeneration,
