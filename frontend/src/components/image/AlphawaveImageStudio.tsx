@@ -161,9 +161,10 @@ export function AlphawaveImageStudio({
   };
 
   // Get active job variants
+  // Show variants for active job, or show all recent variants if no job selected
   const activeJobVariants = activeJobId 
     ? variants.filter(v => v.job_id === activeJobId)
-    : [];
+    : variants; // Show all variants when no specific job is selected
 
   // Render aspect ratio selector
   const aspectRatios = [
