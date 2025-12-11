@@ -1,5 +1,5 @@
 """
-Image generation API (minimal) using MCP bridge Recraft tool.
+Image generation API (current: synchronous). Future: SSE for progress.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,10 +24,10 @@ async def generate_image(
     user=Depends(get_current_user),
 ):
     """
-    Generate image(s) synchronously via MCP bridge (Recraft).
+    Generate image(s) synchronously.
     """
     try:
-        result = await image_service.generate(
+        return await image_service.generate(
             user_id=user.user_id,
             prompt=prompt,
             model_key=model_key,
@@ -38,7 +38,6 @@ async def generate_image(
             use_case=use_case,
             preset_used=preset_used,
         )
-        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -77,4 +76,3 @@ async def job_variants(job_id: int, user=Depends(get_current_user)):
         user.user_id,
     )
     return [dict(r) for r in rows]
-
