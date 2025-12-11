@@ -139,7 +139,7 @@ export function useImageGeneration() {
   // Fetch jobs
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImageJob[]>('/api/images/jobs');
+      const data = await fetchWithAuth<ImageJob[]>('/images/jobs');
       setJobs(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch jobs');
@@ -149,7 +149,7 @@ export function useImageGeneration() {
   // Fetch variants for a job
   const fetchVariants = useCallback(async (jobId: number) => {
     try {
-      const data = await fetchWithAuth<ImageVariant[]>(`/api/images/jobs/${jobId}/variants`);
+      const data = await fetchWithAuth<ImageVariant[]>(`/images/jobs/${jobId}/variants`);
       setVariants(prev => {
         const filtered = prev.filter(v => v.job_id !== jobId);
         return [...filtered, ...data];
@@ -162,7 +162,7 @@ export function useImageGeneration() {
   // Fetch presets
   const fetchPresets = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImagePreset[]>('/api/images/presets');
+      const data = await fetchWithAuth<ImagePreset[]>('/images/presets');
       setPresets(data);
     } catch (err) {
       console.error('Failed to fetch presets:', err);
@@ -180,7 +180,7 @@ export function useImageGeneration() {
   // Fetch models
   const fetchModels = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImageModel[]>('/api/images/models');
+      const data = await fetchWithAuth<ImageModel[]>('/images/models');
       setModels(data);
     } catch (err) {
       console.error('Failed to fetch models:', err);
@@ -197,7 +197,7 @@ export function useImageGeneration() {
   const createJob = useCallback(async (params: CreateJobParams): Promise<ImageJob | null> => {
     try {
       setError(null);
-      const job = await fetchWithAuth<ImageJob>('/api/images/jobs/create', {
+      const job = await fetchWithAuth<ImageJob>('/images/jobs/create', {
         method: 'POST',
         body: JSON.stringify(params),
       });
@@ -220,7 +220,7 @@ export function useImageGeneration() {
     // Using fetch for SSE since EventSource doesn't support custom headers
     abortControllerRef.current = new AbortController();
     
-    fetch(`${API_BASE}/api/images/generate/stream?job_id=${jobId}`, {
+    fetch(`${API_BASE}/images/generate/stream?job_id=${jobId}`, {
       method: 'POST',
       headers: {
         'Accept': 'text/event-stream',
@@ -324,7 +324,7 @@ export function useImageGeneration() {
   // Toggle favorite
   const toggleFavorite = useCallback(async (variantId: number) => {
     try {
-      const result = await fetchWithAuth<{ is_favorite: boolean }>(`/api/images/variants/${variantId}/favorite`, {
+      const result = await fetchWithAuth<{ is_favorite: boolean }>(`/images/variants/${variantId}/favorite`, {
         method: 'POST',
       });
       setVariants(prev =>
@@ -338,7 +338,7 @@ export function useImageGeneration() {
   // Rate variant
   const rateVariant = useCallback(async (variantId: number, rating: number) => {
     try {
-      await fetchWithAuth<void>(`/api/images/variants/${variantId}/rate`, {
+      await fetchWithAuth<void>(`/images/variants/${variantId}/rate`, {
         method: 'POST',
         body: JSON.stringify({ user_rating: rating }),
       });
