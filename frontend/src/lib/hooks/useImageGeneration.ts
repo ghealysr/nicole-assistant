@@ -139,8 +139,8 @@ export function useImageGeneration() {
   // Fetch jobs
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImageJob[]>('/images/jobs');
-      setJobs(data);
+      const response = await fetchWithAuth<{ success: boolean; jobs: ImageJob[] }>('/images/jobs');
+      setJobs(response.jobs || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch jobs');
     }
@@ -149,10 +149,11 @@ export function useImageGeneration() {
   // Fetch variants for a job
   const fetchVariants = useCallback(async (jobId: number) => {
     try {
-      const data = await fetchWithAuth<ImageVariant[]>(`/images/jobs/${jobId}/variants`);
+      const response = await fetchWithAuth<{ success: boolean; variants: ImageVariant[] }>(`/images/jobs/${jobId}/variants`);
+      const newVariants = response.variants || [];
       setVariants(prev => {
         const filtered = prev.filter(v => v.job_id !== jobId);
-        return [...filtered, ...data];
+        return [...filtered, ...newVariants];
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch variants');
@@ -162,17 +163,17 @@ export function useImageGeneration() {
   // Fetch presets
   const fetchPresets = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImagePreset[]>('/images/presets');
-      setPresets(data);
+      const response = await fetchWithAuth<{ success: boolean; presets: ImagePreset[] }>('/images/presets');
+      setPresets(response.presets || []);
     } catch (err) {
       console.error('Failed to fetch presets:', err);
       // Use default presets if API fails
       setPresets([
-        { id: 1, name: 'Logo', description: 'Square logo designs', default_model: 'recraft-v3', default_width: 1024, default_height: 1024, default_style: 'vector_illustration', slash_command: '/logo', is_system: true },
-        { id: 2, name: 'Hero Banner', description: 'Wide hero images', default_model: 'recraft-v3', default_width: 1920, default_height: 1080, slash_command: '/hero', is_system: true },
-        { id: 3, name: 'Social Post', description: 'Square social posts', default_model: 'recraft-v3', default_width: 1080, default_height: 1080, slash_command: '/ig', is_system: true },
-        { id: 4, name: 'Poster', description: 'Portrait posters', default_model: 'recraft-v3', default_width: 1024, default_height: 1365, slash_command: '/poster', is_system: true },
-        { id: 5, name: 'Thumbnail', description: 'YouTube thumbnails', default_model: 'recraft-v3', default_width: 1280, default_height: 720, slash_command: '/thumb', is_system: true },
+        { id: 1, name: 'Logo', description: 'Square logo designs', default_model: 'recraft', default_width: 1024, default_height: 1024, default_style: 'vector_illustration', slash_command: '/logo', is_system: true },
+        { id: 2, name: 'Hero Banner', description: 'Wide hero images', default_model: 'recraft', default_width: 1920, default_height: 1080, slash_command: '/hero', is_system: true },
+        { id: 3, name: 'Social Post', description: 'Square social posts', default_model: 'recraft', default_width: 1080, default_height: 1080, slash_command: '/ig', is_system: true },
+        { id: 4, name: 'Poster', description: 'Portrait posters', default_model: 'recraft', default_width: 1024, default_height: 1365, slash_command: '/poster', is_system: true },
+        { id: 5, name: 'Thumbnail', description: 'YouTube thumbnails', default_model: 'recraft', default_width: 1280, default_height: 720, slash_command: '/thumb', is_system: true },
       ]);
     }
   }, []);
@@ -180,15 +181,16 @@ export function useImageGeneration() {
   // Fetch models
   const fetchModels = useCallback(async () => {
     try {
-      const data = await fetchWithAuth<ImageModel[]>('/images/models');
-      setModels(data);
+      const response = await fetchWithAuth<{ success: boolean; models: ImageModel[] }>('/images/models');
+      setModels(response.models || []);
     } catch (err) {
       console.error('Failed to fetch models:', err);
       // Use default models if API fails
       setModels([
-        { key: 'recraft-v3', name: 'Recraft V3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['realistic_image', 'digital_illustration', 'vector_illustration', 'icon'] },
-        { key: 'flux-1.1-pro', name: 'FLUX 1.1 Pro', cost_per_image: 0.04, max_width: 1440, max_height: 1440, supports_style: false },
-        { key: 'ideogram-v2', name: 'Ideogram V2', cost_per_image: 0.08, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['auto', 'realistic', 'design', 'render_3d', 'anime'] },
+        { key: 'recraft', name: 'Recraft V3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['realistic_image', 'digital_illustration', 'vector_illustration', 'icon'] },
+        { key: 'flux_pro', name: 'FLUX Pro', cost_per_image: 0.055, max_width: 1440, max_height: 1440, supports_style: false },
+        { key: 'flux_schnell', name: 'FLUX Schnell', cost_per_image: 0.003, max_width: 1440, max_height: 1440, supports_style: false },
+        { key: 'ideogram', name: 'Ideogram V2', cost_per_image: 0.08, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['Auto', 'Realistic', 'Design', 'Render 3D', 'Anime'] },
       ]);
     }
   }, []);
@@ -197,12 +199,15 @@ export function useImageGeneration() {
   const createJob = useCallback(async (params: CreateJobParams): Promise<ImageJob | null> => {
     try {
       setError(null);
-      const job = await fetchWithAuth<ImageJob>('/images/jobs/create', {
+      const response = await fetchWithAuth<{ success: boolean; job: ImageJob }>('/images/jobs', {
         method: 'POST',
         body: JSON.stringify(params),
       });
-      setJobs(prev => [job, ...prev]);
-      return job;
+      const job = response.job;
+      if (job) {
+        setJobs(prev => [job, ...prev]);
+      }
+      return job || null;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create job');
       return null;
@@ -324,11 +329,12 @@ export function useImageGeneration() {
   // Toggle favorite
   const toggleFavorite = useCallback(async (variantId: number) => {
     try {
-      const result = await fetchWithAuth<{ is_favorite: boolean }>(`/images/variants/${variantId}/favorite`, {
+      const response = await fetchWithAuth<{ success: boolean; is_favorite: boolean }>(`/images/variants/${variantId}/favorite`, {
         method: 'POST',
+        body: JSON.stringify({ is_favorite: true }), // Toggle - backend will handle the actual toggle
       });
       setVariants(prev =>
-        prev.map(v => (v.id === variantId ? { ...v, is_favorite: result.is_favorite } : v))
+        prev.map(v => (v.id === variantId ? { ...v, is_favorite: response.is_favorite } : v))
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle favorite');
