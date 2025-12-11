@@ -584,7 +584,7 @@ async def send_message(
             active_skill = None
             skills_summary = ""
             try:
-                skill_context = agent_orchestrator.get_skill_context(message)
+                skill_context = agent_orchestrator.get_skill_context(chat_request.text)
                 if skill_context:
                     active_skill = skill_context
                     logger.info(f"[STREAM] Activated skill for request")
