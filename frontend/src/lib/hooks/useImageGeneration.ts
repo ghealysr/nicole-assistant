@@ -123,12 +123,14 @@ export function useImageGeneration() {
 
   // Cleanup on unmount
   useEffect(() => {
+    const eventSource = eventSourceRef.current;
+    const abortController = abortControllerRef.current;
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (eventSource) {
+        eventSource.close();
       }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      if (abortController) {
+        abortController.abort();
       }
     };
   }, []);

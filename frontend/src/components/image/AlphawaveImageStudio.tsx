@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useImageGeneration, ImageJob, ImageVariant, ImagePreset, ImageModel } from '@/lib/hooks/useImageGeneration';
+import Image from 'next/image';
+import { useImageGeneration, ImageVariant } from '@/lib/hooks/useImageGeneration';
 
 interface AlphawaveImageStudioProps {
   isOpen: boolean;
@@ -67,7 +68,6 @@ export function AlphawaveImageStudio({
     toggleFavorite,
     rateVariant,
     startGeneration,
-    cancelGeneration,
   } = useImageGeneration();
 
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -184,10 +184,6 @@ export function AlphawaveImageStudio({
     { label: '4:3', width: 1365, height: 1024 },
     { label: '3:4', width: 1024, height: 1365 },
   ];
-
-  const currentAspect = aspectRatios.find(
-    a => a.width === width_px && a.height === height_px
-  )?.label || 'Custom';
 
   return (
     <aside 
@@ -484,10 +480,12 @@ export function AlphawaveImageStudio({
                         onClick={() => handleVariantClick(variant)}
                       >
                         {variant.image_url ? (
-                          <img
+                          <Image
                             src={variant.image_url}
                             alt={`Variant ${variant.variant_number}`}
                             className="img-variant-image"
+                            fill
+                            unoptimized
                           />
                         ) : variant.status === 'generating' ? (
                           <div className="img-variant-loading">
@@ -641,11 +639,17 @@ export function AlphawaveImageStudio({
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
             </button>
-            <img
-              src={selectedVariant.image_url}
-              alt="Full size preview"
-              className="img-modal-image"
-            />
+            {selectedVariant.image_url && (
+              <Image
+                src={selectedVariant.image_url}
+                alt="Full size preview"
+                className="img-modal-image"
+                width={1024}
+                height={1024}
+                unoptimized
+                style={{ objectFit: 'contain', maxHeight: '70vh', width: 'auto', height: 'auto' }}
+              />
+            )}
             <div className="img-modal-actions">
               <button
                 onClick={() => toggleFavorite(selectedVariant.id)}
