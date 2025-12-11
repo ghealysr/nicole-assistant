@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Any
 import httpx
 
 from app.config import settings
-from app.database import db_manager
+from app.database import db as db_manager
 
 try:
     import replicate  # type: ignore

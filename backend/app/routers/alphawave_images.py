@@ -283,7 +283,7 @@ async def list_favorites(
     user=Depends(get_current_user),
 ):
     """List all favorited variants."""
-    from app.database import db_manager
+    from app.database import db as db_manager
     
     rows = await db_manager.pool.fetch(
         """
@@ -352,7 +352,7 @@ async def delete_preset(
     user=Depends(get_current_user),
 ):
     """Delete a user-created preset (cannot delete system presets)."""
-    from app.database import db_manager
+    from app.database import db as db_manager
     
     result = await db_manager.pool.execute(
         """
@@ -394,7 +394,7 @@ async def list_models(user=Depends(get_current_user)):
 @router.get("/stats")
 async def get_stats(user=Depends(get_current_user)):
     """Get usage statistics for the current user."""
-    from app.database import db_manager
+    from app.database import db as db_manager
     
     stats = await db_manager.pool.fetchrow(
         """
