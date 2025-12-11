@@ -10,8 +10,8 @@ import { useToast } from '@/components/ui/alphawave_toast';
 import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
-import { ThinkingBox, type ThinkingStep } from './NicoleThinkingUI';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
+
 
 interface Message {
   id: string;
@@ -20,38 +20,10 @@ interface Message {
   timestamp: Date;
   status?: 'sending' | 'sent' | 'error';
   attachments?: FileAttachment[];
-  thinkingSteps?: ThinkingStep[];
-  thinkingSummary?: string;
+  
+  
 }
 
-/**
- * Thinking indicator component - shows thinking steps when available
- * (The spinning avatar is now shown in NicoleActivityStatus)
- */
-function ThinkingIndicator({ steps }: { steps?: ThinkingStep[] }) {
-  // Only show ThinkingBox if we have actual thinking steps
-  if (steps && steps.length > 0) {
-    return (
-      <div className="py-4 px-6 animate-fade-in-up">
-        <div className="max-w-[800px] mx-auto">
-          <div className="flex gap-3">
-            {/* Nicole Avatar */}
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-lavender text-white">
-              N
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Nicole</div>
-              <ThinkingBox steps={steps} defaultExpanded={true} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  // Return null - activity status box handles the loading state now
-  return null;
-}
 
 /**
  * Empty state component - shown when there are no messages
@@ -200,14 +172,7 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
           ) : (
             <>
-              {/* Thinking steps if available */}
-              {message.thinkingSteps && message.thinkingSteps.length > 0 && (
-                <ThinkingBox 
-                  steps={message.thinkingSteps} 
-                  summary={message.thinkingSummary}
-                  defaultExpanded={false}
-                />
-              )}
+              
               
               {/* Nicole's response with rich formatting */}
               <NicoleMessageRenderer content={displayContent} />
@@ -338,11 +303,11 @@ export function AlphawaveChatContainer() {
                 <MessageBubble key={message.id} message={message as Message} />
               ))}
               {/* Real-time activity status box */}
-              {activityStatus.isActive && (
+              {(activityStatus.isActive || activityStatus.thinkingSteps.length > 0) && (
                 <NicoleActivityStatus status={activityStatus} />
               )}
-              {/* Thinking steps (shown after activity completes if available) */}
-              {(isLoading || isPendingAssistant) && <ThinkingIndicator />}
+              
+              
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />

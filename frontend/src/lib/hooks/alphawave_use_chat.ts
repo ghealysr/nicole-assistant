@@ -22,6 +22,17 @@ export interface ThinkingStep {
 }
 
 /**
+ * Individual thinking step with full content
+ */
+export interface ThinkingContent {
+  id: string;
+  title: string;        // Short title for collapsed view
+  content: string;      // Full thinking content
+  status: 'running' | 'complete';
+  timestamp: Date;
+}
+
+/**
  * Activity status for real-time display
  */
 export interface ActivityStatus {
@@ -29,6 +40,8 @@ export interface ActivityStatus {
   type: 'idle' | 'thinking' | 'tool' | 'responding';
   toolName?: string;
   displayText: string;
+  thinkingSteps: ThinkingContent[];     // Completed steps (collapsible)
+  currentThinking: string | null;        // Currently streaming thought
 }
 
 /**
@@ -128,6 +141,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     isActive: false,
     type: 'idle',
     displayText: '',
+    thinkingSteps: [],
+    currentThinking: null,
   });
   
   // Flag to prevent loading history when we just created a new conversation during streaming
@@ -212,11 +227,13 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setIsLoading(true);
     setIsPendingAssistant(true);
     
-    // Start activity status
+    // Start activity status - clear previous thinking
     setActivityStatus({
       isActive: true,
       type: 'thinking',
       displayText: 'Thinking...',
+      thinkingSteps: [],
+      currentThinking: null,
     });
 
     try {
@@ -306,35 +323,100 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
               if (data.type === 'start') {
                 // Initial acknowledgment - keep thinking status
-                setActivityStatus({
+                setActivityStatus(prev => ({
+                  ...prev,
                   isActive: true,
                   type: 'thinking',
                   displayText: 'Thinking...',
-                });
+                }));
               } else if (data.type === 'tool_start') {
                 // Tool execution started
                 const toolName = data.tool_name || 'tool';
-                setActivityStatus({
+                setActivityStatus(prev => ({
+                  ...prev,
                   isActive: true,
                   type: 'tool',
                   toolName,
                   displayText: getToolDisplayText(toolName),
-                });
+                }));
               } else if (data.type === 'tool_complete') {
                 // Tool finished - back to thinking
-                setActivityStatus({
+                setActivityStatus(prev => ({
+                  ...prev,
                   isActive: true,
                   type: 'thinking',
                   displayText: 'Processing...',
+                }));
+              } else if (data.type === 'thinking_step') {
+                // New thinking content from Nicole
+                const thought = data.description || data.thought || '';
+                const category = data.category || 'Thinking';
+                
+                if (thought) {
+                  setActivityStatus(prev => {
+                    // If we had current thinking, move it to completed steps
+                    const newSteps = prev.currentThinking 
+                      ? [...prev.thinkingSteps, {
+                          id: crypto.randomUUID(),
+                          title: prev.displayText || 'Thinking',
+                          content: prev.currentThinking,
+                          status: 'complete' as const,
+                          timestamp: new Date(),
+                        }]
+                      : prev.thinkingSteps;
+                    
+                    return {
+                      ...prev,
+                      isActive: true,
+                      type: 'thinking',
+                      displayText: category,
+                      thinkingSteps: newSteps,
+                      currentThinking: thought,
+                    };
+                  });
+                }
+              } else if (data.type === 'thinking_complete') {
+                // Finalize current thinking as a completed step
+                setActivityStatus(prev => {
+                  if (prev.currentThinking) {
+                    return {
+                      ...prev,
+                      thinkingSteps: [...prev.thinkingSteps, {
+                        id: crypto.randomUUID(),
+                        title: prev.displayText || 'Complete',
+                        content: prev.currentThinking,
+                        status: 'complete' as const,
+                        timestamp: new Date(),
+                      }],
+                      currentThinking: null,
+                    };
+                  }
+                  return prev;
                 });
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
                 
-                // First token - switch to responding and hide activity box
-                setActivityStatus({
-                  isActive: false,
-                  type: 'responding',
-                  displayText: '',
+                // First token - finalize any pending thinking and hide activity
+                setActivityStatus(prev => {
+                  // If we have current thinking, save it as final step
+                  const finalSteps = prev.currentThinking
+                    ? [...prev.thinkingSteps, {
+                        id: crypto.randomUUID(),
+                        title: prev.displayText || 'Analysis complete',
+                        content: prev.currentThinking,
+                        status: 'complete' as const,
+                        timestamp: new Date(),
+                      }]
+                    : prev.thinkingSteps;
+                  
+                  return {
+                    ...prev,
+                    isActive: false,
+                    type: 'responding',
+                    displayText: '',
+                    thinkingSteps: finalSteps,
+                    currentThinking: null,
+                  };
                 });
                 
                 setMessages((prev) => 
@@ -346,50 +428,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 );
                 // Yield to the browser to allow paint between token updates
                 await new Promise((resolve) => setTimeout(resolve, 0));
-              } else if (data.type === 'thinking_step') {
-                // Add or update thinking step
-                const step: ThinkingStep = {
-                  description: data.description || data.step || '',
-                  status: data.status || 'running',
-                  file: data.file,
-                };
-                
-                setMessages((prev) => 
-                  prev.map((m) => {
-                    if (m.id === assistantMessageId) {
-                      const existingSteps = m.thinkingSteps || [];
-                      // Check if this step already exists (by description)
-                      const existingIndex = existingSteps.findIndex(
-                        s => s.description === step.description
-                      );
-                      
-                      if (existingIndex >= 0) {
-                        // Update existing step
-                        const updatedSteps = [...existingSteps];
-                        updatedSteps[existingIndex] = step;
-                        return { ...m, thinkingSteps: updatedSteps };
-                      } else {
-                        // Add new step
-                        return { ...m, thinkingSteps: [...existingSteps, step] };
-                      }
-                    }
-                    return m;
-                  })
-                );
-              } else if (data.type === 'thinking_complete') {
-                // Mark all thinking steps as complete and add summary
-                setMessages((prev) => 
-                  prev.map((m) => {
-                    if (m.id === assistantMessageId && m.thinkingSteps) {
-                      return {
-                        ...m,
-                        thinkingSteps: m.thinkingSteps.map(s => ({ ...s, status: 'complete' as const })),
-                        thinkingSummary: data.summary,
-                      };
-                    }
-                    return m;
-                  })
-                );
               } else if (data.type === 'conversation_id' && data.conversation_id) {
                 // Capture conversation ID from backend for new conversations
                 // Set flag to prevent reloading history (we already have the messages in state)
@@ -433,12 +471,15 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
       setIsPendingAssistant(false);
-      // Reset activity status
-      setActivityStatus({
+      // Reset activity status but keep thinking steps for display
+      setActivityStatus(prev => ({
+        ...prev,
         isActive: false,
         type: 'idle',
         displayText: '',
-      });
+        currentThinking: null,
+        // Keep thinkingSteps - they'll be cleared on next message
+      }));
     }
   }, [conversationId, onError]);
 
