@@ -17,7 +17,7 @@ from app.services.alphawave_image_generation_service import image_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/images", tags=["images"])
+router = APIRouter(tags=["images"])
 
 
 # ============================================================================
