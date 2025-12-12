@@ -1,35 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-
-interface Agent {
-  id: string;
-  name: string;
-  icon: string;
-  status: 'idle' | 'working' | 'complete' | 'error';
-  progress: number;
-  task: string;
-}
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 
 interface FileItem {
   name: string;
-  type: 'folder' | 'html' | 'css' | 'js' | 'json' | 'image' | 'md';
+  type: 'folder' | 'html' | 'css' | 'js' | 'json' | 'image' | 'md' | 'tsx' | 'ts';
+  path?: string;
   status?: 'modified' | 'new' | 'error';
   active?: boolean;
   children?: FileItem[];
-}
-
-interface WorkflowStep {
-  id: number;
-  name: string;
-  desc: string;
-  status: 'pending' | 'active' | 'complete';
-}
-
-interface Activity {
-  agent: string;
-  action: string;
-  time: string;
 }
 
 interface AlphawaveVibeWorkspaceProps {
@@ -37,281 +17,225 @@ interface AlphawaveVibeWorkspaceProps {
   onClose: () => void;
 }
 
+type ViewMode = 'projects' | 'workspace';
+
 /**
- * Vibe Coding Dashboard - THE LEGEND
- * A full-featured coding workspace with agents, file tree, preview, and workflow visualization
+ * AlphaWave Vibe Dashboard
+ * Full-featured coding workspace with project management, agents, and build pipeline
  */
 export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspaceProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [projectName, setProjectName] = useState('Untitled Project');
-  const [statusText, setStatusText] = useState('Ready');
-  const [isWorking, setIsWorking] = useState(false);
+  
+  // View state
+  const [viewMode, setViewMode] = useState<ViewMode>('projects');
   const [currentDevice, setCurrentDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
-  const [currentView, setCurrentView] = useState<'preview' | 'code' | 'split'>('preview');
+  const [currentView, setCurrentView] = useState<'preview' | 'code' | 'split'>('split');
   const [activityCollapsed, setActivityCollapsed] = useState(false);
-  const [activeFile, setActiveFile] = useState('index.html');
-  const [openTabs, setOpenTabs] = useState(['index.html', 'styles.css', 'app.js']);
-
-  // Sample code content for different files
-  const fileContents: Record<string, { language: string; code: string }> = {
-    'index.html': {
-      language: 'html',
-      code: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Awesome App</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <header class="header">
-      <h1>Welcome to My App</h1>
-      <nav class="nav">
-        <a href="#home">Home</a>
-        <a href="#about">About</a>
-        <a href="#contact">Contact</a>
-      </nav>
-    </header>
-    
-    <main class="main-content">
-      <section class="hero">
-        <h2>Build Something Amazing</h2>
-        <p>Start creating with Nicole's Vibe workspace.</p>
-        <button class="btn-primary">Get Started</button>
-      </section>
-    </main>
-    
-    <footer class="footer">
-      <p>&copy; 2024 My App. All rights reserved.</p>
-    </footer>
-  </div>
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
   
-  <script src="app.js"></script>
-</body>
-</html>`
-    },
-    'styles.css': {
-      language: 'css',
-      code: `/* Reset & Base Styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  --primary-color: #B8A8D4;
-  --secondary-color: #8B5CF6;
-  --bg-color: #0C0C0E;
-  --text-color: #FAFAFA;
-  --muted-color: #A1A1AA;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg-color);
-  color: var(--text-color);
-  line-height: 1.6;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.nav a {
-  color: var(--muted-color);
-  text-decoration: none;
-  margin-left: 24px;
-  transition: color 0.2s;
-}
-
-.nav a:hover {
-  color: var(--primary-color);
-}
-
-.hero {
-  text-align: center;
-  padding: 120px 0;
-}
-
-.hero h2 {
-  font-size: 3rem;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  color: white;
-  border: none;
-  padding: 14px 32px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
-}`
-    },
-    'app.js': {
-      language: 'javascript',
-      code: `// Main Application Entry Point
-import { initApp } from './lib/init.js';
-import { setupEventListeners } from './lib/events.js';
-
-// Configuration
-const config = {
-  apiUrl: 'https://api.example.com',
-  version: '1.0.0',
-  debug: true,
-};
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 App initializing...');
+  // Project creation form
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectType, setNewProjectType] = useState<ProjectType>('website');
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
   
-  try {
-    initApp(config);
-    setupEventListeners();
-    
-    // Fetch initial data
-    fetchUserData();
-    
-    console.log('✅ App initialized successfully!');
-  } catch (error) {
-    console.error('❌ Failed to initialize:', error);
-  }
-});
-
-// Fetch user data from API
-async function fetchUserData() {
-  const response = await fetch(\`\${config.apiUrl}/user\`);
-  const data = await response.json();
+  // Intake chat
+  const [intakeMessage, setIntakeMessage] = useState('');
   
-  if (data.success) {
-    updateUI(data.user);
-  }
-}
+  // Activities log
+  const [activities, setActivities] = useState<Array<{
+    agent: string;
+    action: string;
+    time: string;
+  }>>([]);
+  
+  // Hooks
+  const { 
+    projects, 
+    loading: projectsLoading, 
+    error: projectsError,
+    fetchProjects, 
+    createProject 
+  } = useVibeProjects();
+  
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  
+  const {
+    project,
+    agents,
+    workflow,
+    files,
+    fileTree,
+    intakeHistory,
+    loading: projectLoading,
+    error: projectError,
+    operationStates,
+    isAnyOperationLoading,
+    canRunPipeline,
+    canApprove,
+    canDeploy,
+    totalApiCost,
+    fetchProject,
+    fetchFiles,
+    runIntake,
+    runPlanning,
+    runBuild,
+    runQA,
+    runReview,
+    approveProject,
+    deployProject,
+    runPipeline,
+    clearIntakeHistory,
+    clearError,
+  } = useVibeProject(selectedProjectId || undefined);
 
-// Update the UI with user data
-function updateUI(user) {
-  const greeting = document.querySelector('.hero h2');
-  if (greeting && user.name) {
-    greeting.textContent = \`Welcome back, \${user.name}!\`;
-  }
-}
+  // Fetch projects on mount
+  useEffect(() => {
+    if (isOpen) {
+      fetchProjects();
+    }
+  }, [isOpen, fetchProjects]);
 
-// Export for testing
-export { config, fetchUserData, updateUI };`
-    },
-    'package.json': {
-      language: 'json',
-      code: `{
-  "name": "my-awesome-app",
-  "version": "1.0.0",
-  "description": "A modern web application",
-  "main": "app.js",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "eslint src/",
-    "test": "vitest"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "lodash": "^4.17.21"
-  },
-  "devDependencies": {
-    "vite": "^5.0.0",
-    "eslint": "^8.55.0",
-    "vitest": "^1.0.0"
-  },
-  "author": "Nicole AI",
-  "license": "MIT"
-}`
-    },
-    'README.md': {
-      language: 'markdown',
-      code: `# My Awesome App
+  // Add activity
+  const addActivity = useCallback((agent: string, action: string) => {
+    setActivities(prev => [
+      { agent, action, time: 'Just now' },
+      ...prev.slice(0, 9)
+    ]);
+  }, []);
 
-A modern web application built with Nicole's Vibe workspace.
-
-## Features
-
-- ⚡ Fast and responsive
-- 🎨 Beautiful UI with dark mode
-- 🔧 Easy to customize
-- 📱 Mobile-friendly
-
-## Getting Started
-
-\`\`\`bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-\`\`\`
-
-## License
-
-MIT © 2024`
+  // Create new project
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    
+    const newProject = await createProject(
+      newProjectName,
+      newProjectType,
+      newClientName || undefined,
+      newClientEmail || undefined
+    );
+    
+    if (newProject) {
+      setShowNewProjectForm(false);
+      setNewProjectName('');
+      setNewClientName('');
+      setNewClientEmail('');
+      setSelectedProjectId(newProject.project_id);
+      setViewMode('workspace');
+      addActivity('System', `Created project "${newProject.name}"`);
     }
   };
 
-  const [files] = useState<FileItem[]>([
-    { name: 'src', type: 'folder', children: [
-      { name: 'index.html', type: 'html', status: 'modified', active: true },
-      { name: 'styles.css', type: 'css' },
-      { name: 'app.js', type: 'js', status: 'new' }
-    ]},
-    { name: 'public', type: 'folder', children: [
-      { name: 'logo.svg', type: 'image' },
-      { name: 'favicon.ico', type: 'image' }
-    ]},
-    { name: 'package.json', type: 'json' },
-    { name: 'README.md', type: 'md' }
-  ]);
+  // Open project
+  const handleOpenProject = (proj: VibeProject) => {
+    setSelectedProjectId(proj.project_id);
+    setViewMode('workspace');
+    clearIntakeHistory();
+    addActivity('System', `Opened project "${proj.name}"`);
+  };
 
-  const [agents, setAgents] = useState<Agent[]>([
-    { id: 'planning', name: 'Planning', icon: '🎯', status: 'idle', progress: 0, task: 'Awaiting instructions' },
-    { id: 'research', name: 'Research', icon: '🔍', status: 'idle', progress: 0, task: 'Awaiting instructions' },
-    { id: 'qa', name: 'QA', icon: '🧪', status: 'idle', progress: 0, task: 'Awaiting instructions' },
-    { id: 'approver', name: 'Approver', icon: '✅', status: 'idle', progress: 0, task: 'Awaiting instructions' },
-    { id: 'lead', name: 'Team Lead', icon: '👑', status: 'idle', progress: 0, task: 'Monitoring workflow' }
-  ]);
+  // Send intake message
+  const handleSendIntake = async () => {
+    if (!intakeMessage.trim() || !selectedProjectId) return;
+    
+    const message = intakeMessage;
+    setIntakeMessage('');
+    addActivity('Intake', `Processing: "${message.slice(0, 40)}..."`);
+    
+    const result = await runIntake(selectedProjectId, message);
+    
+    if (result?.brief) {
+      addActivity('Intake', 'Brief extracted - ready for planning');
+    }
+  };
 
-  const [workflow, setWorkflow] = useState<WorkflowStep[]>([
-    { id: 1, name: 'Plan', desc: 'Structure & scope', status: 'pending' },
-    { id: 2, name: 'Research', desc: 'Best practices', status: 'pending' },
-    { id: 3, name: 'Build', desc: 'Implementation', status: 'pending' },
-    { id: 4, name: 'Test', desc: 'Quality checks', status: 'pending' },
-    { id: 5, name: 'Ship', desc: 'Deploy & deliver', status: 'pending' }
-  ]);
+  // Run build pipeline
+  const handleRunPipeline = async () => {
+    if (!selectedProjectId || !canRunPipeline) {
+      addActivity('Pipeline', project?.status === 'intake' 
+        ? 'Complete intake first' 
+        : 'Cannot run pipeline in current state');
+      return;
+    }
+    
+    addActivity('Pipeline', 'Starting automated build...');
+    
+    try {
+      // Use the combined pipeline runner which handles state properly
+      const success = await runPipeline(selectedProjectId);
+      
+      if (success) {
+        addActivity('Pipeline', 'Pipeline completed successfully!');
+      } else {
+        addActivity('Pipeline', 'Pipeline stopped - check status for details');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Pipeline failed';
+      addActivity('Pipeline', `Error: ${message}`);
+    }
+  };
 
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const handleDeploy = async () => {
+    if (!selectedProjectId) return;
+    addActivity('Deploy', 'Deploying project...');
+    const ok = await deployProject(selectedProjectId);
+    addActivity('Deploy', ok ? 'Deployment marked complete' : 'Deployment failed');
+  };
+
+  // Handle file selection
+  const handleFileClick = (filePath: string) => {
+    setActiveFilePath(filePath);
+    if (!openTabs.includes(filePath)) {
+      setOpenTabs(prev => [...prev, filePath]);
+    }
+  };
+
+  // Auto-select first file after build
+  useEffect(() => {
+    if (!activeFilePath && files.length > 0) {
+      const first = files[0].file_path;
+      setActiveFilePath(first);
+      setOpenTabs([first]);
+    }
+  }, [files, activeFilePath]);
+
+  // Get file content
+  const getFileContent = useCallback((filePath: string) => {
+    return files.find(f => f.file_path === filePath)?.content || '';
+  }, [files]);
+
+  // Get file language
+  const getFileLanguage = (filePath: string) => {
+    const ext = filePath.split('.').pop() || '';
+    const langMap: Record<string, string> = {
+      tsx: 'typescript',
+      ts: 'typescript',
+      jsx: 'javascript',
+      js: 'javascript',
+      css: 'css',
+      json: 'json',
+      md: 'markdown',
+      html: 'html',
+    };
+    return langMap[ext] || 'text';
+  };
+
+  // Convert file tree from API to UI format (memoized)
+  const convertFileTreeHelper = useCallback((items: typeof fileTree): FileItem[] => {
+    return items.map(item => ({
+      name: item.name,
+      type: (item.type === 'folder' ? 'folder' : item.type) as FileItem['type'],
+      path: item.path,
+      children: item.children ? convertFileTreeHelper(item.children) : undefined,
+    }));
+  }, []);
+  
+  const convertedFileTree = useMemo(() => 
+    convertFileTreeHelper(fileTree), 
+    [fileTree, convertFileTreeHelper]
+  );
 
   // Particle system
   useEffect(() => {
@@ -338,7 +262,6 @@ MIT © 2024`
     resize();
     window.addEventListener('resize', resize);
 
-    // Create particles
     for (let i = 0; i < 50; i++) {
       particles.push({
         x: Math.random() * canvas.width,
@@ -367,7 +290,6 @@ MIT © 2024`
         ctx.fill();
       });
 
-      // Draw connections
       particles.forEach((p1, i) => {
         particles.slice(i + 1).forEach(p2 => {
           const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
@@ -392,249 +314,17 @@ MIT © 2024`
     };
   }, [isOpen]);
 
-  const updateAgent = useCallback((id: string, updates: Partial<Agent>) => {
-    setAgents(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
-  }, []);
-
-  const updateWorkflow = useCallback((stepId: number, status: WorkflowStep['status']) => {
-    setWorkflow(prev => prev.map(s => s.id === stepId ? { ...s, status } : s));
-  }, []);
-
-  const addActivity = useCallback((agent: string, action: string) => {
-    setActivities(prev => [{ agent, action, time: 'Just now' }, ...prev].slice(0, 10));
-  }, []);
-
-  const animateProgress = (agentId: string, target: number, duration: number): Promise<void> => {
-    return new Promise(resolve => {
-      const start = Date.now();
-      const agent = agents.find(a => a.id === agentId);
-      const startProgress = agent?.progress || 0;
-
-      const tick = () => {
-        const elapsed = Date.now() - start;
-        const progress = Math.min(startProgress + (target - startProgress) * (elapsed / duration), target);
-        updateAgent(agentId, { progress: Math.round(progress) });
-
-        if (elapsed < duration) {
-          requestAnimationFrame(tick);
-        } else {
-          resolve();
-        }
-      };
-      tick();
-    });
-  };
-
-  const simulateWork = async () => {
-    setIsWorking(true);
-    setStatusText('Building...');
-
-    // Planning
-    updateAgent('planning', { status: 'working', progress: 0, task: 'Analyzing request...' });
-    updateWorkflow(1, 'active');
-    addActivity('Planning', 'started analyzing your request');
-
-    await animateProgress('planning', 100, 800);
-    updateAgent('planning', { status: 'complete', progress: 100, task: 'Structure defined' });
-    updateWorkflow(1, 'complete');
-    addActivity('Planning', 'completed site architecture');
-
-    // Research
-    updateAgent('research', { status: 'working', progress: 0, task: 'Finding best practices...' });
-    updateWorkflow(2, 'active');
-    addActivity('Research', 'started researching patterns');
-
-    await animateProgress('research', 100, 1000);
-    updateAgent('research', { status: 'complete', progress: 100, task: 'Found 5 references' });
-    updateWorkflow(2, 'complete');
-    addActivity('Research', 'found design inspiration');
-
-    // Building
-    updateWorkflow(3, 'active');
-    addActivity('Team Lead', 'coordinating build phase');
-
-    // QA
-    updateAgent('qa', { status: 'working', progress: 0, task: 'Testing accessibility...' });
-    addActivity('QA', 'started quality checks');
-
-    await animateProgress('qa', 100, 1200);
-    updateAgent('qa', { status: 'complete', progress: 100, task: 'All tests passed' });
-    updateWorkflow(3, 'complete');
-    addActivity('QA', 'verified accessibility standards');
-
-    // Approver
-    updateAgent('approver', { status: 'working', progress: 0, task: 'Final review...' });
-    updateWorkflow(4, 'active');
-    addActivity('Approver', 'started final review');
-
-    await animateProgress('approver', 100, 600);
-    updateAgent('approver', { status: 'complete', progress: 100, task: 'Approved ✓' });
-    updateWorkflow(4, 'complete');
-    addActivity('Approver', 'approved the build');
-
-    // Lead
-    updateAgent('lead', { status: 'working', progress: 0, task: 'Preparing delivery...' });
-    updateWorkflow(5, 'active');
-
-    await animateProgress('lead', 100, 400);
-    updateAgent('lead', { status: 'complete', progress: 100, task: 'Ready to ship' });
-    updateWorkflow(5, 'complete');
-    addActivity('Team Lead', 'build ready for deployment');
-
-    setIsWorking(false);
-    setStatusText('Ready to Deploy');
-  };
-
-  // Syntax highlighting helper
-  const renderSyntaxHighlightedLine = (line: string, language: string): React.ReactNode => {
-    if (!line) return <span>&nbsp;</span>;
-
-    // HTML syntax highlighting
-    if (language === 'html') {
-      return line.split(/(<[^>]+>|&[a-z]+;)/g).map((part, i) => {
-        if (part.startsWith('<!')) {
-          return <span key={i} className="code-comment">{part}</span>;
-        }
-        if (part.startsWith('<') && part.endsWith('>')) {
-          // Tag with attributes
-          const tagMatch = part.match(/^(<\/?)(\w+)(.*?)(\/?>)$/);
-          if (tagMatch) {
-            const [, open, tagName, attrs, close] = tagMatch;
-            return (
-              <span key={i}>
-                <span className="code-tag">{open}{tagName}</span>
-                {attrs && renderAttributes(attrs)}
-                <span className="code-tag">{close}</span>
-              </span>
-            );
-          }
-          return <span key={i} className="code-tag">{part}</span>;
-        }
-        return <span key={i}>{part}</span>;
-      });
-    }
-
-    // CSS syntax highlighting
-    if (language === 'css') {
-      // Comments
-      if (line.trim().startsWith('/*') || line.trim().startsWith('*')) {
-        return <span className="code-comment">{line}</span>;
-      }
-      // Selectors and properties
-      if (line.includes(':') && !line.includes('://')) {
-        const [prop, ...valueParts] = line.split(':');
-        const value = valueParts.join(':');
-        return (
-          <span>
-            <span className="code-attr">{prop}</span>
-            <span>:</span>
-            <span className="code-value">{value}</span>
-          </span>
-        );
-      }
-      if (line.includes('{') || line.includes('}')) {
-        return <span className="code-keyword">{line}</span>;
-      }
-      return <span>{line}</span>;
-    }
-
-    // JavaScript syntax highlighting
-    if (language === 'javascript') {
-      // Comments
-      if (line.trim().startsWith('//')) {
-        return <span className="code-comment">{line}</span>;
-      }
-      // Keywords
-      const keywords = ['const', 'let', 'var', 'function', 'async', 'await', 'return', 'if', 'else', 'try', 'catch', 'import', 'export', 'from', 'class', 'new', 'throw'];
-      
-      return (
-        <span>
-          {line.split(/(\s+|[{}()[\];,.]|'[^']*'|"[^"]*"|`[^`]*`|\b(?:const|let|var|function|async|await|return|if|else|try|catch|import|export|from|class|new|throw|true|false|null|undefined)\b)/g).map((part, i) => {
-            if (keywords.includes(part)) {
-              return <span key={i} className="code-keyword">{part}</span>;
-            }
-            if (/^['"`].*['"`]$/.test(part)) {
-              return <span key={i} className="code-string">{part}</span>;
-            }
-            if (/^\d+$/.test(part)) {
-              return <span key={i} className="code-number">{part}</span>;
-            }
-            if (/^[a-zA-Z_]\w*(?=\s*\()/.test(part)) {
-              return <span key={i} className="code-function">{part}</span>;
-            }
-            return <span key={i}>{part}</span>;
-          })}
-        </span>
-      );
-    }
-
-    // JSON syntax highlighting
-    if (language === 'json') {
-      return (
-        <span>
-          {line.split(/("[^"]*")\s*(:)?/g).map((part, i) => {
-            if (part && part.startsWith('"') && part.endsWith('"')) {
-              // Check if next part is a colon (key) or not (value)
-              return <span key={i} className="code-string">{part}</span>;
-            }
-            if (part === ':') {
-              return <span key={i}>{part}</span>;
-            }
-            if (/^\d+$/.test(part?.trim())) {
-              return <span key={i} className="code-number">{part}</span>;
-            }
-            if (part === 'true' || part === 'false' || part === 'null') {
-              return <span key={i} className="code-keyword">{part}</span>;
-            }
-            return <span key={i}>{part}</span>;
-          })}
-        </span>
-      );
-    }
-
-    // Markdown - basic highlighting
-    if (language === 'markdown') {
-      if (line.startsWith('#')) {
-        return <span className="code-keyword">{line}</span>;
-      }
-      if (line.startsWith('```')) {
-        return <span className="code-comment">{line}</span>;
-      }
-      if (line.startsWith('-') || line.startsWith('*')) {
-        return <span><span className="code-keyword">{line[0]}</span>{line.slice(1)}</span>;
-      }
-      return <span>{line}</span>;
-    }
-
-    return <span>{line}</span>;
-  };
-
-  // Helper for HTML attributes
-  const renderAttributes = (attrs: string): React.ReactNode => {
-    return attrs.split(/(\w+="[^"]*"|\w+='[^']*')/g).map((part, i) => {
-      const attrMatch = part.match(/^(\w+)(=)("[^"]*"|'[^']*')$/);
-      if (attrMatch) {
-        const [, name, eq, value] = attrMatch;
-        return (
-          <span key={i}>
-            <span className="code-attr"> {name}</span>
-            <span>{eq}</span>
-            <span className="code-string">{value}</span>
-          </span>
-        );
-      }
-      return <span key={i}>{part}</span>;
-    });
-  };
-
+  // Render file tree item
   const renderFileItem = (item: FileItem, depth: number = 0): React.ReactNode => {
     const isFolder = item.type === 'folder';
+    const isActive = item.path === activeFilePath;
     
     return (
-      <div key={item.name}>
+      <div key={item.path || item.name}>
         <div 
-          className={`vibe-file-item ${isFolder ? 'folder' : ''} ${item.active ? 'active' : ''}`}
+          className={`vibe-file-item ${isFolder ? 'folder' : ''} ${isActive ? 'active' : ''}`}
           style={{ paddingLeft: `${16 + depth * 16}px` }}
+          onClick={() => !isFolder && item.path && handleFileClick(item.path)}
         >
           <span className={`vibe-file-icon ${item.type}`}>
             {isFolder ? (
@@ -655,104 +345,459 @@ MIT © 2024`
     );
   };
 
-  return (
-    <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
-      <canvas ref={canvasRef} className="vibe-particle-canvas" />
+  // Render syntax highlighted code
+  const renderSyntaxHighlightedLine = (line: string, language: string): React.ReactNode => {
+    if (!line) return <span>&nbsp;</span>;
+
+    if (language === 'typescript' || language === 'javascript') {
+      const keywords = ['const', 'let', 'var', 'function', 'async', 'await', 'return', 'if', 'else', 'try', 'catch', 'import', 'export', 'from', 'class', 'new', 'throw', 'interface', 'type'];
       
-      <div className="vibe-inner">
-        {/* Project Bar */}
-        <div className="vibe-project-bar">
-          <div className="vibe-project-bar-left">
-            <div className="vibe-project-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                <polyline points="2 17 12 22 22 17"/>
-                <polyline points="2 12 12 17 22 12"/>
-              </svg>
-            </div>
-            <div className="vibe-project-info">
-              <input
-                type="text"
-                className="vibe-project-name-input"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                spellCheck={false}
-              />
-              <div className="vibe-project-status">
-                <span className={`vibe-status-dot ${isWorking ? 'working' : ''}`} />
-                <span>{statusText}</span>
-              </div>
-            </div>
+      return (
+        <span>
+          {line.split(/(\s+|[{}()[\];,.]|'[^']*'|"[^"]*"|`[^`]*`|\b(?:const|let|var|function|async|await|return|if|else|try|catch|import|export|from|class|new|throw|interface|type|true|false|null|undefined)\b)/g).map((part, i) => {
+            if (keywords.includes(part)) {
+              return <span key={i} className="code-keyword">{part}</span>;
+            }
+            if (/^['"`].*['"`]$/.test(part)) {
+              return <span key={i} className="code-string">{part}</span>;
+            }
+            if (/^\d+$/.test(part)) {
+              return <span key={i} className="code-number">{part}</span>;
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    }
+
+    if (language === 'css') {
+      if (line.trim().startsWith('/*') || line.trim().startsWith('*')) {
+        return <span className="code-comment">{line}</span>;
+      }
+      if (line.includes(':') && !line.includes('://')) {
+        const [prop, ...valueParts] = line.split(':');
+        const value = valueParts.join(':');
+        return (
+          <span>
+            <span className="code-attr">{prop}</span>
+            <span>:</span>
+            <span className="code-value">{value}</span>
+          </span>
+        );
+      }
+      return <span>{line}</span>;
+    }
+
+    return <span>{line}</span>;
+  };
+
+  // Get status badge color
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      intake: 'bg-blue-500',
+      planning: 'bg-yellow-500',
+      building: 'bg-orange-500',
+      qa: 'bg-purple-500',
+      review: 'bg-indigo-500',
+      approved: 'bg-green-500',
+      deployed: 'bg-emerald-500',
+      delivered: 'bg-teal-500',
+    };
+    return colors[status] || 'bg-gray-500';
+  };
+
+  // ============================================================================
+  // PROJECTS LIST VIEW
+  // ============================================================================
+  
+  const renderProjectsView = () => (
+    <div className="vibe-projects-view">
+      {(projectsError || projectError) && (
+        <div className="vibe-error" style={{ marginBottom: 16 }}>
+          {projectsError || projectError}
+        </div>
+      )}
+      <div className="vibe-projects-header">
+        <div className="vibe-projects-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span>AlphaWave Vibe</span>
+        </div>
+        <button 
+          className="vibe-new-project-btn"
+          onClick={() => setShowNewProjectForm(true)}
+        >
+          <svg viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Project
+        </button>
+      </div>
+
+      {/* New Project Form */}
+      {showNewProjectForm && (
+        <div className="vibe-new-project-form">
+          <h3>Create New Project</h3>
+          
+          <div className="vibe-form-group">
+            <label>Project Name</label>
+            <input
+              type="text"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              placeholder="My Awesome Website"
+              autoFocus
+            />
           </div>
-
-          <div className="vibe-project-bar-center">
-            {(['mobile', 'tablet', 'desktop'] as const).map(device => (
-              <button
-                key={device}
-                className={`vibe-device-btn ${currentDevice === device ? 'active' : ''}`}
-                onClick={() => setCurrentDevice(device)}
-                title={device}
-              >
-                {device === 'mobile' && <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>}
-                {device === 'tablet' && <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>}
-                {device === 'desktop' && <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
-              </button>
-            ))}
-
-            <div className="vibe-view-tabs">
-              {(['preview', 'code', 'split'] as const).map(view => (
+          
+          <div className="vibe-form-group">
+            <label>Project Type</label>
+            <div className="vibe-type-selector">
+              {(['website', 'chatbot', 'assistant', 'integration'] as ProjectType[]).map(type => (
                 <button
-                  key={view}
-                  className={`vibe-view-tab ${currentView === view ? 'active' : ''}`}
-                  onClick={() => setCurrentView(view)}
+                  key={type}
+                  className={`vibe-type-option ${newProjectType === type ? 'active' : ''}`}
+                  onClick={() => setNewProjectType(type)}
                 >
-                  {view.charAt(0).toUpperCase() + view.slice(1)}
+                  {type === 'website' && '🌐'}
+                  {type === 'chatbot' && '💬'}
+                  {type === 'assistant' && '🤖'}
+                  {type === 'integration' && '🔗'}
+                  <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
                 </button>
               ))}
             </div>
           </div>
-
-          <div className="vibe-project-bar-right">
-            <button className="vibe-build-btn" onClick={simulateWork}>
-              <svg viewBox="0 0 24 24" fill="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              <span>Deploy</span>
+          
+          <div className="vibe-form-row">
+            <div className="vibe-form-group">
+              <label>Client Name (optional)</label>
+              <input
+                type="text"
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                placeholder="Business Name"
+              />
+            </div>
+            <div className="vibe-form-group">
+              <label>Client Email (optional)</label>
+              <input
+                type="email"
+                value={newClientEmail}
+                onChange={(e) => setNewClientEmail(e.target.value)}
+                placeholder="client@example.com"
+              />
+            </div>
+          </div>
+          
+          <div className="vibe-form-actions">
+            <button 
+              className="vibe-btn-secondary"
+              onClick={() => setShowNewProjectForm(false)}
+            >
+              Cancel
             </button>
-            <button className="vibe-close-btn" onClick={onClose}>
-              <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <button 
+              className="vibe-btn-primary"
+              onClick={handleCreateProject}
+              disabled={!newProjectName.trim()}
+            >
+              Create Project
             </button>
           </div>
         </div>
+      )}
 
-        {/* Main Workspace */}
-        <div className="vibe-workspace-main">
-          {/* Files Panel */}
-          <div className="vibe-files-panel">
-            <div className="vibe-panel-header">
-              <span className="vibe-panel-title">Explorer</span>
-              <div className="vibe-panel-actions">
-                <button className="vibe-panel-action-btn" title="New File">
-                  <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                </button>
-                <button className="vibe-panel-action-btn" title="New Folder">
-                  <svg viewBox="0 0 24 24" fill="none"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      {/* Projects Grid */}
+      <div className="vibe-projects-grid">
+        {projectsLoading && (
+          <div className="vibe-loading">Loading projects...</div>
+        )}
+        
+        {projectsError && (
+          <div className="vibe-error">{projectsError}</div>
+        )}
+        
+        {!projectsLoading && projects.length === 0 && !showNewProjectForm && (
+          <div className="vibe-empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <h3>No Projects Yet</h3>
+            <p>Create your first project to get started</p>
+            <button 
+              className="vibe-btn-primary"
+              onClick={() => setShowNewProjectForm(true)}
+            >
+              Create Project
+            </button>
+          </div>
+        )}
+        
+        {projects.map(proj => (
+          <div 
+            key={proj.project_id} 
+            className="vibe-project-card"
+            onClick={() => handleOpenProject(proj)}
+          >
+            <div className="vibe-project-card-header">
+              <span className="vibe-project-type-icon">
+                {proj.project_type === 'website' && '🌐'}
+                {proj.project_type === 'chatbot' && '💬'}
+                {proj.project_type === 'assistant' && '🤖'}
+                {proj.project_type === 'integration' && '🔗'}
+              </span>
+              <span className={`vibe-project-status-badge ${getStatusColor(proj.status)}`}>
+                {proj.status}
+              </span>
+            </div>
+            <h4 className="vibe-project-card-title">{proj.name}</h4>
+            {proj.client_name && (
+              <p className="vibe-project-card-client">{proj.client_name}</p>
+            )}
+            <div className="vibe-project-card-footer">
+              <span className="vibe-project-card-date">
+                {new Date(proj.updated_at).toLocaleDateString()}
+              </span>
+              {proj.preview_url && (
+                <a 
+                  href={proj.preview_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="vibe-project-card-link"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Preview →
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ============================================================================
+  // WORKSPACE VIEW
+  // ============================================================================
+  
+  const renderWorkspaceView = () => (
+    <>
+      {(projectsError || projectError) && (
+        <div className="vibe-error" style={{ marginBottom: 12, marginLeft: 16, marginRight: 16 }}>
+          {projectsError || projectError}
+        </div>
+      )}
+      {/* Project Bar */}
+      <div className="vibe-project-bar">
+        <div className="vibe-project-bar-left">
+          <button 
+            className="vibe-back-btn"
+            onClick={() => {
+              setViewMode('projects');
+              setSelectedProjectId(null);
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <div className="vibe-project-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </div>
+          <div className="vibe-project-info">
+            <div className="vibe-project-name">{project?.name || 'Loading...'}</div>
+            <div className="vibe-project-status">
+              <span className={`vibe-status-dot ${projectLoading ? 'working' : ''}`} />
+              <span>{project?.status || 'Loading'}</span>
+              {project?.client_name && <span className="vibe-client-name">• {project.client_name}</span>}
+            </div>
+            {(project?.preview_url || project?.production_url) && (
+              <div className="vibe-project-links">
+                {project.preview_url && <a href={project.preview_url} target="_blank" rel="noreferrer">Preview</a>}
+                {project.production_url && <a href={project.production_url} target="_blank" rel="noreferrer">Live</a>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="vibe-project-bar-center">
+          {(['mobile', 'tablet', 'desktop'] as const).map(device => (
+            <button
+              key={device}
+              className={`vibe-device-btn ${currentDevice === device ? 'active' : ''}`}
+              onClick={() => setCurrentDevice(device)}
+              title={device}
+            >
+              {device === 'mobile' && <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>}
+              {device === 'tablet' && <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>}
+              {device === 'desktop' && <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
+            </button>
+          ))}
+
+          <div className="vibe-view-tabs">
+            {(['preview', 'code', 'split'] as const).map(view => (
+              <button
+                key={view}
+                className={`vibe-view-tab ${currentView === view ? 'active' : ''}`}
+                onClick={() => setCurrentView(view)}
+              >
+                {view.charAt(0).toUpperCase() + view.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="vibe-project-bar-right">
+          {/* API Cost Display */}
+          {totalApiCost > 0 && (
+            <span className="vibe-api-cost" title="Estimated API cost for this session">
+              ${totalApiCost.toFixed(4)}
+            </span>
+          )}
+          
+          {/* Deploy Button */}
+          {canDeploy && (
+            <button 
+              className="vibe-deploy-btn" 
+              onClick={handleDeploy}
+              disabled={operationStates.deploy.loading}
+            >
+              {operationStates.deploy.loading ? (
+                <span className="vibe-spinner" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              )}
+              <span>{operationStates.deploy.loading ? 'Deploying...' : 'Deploy'}</span>
+            </button>
+          )}
+          
+          {/* Pipeline Button */}
+          {!canDeploy && project?.status !== 'deployed' && (
+            <button 
+              className="vibe-build-btn"
+              onClick={handleRunPipeline}
+              disabled={!canRunPipeline || isAnyOperationLoading}
+            >
+              {isAnyOperationLoading ? (
+                <span className="vibe-spinner" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              )}
+              <span>{isAnyOperationLoading ? 'Working...' : 'Run Pipeline'}</span>
+            </button>
+          )}
+          
+          {/* Approve Button */}
+          {canApprove && (
+            <button 
+              className="vibe-approve-btn"
+              onClick={() => selectedProjectId && approveProject(selectedProjectId)}
+              disabled={operationStates.approve.loading}
+            >
+              {operationStates.approve.loading ? (
+                <span className="vibe-spinner" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
+              )}
+              <span>{operationStates.approve.loading ? 'Approving...' : 'Approve'}</span>
+            </button>
+          )}
+          
+          <button className="vibe-close-btn" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Workspace */}
+      <div className="vibe-workspace-main">
+        {/* Files Panel */}
+        <div className="vibe-files-panel">
+          <div className="vibe-panel-header">
+            <span className="vibe-panel-title">Explorer</span>
+            <button className="vibe-btn-secondary" onClick={() => {
+              if (selectedProjectId) {
+                fetchProject(selectedProjectId);
+                fetchFiles(selectedProjectId);
+              }
+            }}>
+              Refresh
+            </button>
+          </div>
+
+          <div className="vibe-files-tree">
+            {convertedFileTree.length > 0 ? (
+              convertedFileTree.map(f => renderFileItem(f))
+            ) : (
+              <div className="vibe-files-empty">
+                {project?.status === 'intake' ? (
+                  <p>Complete intake to generate files</p>
+                ) : project?.status === 'planning' ? (
+                  <p>Run planning to start build</p>
+                ) : (
+                  <p>No files yet</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Preview Panel - Show Intake Chat or Preview */}
+        <div className={`vibe-preview-panel ${currentView === 'code' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
+          {project?.status === 'intake' ? (
+            // Intake Chat Interface
+            <div className="vibe-intake-chat">
+              <div className="vibe-intake-header">
+                <h3>📋 Project Intake</h3>
+                <p>Tell me about the project. I&apos;ll gather requirements and create a brief.</p>
+              </div>
+              
+              <div className="vibe-intake-messages">
+                {intakeHistory.map((msg, i) => (
+                  <div key={i} className={`vibe-intake-message ${msg.role}`}>
+                    <div className="vibe-message-content">{msg.content}</div>
+                  </div>
+                ))}
+                {intakeHistory.length === 0 && (
+                  <div className="vibe-intake-starter">
+                    <p>Start by describing the project:</p>
+                    <ul>
+                      <li>What type of business is this for?</li>
+                      <li>What services/products do they offer?</li>
+                      <li>What&apos;s the main goal of the website?</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+              
+              <div className="vibe-intake-input-area">
+                <textarea
+                  value={intakeMessage}
+                  onChange={(e) => setIntakeMessage(e.target.value)}
+                  placeholder="Describe the project..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendIntake();
+                    }
+                  }}
+                />
+                <button 
+                  onClick={handleSendIntake}
+                  disabled={!intakeMessage.trim() || projectLoading}
+                >
+                  <svg viewBox="0 0 24 24" fill="none"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </div>
             </div>
-
-            <div className="vibe-files-tree">
-              {files.map(f => renderFileItem(f))}
-            </div>
-
-            <div className="vibe-files-footer">
-              <button className="vibe-new-file-btn">
-                <svg viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Add File
-              </button>
-            </div>
-          </div>
-
-          {/* Preview Panel */}
-          <div className={`vibe-preview-panel ${currentView === 'code' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
+          ) : (
+            // Preview Frame
             <div className="vibe-preview-container">
               <div className={`vibe-device-frame ${currentDevice}`}>
                 <div className="vibe-device-header">
@@ -763,194 +808,199 @@ MIT © 2024`
                   </div>
                   <div className="vibe-device-url">
                     <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    <span>localhost:3000</span>
+                    <span>{project?.preview_url || 'localhost:3000'}</span>
                   </div>
                 </div>
                 <div className="vibe-device-content">
-                  <div className="vibe-preview-placeholder">
-                    <div className="vibe-preview-placeholder-icon">
-                      <svg viewBox="0 0 24 24" fill="none"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                  {project?.preview_url ? (
+                    <iframe 
+                      src={project.preview_url}
+                      title="Preview"
+                      className="vibe-preview-iframe"
+                    />
+                  ) : (
+                    <div className="vibe-preview-placeholder">
+                      <div className="vibe-preview-placeholder-icon">
+                        <svg viewBox="0 0 24 24" fill="none"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                      </div>
+                      <h3>Preview Available After Build</h3>
+                      <p>Complete the build pipeline to see the preview</p>
                     </div>
-                    <h3>Ready to Create</h3>
-                    <p>Describe what you want to build in the chat. I&apos;ll handle the rest.</p>
-                    <div className="vibe-shortcut">
-                      <kbd>⌘</kbd> + <kbd>Enter</kbd> to send
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Code Panel */}
+        <div className={`vibe-code-panel ${currentView === 'preview' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
+          {/* File Tabs */}
+          <div className="vibe-code-tabs">
+            {openTabs.map(tab => (
+              <button
+                key={tab}
+                className={`vibe-code-tab ${activeFilePath === tab ? 'active' : ''}`}
+                onClick={() => setActiveFilePath(tab)}
+              >
+                <span className="vibe-code-tab-name">{tab.split('/').pop()}</span>
+                <button 
+                  className="vibe-code-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenTabs(openTabs.filter(t => t !== tab));
+                    if (activeFilePath === tab) {
+                      setActiveFilePath(openTabs.find(t => t !== tab) || null);
+                    }
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </button>
+            ))}
           </div>
 
-          {/* Code Panel - Traditional IDE Look */}
-          <div className={`vibe-code-panel ${currentView === 'preview' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
-            {/* File Tabs */}
-            <div className="vibe-code-tabs">
-              {openTabs.map(tab => {
-                const isModified = files.flatMap(f => f.children || [f]).find(f => f.name === tab)?.status === 'modified';
-                return (
-                  <button
-                    key={tab}
-                    className={`vibe-code-tab ${activeFile === tab ? 'active' : ''}`}
-                    onClick={() => setActiveFile(tab)}
-                  >
-                    <span className={`vibe-code-tab-icon ${tab.split('.').pop()}`}>
-                      {tab.endsWith('.html') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                      {tab.endsWith('.css') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                      {tab.endsWith('.js') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                      {tab.endsWith('.json') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                      {tab.endsWith('.md') && <svg viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                    </span>
-                    <span className="vibe-code-tab-name">{tab}</span>
-                    {isModified && <span className="vibe-code-tab-modified" />}
-                    <button 
-                      className="vibe-code-tab-close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenTabs(openTabs.filter(t => t !== tab));
-                        if (activeFile === tab && openTabs.length > 1) {
-                          setActiveFile(openTabs.find(t => t !== tab) || '');
-                        }
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                    </button>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Code Editor */}
-            <div className="vibe-code-editor">
-              {/* Line Numbers */}
-              <div className="vibe-code-line-numbers">
-                {fileContents[activeFile]?.code.split('\n').map((_, i) => (
-                  <div key={i} className="vibe-line-number">{i + 1}</div>
-                ))}
-              </div>
-
-              {/* Code Content with Syntax Highlighting */}
-              <div className="vibe-code-content">
-                <pre className="vibe-code-pre">
-                  <code className={`language-${fileContents[activeFile]?.language || 'text'}`}>
-                    {fileContents[activeFile]?.code.split('\n').map((line, i) => (
-                      <div key={i} className={`vibe-code-line ${i === 10 ? 'highlight' : ''}`}>
-                        {renderSyntaxHighlightedLine(line, fileContents[activeFile]?.language || 'text')}
-                      </div>
-                    ))}
-                  </code>
-                </pre>
-              </div>
-            </div>
-
-            {/* Status Bar */}
-            <div className="vibe-code-statusbar">
-              <div className="vibe-statusbar-left">
-                <span className="vibe-statusbar-item">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
-                  main
-                </span>
-                <span className="vibe-statusbar-item">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  Synced
-                </span>
-              </div>
-              <div className="vibe-statusbar-right">
-                <span className="vibe-statusbar-item">{fileContents[activeFile]?.language.toUpperCase()}</span>
-                <span className="vibe-statusbar-item">UTF-8</span>
-                <span className="vibe-statusbar-item">LF</span>
-                <span className="vibe-statusbar-item">
-                  Ln {fileContents[activeFile]?.code.split('\n').length}, Col 1
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Agents Panel */}
-          <div className="vibe-agents-panel">
-            <div className="vibe-panel-header">
-              <span className="vibe-panel-title">Agents</span>
-            </div>
-
-            <div className="vibe-agents-list">
-              {agents.map(agent => (
-                <div key={agent.id} className={`vibe-agent-card ${agent.status}`}>
-                  <div className="vibe-agent-header">
-                    <div className={`vibe-agent-icon ${agent.id}`}>{agent.icon}</div>
-                    <div className="vibe-agent-info">
-                      <div className="vibe-agent-name">{agent.name}</div>
-                      <div className={`vibe-agent-status-text ${agent.status}`}>
-                        {agent.status === 'working' && <span className="vibe-spinner" />}
-                        {agent.status === 'idle' ? 'Ready' : agent.status === 'working' ? 'Working' : 'Complete'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="vibe-agent-progress">
-                    <div className="vibe-agent-progress-bar">
-                      <div className={`vibe-agent-progress-fill ${agent.status}`} style={{ width: `${agent.progress}%` }} />
-                    </div>
-                    <div className="vibe-agent-progress-text">
-                      <span>{agent.task}</span>
-                      <span>{agent.progress}%</span>
-                    </div>
-                  </div>
+          {/* Code Editor */}
+          <div className="vibe-code-editor">
+            {activeFilePath ? (
+              <>
+                <div className="vibe-code-line-numbers">
+                  {getFileContent(activeFilePath).split('\n').map((_, i) => (
+                    <div key={i} className="vibe-line-number">{i + 1}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {/* Workflow */}
-            <div className="vibe-workflow-section">
-              <div className="vibe-workflow-title">Pipeline</div>
-              <div className="vibe-workflow-visual">
-                {workflow.map(step => (
-                  <div key={step.id} className={`vibe-workflow-step ${step.status}`}>
-                    <div className="vibe-workflow-step-num">
-                      {step.status === 'complete' ? '✓' : step.id}
-                    </div>
-                    <div className="vibe-workflow-step-info">
-                      <div className="vibe-workflow-step-name">{step.name}</div>
-                      <div className="vibe-workflow-step-desc">{step.desc}</div>
-                    </div>
-                    {step.status === 'complete' && (
-                      <div className="vibe-workflow-step-check">
-                        <svg viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <div className="vibe-code-content">
+                  <pre className="vibe-code-pre">
+                    <code className={`language-${getFileLanguage(activeFilePath)}`}>
+                      {getFileContent(activeFilePath).split('\n').map((line, i) => (
+                        <div key={i} className="vibe-code-line">
+                          {renderSyntaxHighlightedLine(line, getFileLanguage(activeFilePath))}
+                        </div>
+                      ))}
+                    </code>
+                  </pre>
+                </div>
+              </>
+            ) : (
+              <div className="vibe-code-empty">
+                <p>Select a file to view its contents</p>
               </div>
+            )}
+          </div>
+
+          {/* Status Bar */}
+          <div className="vibe-code-statusbar">
+            <div className="vibe-statusbar-left">
+              <span className="vibe-statusbar-item">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
+                main
+              </span>
+            </div>
+            <div className="vibe-statusbar-right">
+              {activeFilePath && (
+                <>
+                  <span className="vibe-statusbar-item">{getFileLanguage(activeFilePath).toUpperCase()}</span>
+                  <span className="vibe-statusbar-item">UTF-8</span>
+                  <span className="vibe-statusbar-item">
+                    {getFileContent(activeFilePath).split('\n').length} lines
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Activity Feed */}
-        <div className={`vibe-activity-feed ${activityCollapsed ? 'collapsed' : ''}`}>
-          <div className="vibe-activity-header" onClick={() => setActivityCollapsed(!activityCollapsed)}>
-            <div className="vibe-activity-title">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              Activity
-              <span className="vibe-activity-badge">{activities.length}</span>
-            </div>
-            <button className="vibe-activity-toggle">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
+        {/* Agents Panel */}
+        <div className="vibe-agents-panel">
+          <div className="vibe-panel-header">
+            <span className="vibe-panel-title">Agents</span>
           </div>
-          <div className="vibe-activity-list">
-            {activities.slice(0, 5).map((a, i) => (
-              <div key={i} className="vibe-activity-item">
-                <span className="vibe-activity-dot" />
-                <div className="vibe-activity-content">
-                  <div className="vibe-activity-text">
-                    <strong>{a.agent}</strong> {a.action}
+
+          <div className="vibe-agents-list">
+            {agents.map(agent => (
+              <div key={agent.id} className={`vibe-agent-card ${agent.status}`}>
+                <div className="vibe-agent-header">
+                  <div className={`vibe-agent-icon ${agent.id}`}>{agent.icon}</div>
+                  <div className="vibe-agent-info">
+                    <div className="vibe-agent-name">{agent.name}</div>
+                    <div className={`vibe-agent-status-text ${agent.status}`}>
+                      {agent.status === 'working' && <span className="vibe-spinner" />}
+                      {agent.status === 'idle' ? 'Ready' : agent.status === 'working' ? 'Working' : agent.status === 'complete' ? 'Complete' : 'Error'}
+                    </div>
                   </div>
-                  <div className="vibe-activity-time">{a.time}</div>
+                </div>
+                <div className="vibe-agent-progress">
+                  <div className="vibe-agent-progress-bar">
+                    <div className={`vibe-agent-progress-fill ${agent.status}`} style={{ width: `${agent.progress}%` }} />
+                  </div>
+                  <div className="vibe-agent-progress-text">
+                    <span>{agent.task}</span>
+                    <span>{agent.progress}%</span>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Workflow */}
+          <div className="vibe-workflow-section">
+            <div className="vibe-workflow-title">Pipeline</div>
+            <div className="vibe-workflow-visual">
+              {workflow.map(step => (
+                <div key={step.id} className={`vibe-workflow-step ${step.status}`}>
+                  <div className="vibe-workflow-step-num">
+                    {step.status === 'complete' ? '✓' : step.id}
+                  </div>
+                  <div className="vibe-workflow-step-info">
+                    <div className="vibe-workflow-step-name">{step.name}</div>
+                    <div className="vibe-workflow-step-desc">{step.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Activity Feed */}
+      <div className={`vibe-activity-feed ${activityCollapsed ? 'collapsed' : ''}`}>
+        <div className="vibe-activity-header" onClick={() => setActivityCollapsed(!activityCollapsed)}>
+          <div className="vibe-activity-title">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Activity
+            <span className="vibe-activity-badge">{activities.length}</span>
+          </div>
+          <button className="vibe-activity-toggle">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </div>
+        <div className="vibe-activity-list">
+          {activities.slice(0, 5).map((a, i) => (
+            <div key={i} className="vibe-activity-item">
+              <span className="vibe-activity-dot" />
+              <div className="vibe-activity-content">
+                <div className="vibe-activity-text">
+                  <strong>{a.agent}</strong> {a.action}
+                </div>
+                <div className="vibe-activity-time">{a.time}</div>
+              </div>
+            </div>
+          ))}
+          {activities.length === 0 && (
+            <div className="vibe-activity-empty">No activity yet</div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
+      <canvas ref={canvasRef} className="vibe-particle-canvas" />
+      
+      <div className="vibe-inner">
+        {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}
       </div>
     </aside>
   );
 }
-
