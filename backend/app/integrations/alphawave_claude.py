@@ -329,19 +329,14 @@ class AlphawaveClaudeClient:
         """
         Generate streaming response with extended thinking enabled.
         
+        Based on Anthropic docs: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+        
         Yields events:
         - {"type": "thinking_start"}
         - {"type": "thinking_delta", "content": "..."}
         - {"type": "thinking_stop", "duration": 3.2}
         - {"type": "text_delta", "content": "..."}
         - {"type": "done"}
-        
-        Args:
-            messages: Conversation messages
-            system_prompt: System prompt
-            model: Model to use
-            max_tokens: Max tokens for response
-            thinking_budget: Max tokens for thinking
         """
         import time
         
@@ -350,54 +345,66 @@ class AlphawaveClaudeClient:
         
         thinking_start_time = None
         in_thinking = False
+        thinking_started = False
+        response_started = False
         
         try:
             logger.info(f"[CLAUDE] Starting extended thinking stream with budget: {thinking_budget}")
             
             # Build request with extended thinking enabled
+            # Note: temperature is NOT compatible with thinking
             kwargs = {
                 "model": model,
                 "max_tokens": max_tokens,
-                "system": system_prompt if system_prompt else "",
-                "messages": messages,
                 "thinking": {
                     "type": "enabled",
                     "budget_tokens": thinking_budget
-                }
+                },
+                "messages": messages,
             }
             
+            if system_prompt:
+                kwargs["system"] = system_prompt
+            
             # Stream with raw events to capture thinking blocks
+            # Following the exact pattern from Anthropic docs
             with self.client.messages.stream(**kwargs) as stream:
                 for event in stream:
-                    event_type = getattr(event, 'type', None)
-                    
-                    if event_type == 'content_block_start':
-                        block = getattr(event, 'content_block', None)
-                        if block and getattr(block, 'type', None) == 'thinking':
+                    # Access event.type directly as per Anthropic SDK
+                    if event.type == "content_block_start":
+                        block_type = getattr(event.content_block, 'type', None)
+                        logger.debug(f"[CLAUDE] Block start: {block_type}")
+                        
+                        if block_type == "thinking":
                             in_thinking = True
                             thinking_start_time = time.time()
-                            yield {"type": "thinking_start"}
-                        elif block and getattr(block, 'type', None) == 'text':
+                            if not thinking_started:
+                                yield {"type": "thinking_start"}
+                                thinking_started = True
+                        elif block_type == "text":
                             if in_thinking:
-                                # Thinking just ended
                                 duration = time.time() - thinking_start_time if thinking_start_time else 0
                                 yield {"type": "thinking_stop", "duration": round(duration, 1)}
                                 in_thinking = False
                     
-                    elif event_type == 'content_block_delta':
-                        delta = getattr(event, 'delta', None)
-                        if delta:
-                            delta_type = getattr(delta, 'type', None)
-                            if delta_type == 'thinking_delta':
-                                thinking_text = getattr(delta, 'thinking', '')
-                                if thinking_text:
-                                    yield {"type": "thinking_delta", "content": thinking_text}
-                            elif delta_type == 'text_delta':
-                                text = getattr(delta, 'text', '')
-                                if text:
-                                    yield {"type": "text_delta", "content": text}
+                    elif event.type == "content_block_delta":
+                        delta = event.delta
+                        delta_type = getattr(delta, 'type', None)
+                        
+                        if delta_type == "thinking_delta":
+                            # Thinking content is in delta.thinking (not delta.text)
+                            thinking_text = getattr(delta, 'thinking', '')
+                            if thinking_text:
+                                yield {"type": "thinking_delta", "content": thinking_text}
+                        
+                        elif delta_type == "text_delta":
+                            text = getattr(delta, 'text', '')
+                            if text:
+                                if not response_started:
+                                    response_started = True
+                                yield {"type": "text_delta", "content": text}
                     
-                    elif event_type == 'content_block_stop':
+                    elif event.type == "content_block_stop":
                         if in_thinking:
                             duration = time.time() - thinking_start_time if thinking_start_time else 0
                             yield {"type": "thinking_stop", "duration": round(duration, 1)}
@@ -407,8 +414,10 @@ class AlphawaveClaudeClient:
             logger.info("[CLAUDE] Extended thinking stream complete")
             
         except anthropic.BadRequestError as e:
-            # Extended thinking not supported - fall back to standard streaming
-            logger.warning(f"[CLAUDE] Extended thinking not available: {e}. Falling back to standard.")
+            error_msg = str(e)
+            logger.warning(f"[CLAUDE] Extended thinking not available: {error_msg}. Falling back to standard.")
+            
+            # Fall back to standard streaming without thinking
             async for text in self.generate_streaming_response(
                 messages=messages,
                 system_prompt=system_prompt,
@@ -477,14 +486,15 @@ class AlphawaveClaudeClient:
                     "tools": tools
                 }
                 
-                # Add extended thinking if enabled and first iteration
+                # Add extended thinking if enabled (first iteration only)
+                # Note: temperature is NOT compatible with thinking
                 if enable_thinking and iterations == 1:
                     kwargs["thinking"] = {
                         "type": "enabled",
                         "budget_tokens": thinking_budget
                     }
-                    # Can't use temperature with thinking
-                else:
+                elif not enable_thinking:
+                    # Only set temperature when thinking is disabled
                     kwargs["temperature"] = temperature
                 
                 logger.info(f"[CLAUDE] Iteration {iterations} - calling Claude API")
@@ -497,11 +507,10 @@ class AlphawaveClaudeClient:
                 
                 with self.client.messages.stream(**kwargs) as stream:
                     for event in stream:
-                        event_type = getattr(event, 'type', None)
-                        
-                        if event_type == 'content_block_start':
-                            block = getattr(event, 'content_block', None)
-                            block_type = getattr(block, 'type', None) if block else None
+                        # Use direct attribute access per Anthropic SDK patterns
+                        if event.type == 'content_block_start':
+                            block = event.content_block
+                            block_type = getattr(block, 'type', None)
                             
                             if block_type == 'thinking':
                                 in_thinking = True
@@ -520,32 +529,31 @@ class AlphawaveClaudeClient:
                                 })
                                 yield {"type": "tool_use_start", "tool_name": tool_name, "tool_id": tool_id}
                         
-                        elif event_type == 'content_block_delta':
-                            delta = getattr(event, 'delta', None)
-                            if delta:
-                                delta_type = getattr(delta, 'type', None)
-                                
-                                if delta_type == 'thinking_delta':
-                                    thinking_text = getattr(delta, 'thinking', '')
-                                    if thinking_text:
-                                        yield {"type": "thinking_delta", "content": thinking_text}
-                                
-                                elif delta_type == 'text_delta':
-                                    text = getattr(delta, 'text', '')
-                                    if text:
-                                        text_buffer.append(text)
-                                        yield {"type": "text", "content": text}
-                                
-                                elif delta_type == 'input_json_delta':
-                                    # Accumulate tool input JSON
-                                    partial = getattr(delta, 'partial_json', '')
-                                    if tool_uses_this_round and partial:
-                                        # Store partial input for later parsing
-                                        if 'partial_input' not in tool_uses_this_round[-1]:
-                                            tool_uses_this_round[-1]['partial_input'] = ''
-                                        tool_uses_this_round[-1]['partial_input'] += partial
+                        elif event.type == 'content_block_delta':
+                            delta = event.delta
+                            delta_type = getattr(delta, 'type', None)
+                            
+                            if delta_type == 'thinking_delta':
+                                # Thinking content is in delta.thinking
+                                thinking_text = getattr(delta, 'thinking', '')
+                                if thinking_text:
+                                    yield {"type": "thinking_delta", "content": thinking_text}
+                            
+                            elif delta_type == 'text_delta':
+                                text = getattr(delta, 'text', '')
+                                if text:
+                                    text_buffer.append(text)
+                                    yield {"type": "text", "content": text}
+                            
+                            elif delta_type == 'input_json_delta':
+                                # Accumulate tool input JSON
+                                partial = getattr(delta, 'partial_json', '')
+                                if tool_uses_this_round and partial:
+                                    if 'partial_input' not in tool_uses_this_round[-1]:
+                                        tool_uses_this_round[-1]['partial_input'] = ''
+                                    tool_uses_this_round[-1]['partial_input'] += partial
                         
-                        elif event_type == 'content_block_stop':
+                        elif event.type == 'content_block_stop':
                             if in_thinking:
                                 duration = time.time() - thinking_start_time if thinking_start_time else 0
                                 yield {"type": "thinking_stop", "duration": round(duration, 1)}

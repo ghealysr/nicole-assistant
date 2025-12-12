@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 # Feature flags
 ENABLE_AGENT_TOOLS = True  # Think Tool, Tool Search, Memory, Document
-ENABLE_EXTENDED_THINKING = False  # Disabled temporarily - debugging extended thinking feature
+ENABLE_EXTENDED_THINKING = True  # Claude's native extended thinking
 
 router = APIRouter()
 
