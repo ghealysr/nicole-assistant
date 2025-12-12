@@ -165,6 +165,26 @@ class TigerDatabaseManager:
         async with self.pool.acquire() as conn:
             yield conn
     
+    @asynccontextmanager
+    async def transaction(self):
+        """
+        Context manager for database transactions.
+        
+        Automatically commits on success, rolls back on exception.
+        
+        Usage:
+            async with db.transaction() as conn:
+                await conn.execute("INSERT INTO ...")
+                await conn.execute("UPDATE ...")
+                # Auto-commits if no exception
+        """
+        if not self._connected:
+            await self.connect()
+        
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                yield conn
+    
     async def execute(self, query: str, *args) -> str:
         """
         Execute a query without returning results.

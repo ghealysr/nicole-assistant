@@ -5,10 +5,23 @@ Production-grade REST API for:
 - Project CRUD with pagination
 - Build pipeline execution with progress tracking
 - File management and retrieval
-- Lessons learning system
+- Activity logging and audit trail
+- Lessons learning system with semantic search
+- Real-time SSE progress streaming
+
+Security Features:
+- JWT authentication on all endpoints
+- User-scoped access validation
+- Per-user rate limiting with TTL cleanup
+
+Reliability Features:
+- Transaction-wrapped multi-step operations
+- Retry logic for AI service calls
+- Optimistic locking for concurrent protection
+- Graceful error handling with friendly messages
 
 Author: AlphaWave Architecture
-Version: 2.0.0
+Version: 2.1.0 (CTO Remediation Release)
 """
 
 import logging
@@ -35,19 +48,47 @@ from app.services.vibe_service import (
 logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
-# Simple in-memory rate limiting (per user, per endpoint)
+# Simple in-memory rate limiting (per user, per endpoint) with TTL cleanup
 # -----------------------------------------------------------------------------
 RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 30
+RATE_LIMIT_CLEANUP_INTERVAL = 300  # Clean stale buckets every 5 minutes
 _rate_limit_buckets: Dict[str, deque] = defaultdict(deque)
+_rate_limit_last_cleanup: float = 0.0
 
 
 def _rate_limit_key(user_id: int, path: str) -> str:
     return f"{user_id}:{path}"
 
 
+def _cleanup_stale_buckets(now: float) -> None:
+    """Remove buckets that haven't been accessed in CLEANUP_INTERVAL seconds."""
+    global _rate_limit_last_cleanup
+    
+    if now - _rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL:
+        return
+    
+    _rate_limit_last_cleanup = now
+    stale_keys = []
+    
+    for key, bucket in _rate_limit_buckets.items():
+        # If bucket is empty or all timestamps are old, mark for removal
+        if not bucket or (now - bucket[-1] > RATE_LIMIT_WINDOW_SECONDS * 2):
+            stale_keys.append(key)
+    
+    for key in stale_keys:
+        del _rate_limit_buckets[key]
+    
+    if stale_keys:
+        logger.debug("[VIBE] Rate limit cleanup: removed %d stale buckets", len(stale_keys))
+
+
 def enforce_rate_limit(user_id: int, path: str):
     now = time.time()
+    
+    # Periodic cleanup of stale buckets to prevent memory leak
+    _cleanup_stale_buckets(now)
+    
     key = _rate_limit_key(user_id, path)
     bucket = _rate_limit_buckets[key]
 
@@ -498,7 +539,7 @@ async def approve_project(
     )
     
     if not result.success:
-        status_code = 400 if "not found" in str(result.error).lower() else 400
+        status_code = 404 if "not found" in str(result.error).lower() else 400
         raise HTTPException(status_code=status_code, detail=result.error)
     
     return api_response_from_result(result)
@@ -618,16 +659,15 @@ async def get_project_activities(
     
     Returns all activities (audit log) for the project, newest first.
     Useful for displaying timeline of project events.
+    Access validation is performed by the service layer.
     """
     user_id = get_user_id(user)
     rate_limit(user_id, "GET:/vibe/projects/{id}/activities")
     
-    # Verify project access first
-    project = await vibe_service.get_project(project_id, user_id)
-    if not project:
+    try:
+        activities = await vibe_service.get_project_activities(project_id, user_id, limit)
+    except ProjectNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    
-    activities = await vibe_service.get_project_activities(project_id, limit)
     
     return APIResponse(
         success=True,
@@ -654,9 +694,15 @@ async def stream_project_progress(
     rate_limit(user_id, "GET:/vibe/projects/{id}/progress/stream")
 
     async def event_generator():
-        for _ in range(5):  # ~10 seconds at 2s interval
+        for _ in range(30):  # ~60 seconds at 2s interval (long-running builds)
             project = await vibe_service.get_project(project_id, user_id)
-            activities = await vibe_service.get_project_activities(project_id, limit=10)
+            if not project:
+                yield f"data: {json.dumps({'error': 'Project not found'})}\n\n"
+                break
+            try:
+                activities = await vibe_service.get_project_activities(project_id, user_id, limit=10)
+            except ProjectNotFoundError:
+                activities = []
             payload = {
                 "status": project.get("status") if project else None,
                 "updated_at": project.get("updated_at") if project else None,

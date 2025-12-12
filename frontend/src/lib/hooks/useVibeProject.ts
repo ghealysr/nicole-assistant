@@ -272,12 +272,14 @@ class VibeAPIClient {
   async request<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
-    body?: Record<string, unknown>
+    body?: Record<string, unknown>,
+    signal?: AbortSignal
   ): Promise<APIResponse<T>> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method,
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     
     const data = await response.json();
@@ -344,8 +346,9 @@ export function useVibeProjects() {
         });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch projects';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch projects';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeProjects] Fetch error:', err);
     } finally {
       setLoading(false);
@@ -383,8 +386,9 @@ export function useVibeProjects() {
       
       return newProject;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create project';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to create project';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeProjects] Create error:', err);
       return null;
     } finally {
@@ -404,8 +408,9 @@ export function useVibeProjects() {
       setProjects(prev => prev.filter(p => p.project_id !== projectId));
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete project';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to delete project';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeProjects] Delete error:', err);
       return false;
     }
@@ -439,6 +444,7 @@ export function useVibeProject(projectId?: number) {
   
   // Global loading/error
   const [loading, setLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Operation-specific states
@@ -451,6 +457,18 @@ export function useVibeProject(projectId?: number) {
     approve: { loading: false, error: null },
     deploy: { loading: false, error: null },
   });
+  
+  // AbortController for cancelling in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Cleanup: abort any in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
   
   // API cost tracking
   const [totalApiCost, setTotalApiCost] = useState(0);
@@ -515,8 +533,9 @@ export function useVibeProject(projectId?: number) {
       
       return proj;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch project';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch project';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeProject] Fetch error:', err);
       return null;
     } finally {
@@ -526,6 +545,7 @@ export function useVibeProject(projectId?: number) {
 
   // Fetch project files
   const fetchFiles = useCallback(async (id: number): Promise<void> => {
+    setFilesLoading(true);
     try {
       const response = await apiClient.request<{
         files: VibeFile[];
@@ -541,6 +561,8 @@ export function useVibeProject(projectId?: number) {
       setFileTree(response.data.file_tree);
     } catch (err) {
       console.error('[useVibeProject] Fetch files error:', err);
+    } finally {
+      setFilesLoading(false);
     }
   }, []);
 
@@ -592,16 +614,16 @@ export function useVibeProject(projectId?: number) {
         setError(errMsg);
         return null;
       }
-      if (response.meta?.api_cost) trackApiCost(response.meta.api_cost);
+      // Track API cost (once only)
+      if (response.meta?.api_cost) {
+        trackApiCost(response.meta.api_cost);
+      }
       
       // Update history with assistant response
       setIntakeHistory([
         ...updatedHistory,
         { role: 'assistant', content: response.data.response },
       ]);
-      
-      // Track cost
-      trackApiCost(response.meta?.api_cost);
       
       // Refresh project if brief was extracted
       if (response.data.brief_complete) {
@@ -665,6 +687,12 @@ export function useVibeProject(projectId?: number) {
 
   // Run build (code generation)
   const runBuild = useCallback(async (id: number): Promise<BuildData | null> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('build', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
       a.id === 'build' ? { ...a, status: 'working' as const, progress: 25, task: 'Generating code...' } : a
@@ -673,7 +701,9 @@ export function useVibeProject(projectId?: number) {
     try {
       const response = await apiClient.request<BuildData>(
         `/projects/${id}/build`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success || !response.data) {
@@ -954,8 +984,9 @@ export function useVibeProject(projectId?: number) {
       setLoading(false);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Pipeline failed';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Pipeline failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       setLoading(false);
       console.error('[useVibeProject] Pipeline error:', err);
       return false;
@@ -981,15 +1012,32 @@ export function useVibeProject(projectId?: number) {
     }
   }, [projectId, fetchProject, fetchFiles, fetchActivities]);
 
+  // Track previous loading state to detect operation completion
+  const wasLoadingRef = useRef(false);
+  
   // Auto-refresh activities while any operation is loading
   useEffect(() => {
     if (!projectId) return;
+    
+    // Detect when operation just completed (was loading, now not)
+    if (wasLoadingRef.current && !isAnyOperationLoading) {
+      // Final refresh after operation completes
+      fetchActivities(projectId, 25);
+      fetchProject(projectId);
+    }
+    wasLoadingRef.current = isAnyOperationLoading;
+    
     if (!isAnyOperationLoading) return;
+    
+    // Initial refresh when operation starts
     fetchActivities(projectId, 25);
+    
+    // Periodic refresh during operation
     const interval = window.setInterval(() => {
       fetchActivities(projectId, 25);
       fetchProject(projectId);
     }, 3000);
+    
     return () => window.clearInterval(interval);
   }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);
 
@@ -1035,6 +1083,7 @@ export function useVibeProject(projectId?: number) {
     
     // Global state
     loading,
+    filesLoading,
     error,
     
     // Operation-specific states
@@ -1109,8 +1158,9 @@ export function useVibeFile(projectId: number, filePath?: string) {
       setFile(response.data.file);
       setLanguage(response.data.language);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch file';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch file';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeFile] Fetch error:', err);
     } finally {
       setLoading(false);
@@ -1164,8 +1214,9 @@ export function useVibeLessons() {
       
       setLessons(response.data?.lessons || []);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch lessons';
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch lessons';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setError(friendlyMessage);
       console.error('[useVibeLessons] Fetch error:', err);
     } finally {
       setLoading(false);

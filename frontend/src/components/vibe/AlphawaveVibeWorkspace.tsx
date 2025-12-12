@@ -266,13 +266,16 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     [fileTree, convertFileTreeHelper]
   );
 
-  // Particle system
+  // Particle system with mounted flag for safety
   useEffect(() => {
     if (!isOpen || !canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Mounted flag to prevent animation continuing after unmount
+    let mounted = true;
 
     const particles: Array<{
       x: number;
@@ -284,6 +287,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     }> = [];
 
     const resize = () => {
+      if (!mounted) return;
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
     };
@@ -304,6 +308,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
 
     let animationId: number;
     const animate = () => {
+      // Check mounted flag before continuing animation
+      if (!mounted) return;
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       particles.forEach(p => {
@@ -338,6 +345,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     animate();
 
     return () => {
+      mounted = false;  // Signal animation to stop
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animationId);
     };
@@ -544,9 +552,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           <div className="vibe-loading">Loading projects...</div>
         )}
         
-        {projectsError && (
-          <div className="vibe-error">{projectsError}</div>
-        )}
+        {/* Error already displayed at top of view - no duplicate here */}
         
         {!projectsLoading && projects.length === 0 && !showNewProjectForm && (
           <div className="vibe-empty-state">
