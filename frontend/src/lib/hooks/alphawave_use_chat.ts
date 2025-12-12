@@ -33,12 +33,23 @@ export interface ThinkingContent {
 }
 
 /**
- * Activity status for real-time display
+ * Extended thinking state
  * 
- * Visibility is controlled by `shouldShow` which accounts for:
- * - Active processing (isActive)
- * - Pending content (thinkingSteps, currentThinking)
- * - Grace period after completion
+ * Tracks Claude's extended thinking block:
+ * - isThinking: actively receiving thinking content
+ * - content: accumulated thinking text (streaming)
+ * - isComplete: thinking phase has ended
+ * - duration: how long thinking took (seconds)
+ */
+export interface ExtendedThinking {
+  isThinking: boolean;
+  content: string;
+  isComplete: boolean;
+  duration?: number;
+}
+
+/**
+ * Activity status for real-time display
  */
 export interface ActivityStatus {
   isActive: boolean;
@@ -49,6 +60,9 @@ export interface ActivityStatus {
   currentThinking: string | null;        // Currently streaming thought
   shouldShow: boolean;                   // Master visibility control
   completedAt: number | null;            // Timestamp when processing completed
+  
+  // Extended thinking (Claude-style)
+  extendedThinking: ExtendedThinking;
 }
 
 /**
@@ -152,6 +166,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     currentThinking: null,
     shouldShow: false,
     completedAt: null,
+    extendedThinking: {
+      isThinking: false,
+      content: '',
+      isComplete: false,
+    },
   });
   
   // Flag to prevent loading history when we just created a new conversation during streaming
@@ -240,11 +259,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setActivityStatus({
       isActive: true,
       type: 'thinking',
-      displayText: 'Thinking...',
+      displayText: 'Processing...',
       thinkingSteps: [],
       currentThinking: null,
       shouldShow: true,
       completedAt: null,
+      extendedThinking: {
+        isThinking: false,
+        content: '',
+        isComplete: false,
+      },
     });
 
     try {
@@ -340,6 +364,48 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   type: 'thinking',
                   displayText: 'Processing...',
                 }));
+              } else if (data.type === 'thinking_start') {
+                // Extended thinking begins
+                setActivityStatus(prev => ({
+                  ...prev,
+                  isActive: true,
+                  type: 'thinking',
+                  displayText: 'Thinking...',
+                  shouldShow: true,
+                  extendedThinking: {
+                    isThinking: true,
+                    content: '',
+                    isComplete: false,
+                  },
+                }));
+              } else if (data.type === 'thinking_delta') {
+                // Streaming thinking content
+                const thinkingContent = data.content || '';
+                setActivityStatus(prev => ({
+                  ...prev,
+                  isActive: true,
+                  type: 'thinking',
+                  shouldShow: true,
+                  extendedThinking: {
+                    ...prev.extendedThinking,
+                    isThinking: true,
+                    content: prev.extendedThinking.content + thinkingContent,
+                  },
+                }));
+              } else if (data.type === 'thinking_stop') {
+                // Thinking complete - mark with duration
+                const duration = data.duration || 0;
+                setActivityStatus(prev => ({
+                  ...prev,
+                  type: 'thinking',
+                  displayText: 'Responding...',
+                  extendedThinking: {
+                    ...prev.extendedThinking,
+                    isThinking: false,
+                    isComplete: true,
+                    duration,
+                  },
+                }));
               } else if (data.type === 'status') {
                 // Simple status update - just update display text
                 const statusText = data.text || 'Processing...';
@@ -385,7 +451,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
                 
-                // First token - mark as completed, stop activity
+                // First token - keep thinking block visible but mark as complete
                 setActivityStatus(prev => {
                   // Skip if already responding (prevents re-triggering on each token)
                   if (prev.type === 'responding') return prev;
@@ -397,8 +463,14 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     displayText: '',
                     thinkingSteps: [],
                     currentThinking: null,
-                    shouldShow: false,
+                    // Keep shouldShow true if we have thinking content to display
+                    shouldShow: prev.extendedThinking.content.length > 0,
                     completedAt: Date.now(),
+                    extendedThinking: {
+                      ...prev.extendedThinking,
+                      isThinking: false,
+                      isComplete: true,
+                    },
                   };
                 });
                 
@@ -454,16 +526,20 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
       setIsPendingAssistant(false);
-      // Finalize activity status - mark as completed
+      // Finalize activity status - keep thinking content for display
       setActivityStatus(prev => ({
         ...prev,
         isActive: false,
         type: 'idle',
         displayText: '',
         currentThinking: null,
-        // Start hide timer - component will handle the fade out
         completedAt: prev.completedAt || Date.now(),
-        // shouldShow is managed by the component based on completedAt
+        // Keep thinking content visible (collapsed)
+        extendedThinking: {
+          ...prev.extendedThinking,
+          isThinking: false,
+          isComplete: true,
+        },
       }));
     }
   }, [conversationId, onError]);

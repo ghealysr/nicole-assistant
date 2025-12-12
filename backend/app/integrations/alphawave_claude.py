@@ -318,6 +318,111 @@ class AlphawaveClaudeClient:
             logger.error(f"[CLAUDE] Streaming error: {e}", exc_info=True)
             raise
     
+    async def generate_streaming_response_with_thinking(
+        self,
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 16000,
+        thinking_budget: int = 10000,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Generate streaming response with extended thinking enabled.
+        
+        Yields events:
+        - {"type": "thinking_start"}
+        - {"type": "thinking_delta", "content": "..."}
+        - {"type": "thinking_stop", "duration": 3.2}
+        - {"type": "text_delta", "content": "..."}
+        - {"type": "done"}
+        
+        Args:
+            messages: Conversation messages
+            system_prompt: System prompt
+            model: Model to use
+            max_tokens: Max tokens for response
+            thinking_budget: Max tokens for thinking
+        """
+        import time
+        
+        if model is None:
+            model = self.sonnet_model
+        
+        thinking_start_time = None
+        in_thinking = False
+        
+        try:
+            logger.info(f"[CLAUDE] Starting extended thinking stream with budget: {thinking_budget}")
+            
+            # Build request with extended thinking enabled
+            kwargs = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "system": system_prompt if system_prompt else "",
+                "messages": messages,
+                "thinking": {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget
+                }
+            }
+            
+            # Stream with raw events to capture thinking blocks
+            with self.client.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    event_type = getattr(event, 'type', None)
+                    
+                    if event_type == 'content_block_start':
+                        block = getattr(event, 'content_block', None)
+                        if block and getattr(block, 'type', None) == 'thinking':
+                            in_thinking = True
+                            thinking_start_time = time.time()
+                            yield {"type": "thinking_start"}
+                        elif block and getattr(block, 'type', None) == 'text':
+                            if in_thinking:
+                                # Thinking just ended
+                                duration = time.time() - thinking_start_time if thinking_start_time else 0
+                                yield {"type": "thinking_stop", "duration": round(duration, 1)}
+                                in_thinking = False
+                    
+                    elif event_type == 'content_block_delta':
+                        delta = getattr(event, 'delta', None)
+                        if delta:
+                            delta_type = getattr(delta, 'type', None)
+                            if delta_type == 'thinking_delta':
+                                thinking_text = getattr(delta, 'thinking', '')
+                                if thinking_text:
+                                    yield {"type": "thinking_delta", "content": thinking_text}
+                            elif delta_type == 'text_delta':
+                                text = getattr(delta, 'text', '')
+                                if text:
+                                    yield {"type": "text_delta", "content": text}
+                    
+                    elif event_type == 'content_block_stop':
+                        if in_thinking:
+                            duration = time.time() - thinking_start_time if thinking_start_time else 0
+                            yield {"type": "thinking_stop", "duration": round(duration, 1)}
+                            in_thinking = False
+            
+            yield {"type": "done"}
+            logger.info("[CLAUDE] Extended thinking stream complete")
+            
+        except anthropic.BadRequestError as e:
+            # Extended thinking not supported - fall back to standard streaming
+            logger.warning(f"[CLAUDE] Extended thinking not available: {e}. Falling back to standard.")
+            async for text in self.generate_streaming_response(
+                messages=messages,
+                system_prompt=system_prompt,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=1.0
+            ):
+                yield {"type": "text_delta", "content": text}
+            yield {"type": "done"}
+            
+        except Exception as e:
+            logger.error(f"[CLAUDE] Extended thinking error: {e}", exc_info=True)
+            yield {"type": "error", "message": str(e)}
+    
     async def generate_streaming_response_with_tools(
         self,
         messages: List[Dict[str, Any]],
@@ -325,32 +430,40 @@ class AlphawaveClaudeClient:
         tool_executor: Any,
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16000,
         temperature: float = 1.0,
         max_tool_iterations: int = 10,
+        enable_thinking: bool = True,
+        thinking_budget: int = 8000,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Generate streaming response with tool use support.
+        Generate streaming response with tool use and extended thinking support.
         
         Flow:
-        1. Make non-streaming call to check for tool use
-        2. If tools needed, execute them and loop
-        3. Final response streams via text_stream
+        1. Enable extended thinking for reasoning
+        2. Stream thinking deltas (fast)
+        3. Handle tool use loops
+        4. Stream final response
         
         Yields events for:
+        - thinking_start: Thinking begins
+        - thinking_delta: Thinking content (fast stream)
+        - thinking_stop: Thinking complete with duration
         - text: Text content chunks
         - tool_use_start: Tool use beginning
         - tool_use_complete: Tool use finished
-        - thinking: Think tool invocations
         - done: Stream complete
         """
+        import time
+        
         if model is None:
             model = self.sonnet_model
         
         conversation = list(messages)
         iterations = 0
+        thinking_emitted = False
         
-        logger.info(f"[CLAUDE] Starting response generation with {len(messages)} messages")
+        logger.info(f"[CLAUDE] Starting response with thinking={enable_thinking}, budget={thinking_budget}")
         
         while iterations < max_tool_iterations:
             iterations += 1
@@ -359,42 +472,184 @@ class AlphawaveClaudeClient:
                 kwargs = {
                     "model": model,
                     "max_tokens": max_tokens,
-                    "temperature": temperature,
                     "system": system_prompt if system_prompt else "",
                     "messages": conversation,
                     "tools": tools
                 }
                 
+                # Add extended thinking if enabled and first iteration
+                if enable_thinking and iterations == 1:
+                    kwargs["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": thinking_budget
+                    }
+                    # Can't use temperature with thinking
+                else:
+                    kwargs["temperature"] = temperature
+                
                 logger.info(f"[CLAUDE] Iteration {iterations} - calling Claude API")
                 
-                # Check if Claude wants to use tools
-                response = self.client.messages.create(**kwargs)
+                # Stream to capture thinking + tool decisions
+                thinking_start_time = None
+                in_thinking = False
+                tool_uses_this_round = []
+                text_buffer = []
                 
-                logger.info(f"[CLAUDE] Response received - stop_reason: {response.stop_reason}, blocks: {len(response.content)}")
-                
-                # Check if we have tool uses
-                has_tool_use = any(block.type == "tool_use" for block in response.content)
-                
-                if not has_tool_use or response.stop_reason == "end_turn":
-                    # Final response - stream using text_stream for smooth delivery
-                    logger.info("[CLAUDE] Final response - streaming via text_stream")
+                with self.client.messages.stream(**kwargs) as stream:
+                    for event in stream:
+                        event_type = getattr(event, 'type', None)
+                        
+                        if event_type == 'content_block_start':
+                            block = getattr(event, 'content_block', None)
+                            block_type = getattr(block, 'type', None) if block else None
+                            
+                            if block_type == 'thinking':
+                                in_thinking = True
+                                thinking_start_time = time.time()
+                                if not thinking_emitted:
+                                    yield {"type": "thinking_start"}
+                                    thinking_emitted = True
+                            
+                            elif block_type == 'tool_use':
+                                tool_id = getattr(block, 'id', '')
+                                tool_name = getattr(block, 'name', '')
+                                tool_uses_this_round.append({
+                                    'id': tool_id,
+                                    'name': tool_name,
+                                    'input': {}
+                                })
+                                yield {"type": "tool_use_start", "tool_name": tool_name, "tool_id": tool_id}
+                        
+                        elif event_type == 'content_block_delta':
+                            delta = getattr(event, 'delta', None)
+                            if delta:
+                                delta_type = getattr(delta, 'type', None)
+                                
+                                if delta_type == 'thinking_delta':
+                                    thinking_text = getattr(delta, 'thinking', '')
+                                    if thinking_text:
+                                        yield {"type": "thinking_delta", "content": thinking_text}
+                                
+                                elif delta_type == 'text_delta':
+                                    text = getattr(delta, 'text', '')
+                                    if text:
+                                        text_buffer.append(text)
+                                        yield {"type": "text", "content": text}
+                                
+                                elif delta_type == 'input_json_delta':
+                                    # Accumulate tool input JSON
+                                    partial = getattr(delta, 'partial_json', '')
+                                    if tool_uses_this_round and partial:
+                                        # Store partial input for later parsing
+                                        if 'partial_input' not in tool_uses_this_round[-1]:
+                                            tool_uses_this_round[-1]['partial_input'] = ''
+                                        tool_uses_this_round[-1]['partial_input'] += partial
+                        
+                        elif event_type == 'content_block_stop':
+                            if in_thinking:
+                                duration = time.time() - thinking_start_time if thinking_start_time else 0
+                                yield {"type": "thinking_stop", "duration": round(duration, 1)}
+                                in_thinking = False
                     
-                    try:
-                        async with self.async_client.messages.stream(**kwargs) as stream:
-                            chunk_count = 0
-                            async for text_chunk in stream.text_stream:
-                                chunk_count += 1
-                                yield {"type": "text", "content": text_chunk}
-                            logger.info(f"[CLAUDE] Streamed {chunk_count} chunks")
-                    except Exception as stream_err:
-                        # Fallback: yield the text we already got from non-streaming response
-                        logger.warning(f"[CLAUDE] Streaming failed ({stream_err}), using buffered response")
-                        for block in response.content:
-                            if hasattr(block, 'text') and block.text:
-                                yield {"type": "text", "content": block.text}
-                    
+                    # Get the final message for tool processing
+                    final_message = stream.get_final_message()
+                
+                # Check if we need to execute tools
+                actual_tool_uses = [b for b in final_message.content if b.type == 'tool_use']
+                
+                if not actual_tool_uses:
+                    # No tools, we're done (text already streamed)
                     yield {"type": "done"}
                     return
+                
+                # Process tool uses
+                logger.info(f"[CLAUDE] Processing {len(actual_tool_uses)} tool uses")
+                assistant_content = []
+                
+                for block in final_message.content:
+                    if block.type == "text":
+                        assistant_content.append({"type": "text", "text": block.text})
+                    elif block.type == "thinking":
+                        assistant_content.append({"type": "thinking", "thinking": block.thinking})
+                    elif block.type == "tool_use":
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input
+                        })
+                
+                conversation.append({"role": "assistant", "content": assistant_content})
+                
+                # Execute tools
+                tool_results = []
+                for tool_use in actual_tool_uses:
+                    # Special handling for think tool
+                    if tool_use.name == "think":
+                        thought = tool_use.input.get("thought", "")
+                        yield {
+                            "type": "thinking_delta",
+                            "content": f"\n{thought}\n"
+                        }
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": "Thinking recorded."
+                        })
+                        continue
+                    
+                    try:
+                        result = await tool_executor(
+                            tool_name=tool_use.name,
+                            tool_input=tool_use.input
+                        )
+                        
+                        yield {
+                            "type": "tool_use_complete",
+                            "tool_name": tool_use.name,
+                            "tool_id": tool_use.id,
+                            "success": True
+                        }
+                        
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": json.dumps(result) if not isinstance(result, str) else result
+                        })
+                        
+                    except Exception as e:
+                        logger.error(f"Tool execution error for {tool_use.name}: {e}")
+                        yield {
+                            "type": "tool_use_complete",
+                            "tool_name": tool_use.name,
+                            "tool_id": tool_use.id,
+                            "success": False,
+                            "error": str(e)
+                        }
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": f"Error: {str(e)}",
+                            "is_error": True
+                        })
+                
+                conversation.append({"role": "user", "content": tool_results})
+                
+            except anthropic.BadRequestError as e:
+                # Extended thinking not supported - disable and retry
+                if enable_thinking and "thinking" in str(e).lower():
+                    logger.warning(f"[CLAUDE] Extended thinking not available: {e}")
+                    enable_thinking = False
+                    continue
+                raise
+                
+            except Exception as e:
+                logger.error(f"Streaming tool loop error: {e}", exc_info=True)
+                yield {"type": "error", "message": str(e)}
+                return
+        
+        logger.warning(f"Reached max tool iterations ({max_tool_iterations})")
+        yield {"type": "error", "message": "Maximum tool iterations reached"}
                 
                 # Process tool uses
                 logger.info(f"[CLAUDE] Processing tool uses")

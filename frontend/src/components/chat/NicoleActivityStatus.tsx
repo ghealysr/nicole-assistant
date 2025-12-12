@@ -1,28 +1,28 @@
 'use client';
 
 /**
- * NicoleActivityStatus - Simple Activity Indicator
+ * NicoleActivityStatus - Activity Indicator with Extended Thinking
  * 
- * Clean, minimal status display showing what Nicole is doing:
- * - Processing, Thinking, Researching, Loading Skill, Calling Tool
- * - No expansion, no accordions - just flows through states
- * - Nicole avatar below with progress-based spinner
- * - Stops spinning right before response starts
+ * Two modes:
+ * 1. Extended Thinking: Shows Claude-style collapsible thinking block with streamed content
+ * 2. Simple Status: Shows status pill for tool use and other operations
  * 
- * Anthropic-quality: Simple, focused, efficient
+ * Extended thinking streams fast, response streams normally
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import type { ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
+import { NicoleThinkingBlock } from './NicoleThinkingBlock';
 
-// Clean, minimal color palette
+// Color palette
 const colors = {
   bg: '#FFFFFF',
   border: '#E5E7EB',
   text: '#374151',
   textMuted: '#6B7280',
   accent: '#9B8AB8',
+  accentLight: '#F8F6FB',
 } as const;
 
 // Visibility duration after completion (ms)
@@ -36,9 +36,7 @@ interface NicoleActivityStatusProps {
  * Get display text for current activity
  */
 function getActivityLabel(status: ActivityStatus): string {
-  // If we have a specific display text, use it
   if (status.displayText) {
-    // Clean up common patterns
     const text = status.displayText;
     
     // Tool-specific labels
@@ -50,28 +48,15 @@ function getActivityLabel(status: ActivityStatus): string {
     if (text.toLowerCase().includes('image') || text.toLowerCase().includes('recraft')) return 'Generating image...';
     if (text.toLowerCase().includes('file')) return 'Reading files...';
     if (text.toLowerCase().includes('mcp')) return 'Calling MCP tool...';
-    if (text.toLowerCase().includes('understanding')) return 'Processing request...';
-    if (text.toLowerCase().includes('generating') || text.toLowerCase().includes('formulating')) return 'Thinking...';
     
     return text;
   }
   
-  // Default based on type
   switch (status.type) {
     case 'thinking':
       return 'Thinking...';
     case 'tool':
-      if (status.toolName) {
-        const name = status.toolName.toLowerCase();
-        if (name.includes('brave') || name.includes('search')) return 'Researching...';
-        if (name.includes('memory')) return 'Searching memories...';
-        if (name.includes('document')) return 'Reviewing documents...';
-        if (name.includes('notion')) return 'Checking Notion...';
-        if (name.includes('skill')) return 'Loading skill...';
-        if (name.includes('mcp')) return 'Calling MCP tool...';
-        return `Using ${status.toolName}...`;
-      }
-      return 'Using tool...';
+      return status.toolName ? `Using ${status.toolName}...` : 'Using tool...';
     case 'responding':
       return 'Responding...';
     default:
@@ -81,7 +66,6 @@ function getActivityLabel(status: ActivityStatus): string {
 
 /**
  * Main activity status component
- * Simple status bar + spinning avatar
  */
 export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -89,16 +73,22 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
   const [shouldSpin, setShouldSpin] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // Check if we have extended thinking content
+  const hasThinkingContent = status.extendedThinking?.content?.length > 0;
+  const isThinkingActive = status.extendedThinking?.isThinking;
+  
   // Calculate visibility
   const shouldBeVisible = useCallback(() => {
+    // Always show if actively thinking
+    if (isThinkingActive) return true;
     if (status.isActive) return true;
-    if (status.currentThinking) return true;
+    if (hasThinkingContent && !status.extendedThinking?.isComplete) return true;
     if (status.completedAt) {
       const elapsed = Date.now() - status.completedAt;
       return elapsed < HIDE_DELAY;
     }
     return false;
-  }, [status.isActive, status.currentThinking, status.completedAt]);
+  }, [status.isActive, status.completedAt, hasThinkingContent, isThinkingActive, status.extendedThinking?.isComplete]);
   
   // Manage visibility and spinner
   useEffect(() => {
@@ -110,15 +100,11 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
     }
     
     if (shouldShow && !isVisible) {
-      // Show and start spinning
       setIsExiting(false);
       setIsVisible(true);
       setShouldSpin(true);
     } else if (!shouldShow && isVisible && !isExiting) {
-      // Stop spinning first, then fade out
       setShouldSpin(false);
-      
-      // Brief pause before hiding
       hideTimerRef.current = setTimeout(() => {
         setIsExiting(true);
         hideTimerRef.current = setTimeout(() => {
@@ -126,10 +112,8 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
           setIsExiting(false);
         }, 200);
       }, 100);
-    } else if (shouldShow && status.completedAt) {
-      // Completed - stop spinning but stay visible briefly
+    } else if (shouldShow && status.completedAt && !hasThinkingContent) {
       setShouldSpin(false);
-      
       const elapsed = Date.now() - status.completedAt;
       const remaining = HIDE_DELAY - elapsed;
       
@@ -144,7 +128,6 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
       }
     }
     
-    // Keep spinning while actively processing
     if (status.isActive && isVisible) {
       setShouldSpin(true);
     }
@@ -154,8 +137,31 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
         clearTimeout(hideTimerRef.current);
       }
     };
-  }, [shouldBeVisible, isVisible, isExiting, status.isActive, status.completedAt]);
+  }, [shouldBeVisible, isVisible, isExiting, status.isActive, status.completedAt, hasThinkingContent]);
   
+  // If we have extended thinking content, show the ThinkingBlock
+  if (hasThinkingContent || isThinkingActive) {
+    return (
+      <div 
+        className={`
+          py-3 px-6
+          transition-all duration-200 ease-out
+          ${isExiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}
+        `}
+      >
+        <div className="max-w-[800px] mx-auto">
+          <NicoleThinkingBlock
+            isThinking={status.extendedThinking?.isThinking || false}
+            content={status.extendedThinking?.content || ''}
+            duration={status.extendedThinking?.duration}
+            isComplete={status.extendedThinking?.isComplete || false}
+          />
+        </div>
+      </div>
+    );
+  }
+  
+  // Simple status pill for non-thinking operations
   if (!isVisible) {
     return null;
   }

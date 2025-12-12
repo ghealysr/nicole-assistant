@@ -60,9 +60,9 @@ logger = logging.getLogger(__name__)
 # AGENT CONFIGURATION
 # ============================================================================
 
-# Feature flag: Enable agent tools (Think Tool, Tool Search, etc.)
-# Enable agent tools (Think Tool, Tool Search, Memory, Document)
-ENABLE_AGENT_TOOLS = True
+# Feature flags
+ENABLE_AGENT_TOOLS = True  # Think Tool, Tool Search, Memory, Document
+ENABLE_EXTENDED_THINKING = True  # Claude's native extended thinking (when not using tools)
 
 router = APIRouter()
 
@@ -442,8 +442,8 @@ async def send_message(
             relevant_memories = []
             memory_context = ""
             
-            # Emit status: Searching memories
-            yield f"data: {json.dumps({'type': 'status', 'text': 'Searching memories...'})}\n\n"
+            # Quick status for context gathering (not thinking yet)
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Gathering context...'})}\n\n"
             
             try:
                 logger.info(f"[MEMORY RETRIEVAL] Searching for user {tiger_user_id}...")
@@ -491,8 +491,6 @@ async def send_message(
             
             document_context = ""
             
-            # Emit status: Reviewing documents
-            yield f"data: {json.dumps({'type': 'status', 'text': 'Reviewing documents...'})}\n\n"
             
             try:
                 doc_results = await document_service.search_documents(
@@ -614,8 +612,6 @@ async def send_message(
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
             
-            # Emit status: Thinking
-            yield f"data: {json.dumps({'type': 'status', 'text': 'Thinking...'})}\n\n"
             
             # Send conversation_id for new conversations so frontend can track
             if is_new_conversation:
@@ -645,7 +641,7 @@ async def send_message(
                     
                     logger.info(f"[STREAM] Using agent tools: {[t['name'] for t in tools]}")
                     
-                    # Use streaming with tools
+                    # Use streaming with tools + extended thinking
                     chunk_count = 0
                     async for event in claude_client.generate_streaming_response_with_tools(
                         messages=messages,
@@ -653,23 +649,29 @@ async def send_message(
                         tool_executor=tool_executor,
                         system_prompt=system_prompt,
                         model=None,
-                        max_tokens=4096,
+                        max_tokens=16000,
                         temperature=0.7,
+                        enable_thinking=ENABLE_EXTENDED_THINKING,
+                        thinking_budget=8000,
                     ):
                         event_type = event.get("type", "")
                         
-                        if event_type == "text":
+                        # Extended thinking events
+                        if event_type == "thinking_start":
+                            yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+                        
+                        elif event_type == "thinking_delta":
+                            # Stream thinking content (fast - no delay)
+                            yield f"data: {json.dumps({'type': 'thinking_delta', 'content': event.get('content', '')})}\n\n"
+                        
+                        elif event_type == "thinking_stop":
+                            yield f"data: {json.dumps({'type': 'thinking_stop', 'duration': event.get('duration', 0)})}\n\n"
+                        
+                        elif event_type == "text":
                             content = event.get("content", "")
                             chunk_count += 1
-                            # On first text chunk, emit thinking_complete
-                            if chunk_count == 1:
-                                yield f"data: {json.dumps({'type': 'thinking_complete'})}\n\n"
                             full_response += content
                             yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                        
-                        elif event_type == "thinking":
-                            # Emit thinking step for frontend
-                            yield f"data: {json.dumps({'type': 'thinking_step', 'description': event.get('thought', '')[:200], 'category': event.get('category', ''), 'status': 'complete'})}\n\n"
                         
                         elif event_type == "tool_use_start":
                             yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': event.get('tool_name', '')})}\n\n"
@@ -693,30 +695,66 @@ async def send_message(
                     logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
                 
                 else:
-                    # Fallback: Simple streaming without tools
-                    logger.info(f"[STREAM] Calling Claude (no tools) with {len(messages)} messages")
-                    logger.info(f"[STREAM] First message role: {messages[0]['role'] if messages else 'EMPTY'}")
+                    # Fallback: Simple streaming with extended thinking
+                    logger.info(f"[STREAM] Calling Claude with {len(messages)} messages")
                     
-                    ai_generator = claude_client.generate_streaming_response(
-                        messages=messages,
-                        system_prompt=system_prompt,
-                        model=None,
-                        max_tokens=4096,
-                        temperature=0.7,
-                    )
+                    if ENABLE_EXTENDED_THINKING:
+                        # Use extended thinking for better reasoning
+                        logger.info("[STREAM] Using extended thinking mode")
+                        
+                        async for event in claude_client.generate_streaming_response_with_thinking(
+                            messages=messages,
+                            system_prompt=system_prompt,
+                            model=None,
+                            max_tokens=16000,
+                            thinking_budget=8000,
+                        ):
+                            event_type = event.get("type", "")
+                            
+                            if event_type == "thinking_start":
+                                yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+                            
+                            elif event_type == "thinking_delta":
+                                # Stream thinking content (fast)
+                                yield f"data: {json.dumps({'type': 'thinking_delta', 'content': event.get('content', '')})}\n\n"
+                            
+                            elif event_type == "thinking_stop":
+                                yield f"data: {json.dumps({'type': 'thinking_stop', 'duration': event.get('duration', 0)})}\n\n"
+                            
+                            elif event_type == "text_delta":
+                                # Stream response content
+                                content = event.get("content", "")
+                                full_response += content
+                                yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                            
+                            elif event_type == "error":
+                                yield f"data: {json.dumps({'type': 'error', 'message': event.get('message', 'Unknown error')})}\n\n"
+                                return
+                            
+                            elif event_type == "done":
+                                break
+                        
+                        logger.info(f"[STREAM] Complete with thinking: {len(full_response)} chars")
                     
-                    logger.info(f"[STREAM] Generator created, starting iteration...")
-                    chunk_count = 0
-                    async for chunk in ai_generator:
-                        if chunk_count == 0:
-                            logger.info(f"[STREAM] First chunk received!")
-                            # Emit thinking_complete before first token
-                            yield f"data: {json.dumps({'type': 'thinking_complete'})}\n\n"
-                        chunk_count += 1
-                        full_response += chunk
-                        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                    
-                    logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
+                    else:
+                        # Standard streaming without thinking
+                        ai_generator = claude_client.generate_streaming_response(
+                            messages=messages,
+                            system_prompt=system_prompt,
+                            model=None,
+                            max_tokens=4096,
+                            temperature=0.7,
+                        )
+                        
+                        chunk_count = 0
+                        async for chunk in ai_generator:
+                            if chunk_count == 0:
+                                logger.info(f"[STREAM] First chunk received!")
+                            chunk_count += 1
+                            full_response += chunk
+                            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                        
+                        logger.info(f"[STREAM] Complete: {chunk_count} chunks, {len(full_response)} chars")
                 
             except Exception as claude_error:
                 logger.error(f"[STREAM] Claude error: {claude_error}")
