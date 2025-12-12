@@ -1069,6 +1069,12 @@ export function useVibeProject(projectId?: number) {
   const sseRef = useRef<EventSource | null>(null);
   const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Memoized computed values (must be before useEffects that use them)
+  const isAnyOperationLoading = useMemo(() => 
+    Object.values(operationStates).some(s => s.loading),
+    [operationStates]
+  );
+  
   // SSE connection for real-time updates (with auto-reconnect)
   useEffect(() => {
     if (!projectId || !isAnyOperationLoading) {
@@ -1189,12 +1195,7 @@ export function useVibeProject(projectId?: number) {
     return () => window.clearInterval(interval);
   }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);
 
-  // Memoized computed values
-  const isAnyOperationLoading = useMemo(() => 
-    Object.values(operationStates).some(s => s.loading),
-    [operationStates]
-  );
-  
+  // Additional memoized values
   const remainingApiBudget = useMemo(() =>
     Math.max(0, apiBudget - totalApiCost),
     [apiBudget, totalApiCost]
