@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 # Feature flags
 ENABLE_AGENT_TOOLS = True  # Think Tool, Tool Search, Memory, Document
-ENABLE_EXTENDED_THINKING = True  # Claude's native extended thinking
+ENABLE_EXTENDED_THINKING = False  # Disabled - requires anthropic SDK >= 0.45.0 (currently 0.39.0)
 
 router = APIRouter()
 
