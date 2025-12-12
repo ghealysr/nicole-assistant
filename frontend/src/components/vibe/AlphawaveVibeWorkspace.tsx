@@ -73,7 +73,6 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     loading: projectLoading,
     filesLoading,
     filesError,
-    activitiesError: _activitiesError,
     error: projectError,
     operationStates,
     isAnyOperationLoading,
@@ -87,15 +86,10 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     fetchFiles,
     fetchActivities,
     runIntake,
-    runPlanning: _runPlanning,
-    runBuild: _runBuild,
-    runQA: _runQA,
-    runReview: _runReview,
     approveProject,
     deployProject,
     runPipeline,
     clearIntakeHistory,
-    clearError: _clearError,
   } = useVibeProject(selectedProjectId || undefined);
 
   // Fetch projects on mount
