@@ -94,6 +94,35 @@ export interface VibeLesson {
   times_applied: number;
 }
 
+export interface VibeActivity {
+  activity_id: number;
+  project_id: number;
+  activity_type: string;
+  description: string;
+  user_id?: number;
+  agent_name?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export type ActivityType = 
+  | 'project_created'
+  | 'intake_message'
+  | 'brief_extracted'
+  | 'architecture_generated'
+  | 'build_started'
+  | 'build_completed'
+  | 'qa_passed'
+  | 'qa_failed'
+  | 'review_approved'
+  | 'review_rejected'
+  | 'manually_approved'
+  | 'deployment_started'
+  | 'deployment_completed'
+  | 'status_changed'
+  | 'file_updated'
+  | 'error';
+
 // API Response types
 interface APIResponse<T = Record<string, unknown>> {
   success: boolean;
@@ -136,6 +165,86 @@ type OperationName = 'intake' | 'planning' | 'build' | 'qa' | 'review' | 'approv
 interface OperationState {
   loading: boolean;
   error: string | null;
+}
+
+// ============================================================================
+// USER-FRIENDLY ERROR MESSAGES
+// ============================================================================
+
+/**
+ * Convert technical error messages to user-friendly messages
+ */
+function getFriendlyErrorMessage(error: string, operation?: OperationName): string {
+  const lowercaseError = error.toLowerCase();
+  
+  // Authentication errors
+  if (lowercaseError.includes('not authenticated') || lowercaseError.includes('401')) {
+    return 'Please sign in to continue.';
+  }
+  if (lowercaseError.includes('forbidden') || lowercaseError.includes('403')) {
+    return "You don't have permission to perform this action.";
+  }
+  
+  // Network errors
+  if (lowercaseError.includes('failed to fetch') || lowercaseError.includes('network')) {
+    return 'Unable to connect to the server. Please check your internet connection.';
+  }
+  if (lowercaseError.includes('timeout')) {
+    return 'The request took too long. Please try again.';
+  }
+  
+  // Status transition errors
+  if (lowercaseError.includes('status') && lowercaseError.includes('requires')) {
+    return 'Cannot perform this action in the current project state. Please complete the previous step first.';
+  }
+  if (lowercaseError.includes('invalid status')) {
+    return 'The project is in an unexpected state. Try refreshing the page.';
+  }
+  
+  // Project errors
+  if (lowercaseError.includes('project not found')) {
+    return 'This project no longer exists or you may not have access to it.';
+  }
+  if (lowercaseError.includes('no architecture') || lowercaseError.includes('run planning first')) {
+    return 'Please complete the planning phase before building.';
+  }
+  if (lowercaseError.includes('no files') || lowercaseError.includes('no code')) {
+    return 'No code files were generated. Please try running the build again.';
+  }
+  
+  // AI/Claude errors  
+  if (lowercaseError.includes('claude') || lowercaseError.includes('anthropic')) {
+    return 'The AI service encountered an issue. Please try again in a moment.';
+  }
+  if (lowercaseError.includes('rate limit')) {
+    return 'Too many requests. Please wait a moment before trying again.';
+  }
+  
+  // Parse/validation errors
+  if (lowercaseError.includes('parse') || lowercaseError.includes('invalid json')) {
+    return 'There was an issue processing the response. Please try again.';
+  }
+  
+  // Operation-specific messages
+  if (operation) {
+    const operationMessages: Record<OperationName, string> = {
+      intake: 'Unable to process your message. Please try rephrasing.',
+      planning: 'Planning failed. Please ensure the brief is complete.',
+      build: 'Build failed. Please check the architecture and try again.',
+      qa: 'Quality check failed. Please try running QA again.',
+      review: 'Review failed. Please try again.',
+      approve: 'Approval failed. Please try again.',
+      deploy: 'Deployment failed. Please try again.',
+    };
+    return operationMessages[operation];
+  }
+  
+  // Generic fallback - but cleaner than raw error
+  if (error.length > 100) {
+    return 'An unexpected error occurred. Please try again.';
+  }
+  
+  return error;
 }
 
 // ============================================================================
@@ -324,6 +433,7 @@ export function useVibeProject(projectId?: number) {
   const [files, setFiles] = useState<VibeFile[]>([]);
   const [fileTree, setFileTree] = useState<VibeFileTreeItem[]>([]);
   const [intakeHistory, setIntakeHistory] = useState<Array<{ role: string; content: string }>>([]);
+  const [activities, setActivities] = useState<VibeActivity[]>([]);
   
   // Global loading/error
   const [loading, setLoading] = useState(false);
@@ -431,6 +541,25 @@ export function useVibeProject(projectId?: number) {
     }
   }, []);
 
+  // Fetch project activities (audit log)
+  const fetchActivities = useCallback(async (id: number, limit = 50): Promise<void> => {
+    try {
+      const response = await apiClient.request<{
+        activities: VibeActivity[];
+        total_count: number;
+      }>(`/projects/${id}/activities?limit=${limit}`);
+      
+      if (!response.success || !response.data) {
+        console.error('[useVibeProject] Fetch activities error:', response.error);
+        return;
+      }
+      
+      setActivities(response.data.activities);
+    } catch (err) {
+      console.error('[useVibeProject] Fetch activities error:', err);
+    }
+  }, []);
+
   // Run intake conversation
   const runIntake = useCallback(async (
     id: number,
@@ -478,9 +607,10 @@ export function useVibeProject(projectId?: number) {
       setOperationState('intake', { loading: false, error: null });
       return response.data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Intake failed';
-      setOperationState('intake', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Intake failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'intake');
+      setOperationState('intake', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Intake error:', err);
       return null;
     }
@@ -520,9 +650,10 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Planning failed';
-      setOperationState('planning', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Planning failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'planning');
+      setOperationState('planning', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Planning error:', err);
       return null;
     }
@@ -564,9 +695,10 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Build failed';
-      setOperationState('build', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Build failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'build');
+      setOperationState('build', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Build error:', err);
       return null;
     }
@@ -616,9 +748,10 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'QA failed';
-      setOperationState('qa', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'QA failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'qa');
+      setOperationState('qa', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] QA error:', err);
       return null;
     }
@@ -668,9 +801,10 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Review failed';
-      setOperationState('review', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Review failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'review');
+      setOperationState('review', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Review error:', err);
       return null;
     }
@@ -697,9 +831,10 @@ export function useVibeProject(projectId?: number) {
       setOperationState('approve', { loading: false, error: null });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Approval failed';
-      setOperationState('approve', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Approval failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'approve');
+      setOperationState('approve', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Approve error:', err);
       return false;
     }
@@ -736,9 +871,10 @@ export function useVibeProject(projectId?: number) {
       setOperationState('deploy', { loading: false, error: null });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Deployment failed';
-      setOperationState('deploy', { loading: false, error: message });
-      setError(message);
+      const rawMessage = err instanceof Error ? err.message : 'Deployment failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'deploy');
+      setOperationState('deploy', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
       console.error('[useVibeProject] Deploy error:', err);
       return false;
     }
@@ -825,6 +961,7 @@ export function useVibeProject(projectId?: number) {
     if (projectId) {
       fetchProject(projectId);
       fetchFiles(projectId);
+      fetchActivities(projectId);
     } else {
       // Clear state when no project selected
       setProject(null);
@@ -832,6 +969,7 @@ export function useVibeProject(projectId?: number) {
       setWorkflow([]);
       setFiles([]);
       setFileTree([]);
+      setActivities([]);
       setIntakeHistory([]);
       setError(null);
     }
@@ -870,6 +1008,7 @@ export function useVibeProject(projectId?: number) {
     files,
     fileTree,
     intakeHistory,
+    activities,
     
     // Global state
     loading,
@@ -890,6 +1029,7 @@ export function useVibeProject(projectId?: number) {
     // Actions
     fetchProject,
     fetchFiles,
+    fetchActivities,
     runIntake,
     runPlanning,
     runBuild,

@@ -22,6 +22,7 @@ from app.services.vibe_service import (
     ProjectStatus,
     ProjectType,
     LessonCategory,
+    ActivityType,
     ProjectNotFoundError,
     InvalidStatusTransitionError,
     MissingPrerequisiteError,
@@ -561,6 +562,40 @@ async def get_file_content(
 
 
 # ============================================================================
+# ACTIVITY ENDPOINTS
+# ============================================================================
+
+@router.get("/projects/{project_id}/activities", response_model=APIResponse)
+async def get_project_activities(
+    project_id: int,
+    limit: int = Query(default=50, ge=1, le=200, description="Max activities to return"),
+    user: dict = Depends(verify_jwt)
+) -> APIResponse:
+    """
+    Get activity timeline for a project.
+    
+    Returns all activities (audit log) for the project, newest first.
+    Useful for displaying timeline of project events.
+    """
+    user_id = get_user_id(user)
+    
+    # Verify project access first
+    project = await vibe_service.get_project(project_id, user_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    activities = await vibe_service.get_project_activities(project_id, limit)
+    
+    return APIResponse(
+        success=True,
+        data={
+            "activities": activities,
+            "total_count": len(activities)
+        }
+    )
+
+
+# ============================================================================
 # LESSONS ENDPOINTS
 # ============================================================================
 
@@ -595,13 +630,15 @@ async def create_lesson(
 async def get_lessons(
     project_type: str = Query(..., description="Project type to get lessons for"),
     category: Optional[str] = Query(None, description="Filter by category"),
+    query: Optional[str] = Query(None, description="Semantic search query (uses embeddings)"),
     limit: int = Query(10, ge=1, le=50),
     user: dict = Depends(verify_jwt)
 ) -> APIResponse:
     """
     Get lessons relevant to a project type.
     
-    Returns lessons ordered by application frequency and recency.
+    Supports both category-based filtering and semantic search via embeddings.
+    Returns lessons ordered by relevance (if query provided) or by application frequency.
     """
     get_user_id(user)  # Verify authenticated
     
@@ -625,6 +662,7 @@ async def get_lessons(
     lessons = await vibe_service.get_relevant_lessons(
         project_type=project_type,
         category=category,
+        query=query,
         limit=limit
     )
     

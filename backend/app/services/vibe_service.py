@@ -24,6 +24,7 @@ from functools import wraps
 
 from app.database import db
 from app.integrations.alphawave_claude import claude_client
+from app.integrations.alphawave_openai import openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,26 @@ class LessonCategory(str, Enum):
     PERFORMANCE = "performance"
     ACCESSIBILITY = "accessibility"
     UX = "ux"
+
+
+class ActivityType(str, Enum):
+    """Activity types for audit logging."""
+    PROJECT_CREATED = "project_created"
+    INTAKE_MESSAGE = "intake_message"
+    BRIEF_EXTRACTED = "brief_extracted"
+    ARCHITECTURE_GENERATED = "architecture_generated"
+    BUILD_STARTED = "build_started"
+    BUILD_COMPLETED = "build_completed"
+    QA_PASSED = "qa_passed"
+    QA_FAILED = "qa_failed"
+    REVIEW_APPROVED = "review_approved"
+    REVIEW_REJECTED = "review_rejected"
+    MANUALLY_APPROVED = "manually_approved"
+    DEPLOYMENT_STARTED = "deployment_started"
+    DEPLOYMENT_COMPLETED = "deployment_completed"
+    STATUS_CHANGED = "status_changed"
+    FILE_UPDATED = "file_updated"
+    ERROR = "error"
 
 
 # API Cost estimates (per 1K tokens)
@@ -443,58 +464,78 @@ def parse_files_from_response(response: str) -> List[ParsedFile]:
     """
     Parse file contents from Claude's response.
     
-    Supports multiple formats:
-    1. ```filepath:/path/to/file.tsx
-    2. ```tsx with // filepath comment
-    3. === filename.tsx === headers
+    Supports multiple formats (in order of specificity):
+    1. ```filepath:/path/to/file.tsx - explicit filepath
+    2. **path/to/file.tsx** header followed by code block
+    3. `path/to/file.tsx` header followed by code block  
+    4. ### path/to/file.tsx header followed by code block
+    5. ```lang with // filepath or /* filepath */ comment
+    6. === filename.tsx === headers
+    7. File: path/to/file.tsx followed by code block
     """
     files: List[ParsedFile] = []
     seen_paths: set = set()
     
-    # Pattern 1: ```filepath:/path/to/file
+    def add_file(path: str, content: str) -> bool:
+        """Helper to add a file if valid and not seen."""
+        path = path.strip().lstrip('/')
+        content = content.strip()
+        if path and content and path not in seen_paths and len(content) > 10:
+            files.append(ParsedFile(
+                path=path,
+                content=content,
+                language=ParsedFile.detect_language(path)
+            ))
+            seen_paths.add(path)
+            return True
+        return False
+    
+    # Pattern 1: ```filepath:/path/to/file (most explicit)
     pattern1 = r'```filepath:([^\n]+)\n(.*?)```'
     for match in re.finditer(pattern1, response, re.DOTALL):
-        path = match.group(1).strip()
-        content = match.group(2).strip()
-        if path and content and path not in seen_paths:
-            files.append(ParsedFile(
-                path=path,
-                content=content,
-                language=ParsedFile.detect_language(path)
-            ))
-            seen_paths.add(path)
+        add_file(match.group(1), match.group(2))
     
-    # Pattern 2: ```lang with // filepath comment on first line
-    pattern2 = r'```(?:tsx?|jsx?|typescript|javascript|css|json|html)\n//\s*([^\n]+\.(?:tsx?|jsx?|css|json|html|md))\n(.*?)```'
+    # Pattern 2: **path/to/file.tsx** followed by code block
+    pattern2 = r'\*\*([^\*\n]+\.(?:tsx?|jsx?|css|json|html|md|py))\*\*\s*\n```\w*\n(.*?)```'
     for match in re.finditer(pattern2, response, re.DOTALL):
-        path = match.group(1).strip()
-        content = match.group(2).strip()
-        if path and content and path not in seen_paths:
-            files.append(ParsedFile(
-                path=path,
-                content=content,
-                language=ParsedFile.detect_language(path)
-            ))
-            seen_paths.add(path)
+        add_file(match.group(1), match.group(2))
     
-    # Pattern 3: === filename.ext === headers
-    pattern3 = r'===\s*([^\s=]+\.(?:tsx?|jsx?|css|json|html|md))\s*===\s*\n(.*?)(?=\n===|$)'
+    # Pattern 3: `path/to/file.tsx` followed by code block
+    pattern3 = r'`([^`\n]+\.(?:tsx?|jsx?|css|json|html|md|py))`\s*\n```\w*\n(.*?)```'
     for match in re.finditer(pattern3, response, re.DOTALL):
+        add_file(match.group(1), match.group(2))
+    
+    # Pattern 4: ### path/to/file.tsx header
+    pattern4 = r'#{1,4}\s*([^\n]+\.(?:tsx?|jsx?|css|json|html|md|py))\s*\n```\w*\n(.*?)```'
+    for match in re.finditer(pattern4, response, re.DOTALL):
+        add_file(match.group(1), match.group(2))
+    
+    # Pattern 5a: ```lang with // filepath comment on first line
+    pattern5a = r'```(?:tsx?|jsx?|typescript|javascript|css|json|html)\n//\s*([^\n]+\.(?:tsx?|jsx?|css|json|html|md|py))\n(.*?)```'
+    for match in re.finditer(pattern5a, response, re.DOTALL):
+        add_file(match.group(1), match.group(2))
+    
+    # Pattern 5b: ```lang with /* filepath */ comment on first line
+    pattern5b = r'```(?:tsx?|jsx?|typescript|javascript|css)\n/\*\s*([^\n\*]+\.(?:tsx?|jsx?|css))\s*\*/\n(.*?)```'
+    for match in re.finditer(pattern5b, response, re.DOTALL):
+        add_file(match.group(1), match.group(2))
+    
+    # Pattern 6: === filename.ext === headers
+    pattern6 = r'===\s*([^\s=]+\.(?:tsx?|jsx?|css|json|html|md|py))\s*===\s*\n(.*?)(?=\n===|$)'
+    for match in re.finditer(pattern6, response, re.DOTALL):
         path = match.group(1).strip()
         content = match.group(2).strip()
         # Clean content: remove leading/trailing code blocks
         if '```' in content:
-            # Extract content from code block if present
             code_match = re.search(r'```\w*\n?(.*?)```', content, re.DOTALL)
             if code_match:
                 content = code_match.group(1).strip()
-        if path and content and path not in seen_paths:
-            files.append(ParsedFile(
-                path=path,
-                content=content,
-                language=ParsedFile.detect_language(path)
-            ))
-            seen_paths.add(path)
+        add_file(path, content)
+    
+    # Pattern 7: File: path/to/file.tsx followed by code block
+    pattern7 = r'File:\s*([^\n]+\.(?:tsx?|jsx?|css|json|html|md|py))\s*\n```\w*\n(.*?)```'
+    for match in re.finditer(pattern7, response, re.DOTALL):
+        add_file(match.group(1), match.group(2))
     
     if not files:
         logger.warning("[VIBE] No files parsed from build response. Response preview: %s...", 
@@ -626,6 +667,75 @@ class VibeService:
         logger.info("[VIBE] Saved %d files for project %d", count, project_id)
         return count
     
+    async def _log_activity(
+        self,
+        project_id: int,
+        activity_type: ActivityType,
+        description: str,
+        user_id: Optional[int] = None,
+        agent_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Log an activity to the audit trail.
+        
+        Args:
+            project_id: Project this activity belongs to
+            activity_type: Type of activity from ActivityType enum
+            description: Human-readable description
+            user_id: User who performed the action (None for system)
+            agent_name: AI agent name if applicable
+            metadata: Additional structured data
+        """
+        try:
+            await db.execute(
+                """
+                INSERT INTO vibe_activities (
+                    project_id, activity_type, description, 
+                    user_id, agent_name, metadata, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                """,
+                project_id,
+                activity_type.value,
+                description,
+                user_id,
+                agent_name,
+                json.dumps(metadata) if metadata else '{}',
+            )
+        except Exception as e:
+            # Don't fail operations due to activity logging errors
+            logger.warning("[VIBE] Failed to log activity: %s", e)
+    
+    async def get_project_activities(
+        self,
+        project_id: int,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get activity timeline for a project.
+        
+        Args:
+            project_id: Project ID
+            limit: Maximum activities to return
+            
+        Returns:
+            List of activities, newest first
+        """
+        results = await db.fetch(
+            """
+            SELECT 
+                activity_id, project_id, activity_type, description,
+                user_id, agent_name, metadata, created_at
+            FROM vibe_activities
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            project_id, limit
+        )
+        return [dict(r) for r in results] if results else []
+    
     # ========================================================================
     # PROJECT CRUD
     # ========================================================================
@@ -680,6 +790,15 @@ class VibeService:
             
             project = dict(result)
             logger.info("[VIBE] Created project %d: %s", project['project_id'], name)
+            
+            # Log activity
+            await self._log_activity(
+                project_id=project['project_id'],
+                activity_type=ActivityType.PROJECT_CREATED,
+                description=f"Project '{name}' created",
+                user_id=user_id,
+                metadata={"project_type": project_type, "client_name": client_name}
+            )
             
             return OperationResult(
                 success=True,
@@ -930,6 +1049,16 @@ class VibeService:
         brief = extract_json_from_response(response)
         new_status = ProjectStatus.INTAKE.value
         
+        # Log the intake message
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description=f"Intake message received ({len(user_message)} chars)",
+            user_id=user_id,
+            agent_name="Nicole",
+            metadata={"message_preview": user_message[:100]}
+        )
+        
         if brief:
             # Validate brief has required fields
             required_fields = ["business_name", "project_type"]
@@ -941,6 +1070,16 @@ class VibeService:
                 })
                 new_status = ProjectStatus.PLANNING.value
                 logger.info("[VIBE] Extracted brief for project %d", project_id)
+                
+                # Log brief extraction
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.BRIEF_EXTRACTED,
+                    description=f"Project brief extracted for {brief.get('business_name', 'Unknown')}",
+                    user_id=user_id,
+                    agent_name="Nicole",
+                    metadata={"business_name": brief.get("business_name"), "project_type": brief.get("project_type")}
+                )
             else:
                 logger.warning("[VIBE] Extracted JSON missing required fields")
                 brief = None
@@ -1019,15 +1158,26 @@ class VibeService:
                 "status": ProjectStatus.BUILDING.value
             })
             
+            page_count = len(architecture.get("pages", []))
             logger.info("[VIBE] Generated architecture for project %d with %d pages",
-                       project_id, len(architecture.get("pages", [])))
+                       project_id, page_count)
+            
+            # Log activity
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ARCHITECTURE_GENERATED,
+                description=f"Architecture generated with {page_count} pages",
+                user_id=user_id,
+                agent_name="Opus",
+                metadata={"page_count": page_count, "complexity": architecture.get("complexity")}
+            )
             
             return OperationResult(
                 success=True,
                 data={
                     "architecture": architecture,
                     "status": ProjectStatus.BUILDING.value,
-                    "page_count": len(architecture.get("pages", []))
+                    "page_count": page_count
                 },
                 api_cost=cost
             )
@@ -1074,6 +1224,16 @@ class VibeService:
                 success=False,
                 error="Project has no architecture. Run planning first."
             )
+        
+        # Log build start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.BUILD_STARTED,
+            description="Code generation started",
+            user_id=user_id,
+            agent_name="Sonnet",
+            metadata={"page_count": len(architecture.get("pages", []))}
+        )
         
         # Build comprehensive prompt
         build_prompt = f"""Generate a complete, production-ready Next.js 14 website based on this specification:
@@ -1140,6 +1300,16 @@ Generate complete, working code for each file."""
             "status": ProjectStatus.QA.value,
             "preview_url": preview_url
         })
+        
+        # Log build completion
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.BUILD_COMPLETED,
+            description=f"Build completed: {file_count} files generated",
+            user_id=user_id,
+            agent_name="Sonnet",
+            metadata={"file_count": file_count, "files": [f.path for f in files[:10]]}
+        )
         
         return OperationResult(
             success=True,
@@ -1245,6 +1415,17 @@ Perform a comprehensive QA review and output your findings as JSON."""
         new_status = ProjectStatus.REVIEW.value if passed else ProjectStatus.QA.value
         await self.update_project(project_id, user_id, {"status": new_status})
         
+        # Log QA result
+        issue_count = len(qa_result.get("issues", []))
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.QA_PASSED if passed else ActivityType.QA_FAILED,
+            description=f"QA {'passed' if passed else 'failed'} - Score: {score}/100, {issue_count} issues",
+            user_id=user_id,
+            agent_name="QA Agent",
+            metadata={"score": score, "passed": passed, "issue_count": issue_count}
+        )
+        
         return OperationResult(
             success=True,
             data={
@@ -1345,6 +1526,7 @@ Output your comprehensive review as JSON."""
         
         approved = review_result.get("approved", False)
         recommendation = review_result.get("recommendation", "revise")
+        score = review_result.get("score", 0)
         
         # Update status based on review
         if approved or recommendation == "approve":
@@ -1354,12 +1536,22 @@ Output your comprehensive review as JSON."""
         
         await self.update_project(project_id, user_id, {"status": new_status})
         
+        # Log review result
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.REVIEW_APPROVED if approved else ActivityType.REVIEW_REJECTED,
+            description=f"Review {'approved' if approved else 'needs revision'} - Score: {score}/10",
+            user_id=user_id,
+            agent_name="Opus Reviewer",
+            metadata={"score": score, "recommendation": recommendation, "approved": approved}
+        )
+        
         return OperationResult(
             success=True,
             data={
                 "status": new_status,
                 "approved": approved,
-                "score": review_result.get("score", 0),
+                "score": score,
                 "strengths": review_result.get("strengths", []),
                 "concerns": review_result.get("concerns", []),
                 "required_changes": review_result.get("required_changes"),
@@ -1397,6 +1589,15 @@ Output your comprehensive review as JSON."""
         })
         
         logger.info("[VIBE] Project %d approved by user %d", project_id, user_id)
+        
+        # Log manual approval
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.MANUALLY_APPROVED,
+            description="Project manually approved for deployment",
+            user_id=user_id,
+            metadata={"previous_status": project.get("status")}
+        )
         
         return OperationResult(
             success=True,
@@ -1437,6 +1638,15 @@ Output your comprehensive review as JSON."""
         final_preview = preview_url or f"https://preview.alphawave.ai/p/{project_id}"
         final_production = production_url or f"https://sites.alphawave.ai/{project_id}"
         
+        # Log deployment start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.DEPLOYMENT_STARTED,
+            description="Deployment initiated",
+            user_id=user_id,
+            metadata={"preview_url": final_preview}
+        )
+        
         await self.update_project(project_id, user_id, {
             "status": ProjectStatus.DEPLOYED.value,
             "preview_url": final_preview,
@@ -1444,6 +1654,18 @@ Output your comprehensive review as JSON."""
         })
         
         logger.info("[VIBE] Project %d deployed to %s", project_id, final_production)
+        
+        # Log deployment completion
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.DEPLOYMENT_COMPLETED,
+            description=f"Deployed to {final_production}",
+            user_id=user_id,
+            metadata={
+                "preview_url": final_preview,
+                "production_url": final_production
+            }
+        )
         
         return OperationResult(
             success=True,
@@ -1528,26 +1750,50 @@ Output your comprehensive review as JSON."""
         project = await self.get_project(project_id, 0)  # 0 = no user check for lessons
         project_type = project.get("project_type", "website") if project else "website"
         
+        # Generate embedding for semantic search
+        embedding = None
         try:
-            result = await db.fetchrow(
-                """
-                INSERT INTO vibe_lessons (
-                    project_id, project_type, lesson_category,
-                    issue, solution, impact, tags, created_at
+            lesson_text = f"{category}: {issue}. Solution: {solution}"
+            embedding = await openai_client.generate_embedding(lesson_text)
+            logger.info("[VIBE] Generated embedding for lesson")
+        except Exception as e:
+            logger.warning("[VIBE] Failed to generate embedding: %s", e)
+            # Continue without embedding - it's optional
+        
+        try:
+            if embedding:
+                result = await db.fetchrow(
+                    """
+                    INSERT INTO vibe_lessons (
+                        project_id, project_type, lesson_category,
+                        issue, solution, impact, tags, embedding, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, NOW())
+                    RETURNING lesson_id
+                    """,
+                    project_id, project_type, category,
+                    issue, solution, impact, tags or [], embedding
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                RETURNING lesson_id
-                """,
-                project_id, project_type, category,
-                issue, solution, impact, tags or []
-            )
+            else:
+                result = await db.fetchrow(
+                    """
+                    INSERT INTO vibe_lessons (
+                        project_id, project_type, lesson_category,
+                        issue, solution, impact, tags, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                    RETURNING lesson_id
+                    """,
+                    project_id, project_type, category,
+                    issue, solution, impact, tags or []
+                )
             
             if result:
                 logger.info("[VIBE] Captured lesson %d from project %d", 
                           result['lesson_id'], project_id)
                 return OperationResult(
                     success=True,
-                    data={"lesson_id": result['lesson_id']}
+                    data={"lesson_id": result['lesson_id'], "has_embedding": embedding is not None}
                 )
             
             return OperationResult(success=False, error="Failed to save lesson")
@@ -1560,13 +1806,65 @@ Output your comprehensive review as JSON."""
         self,
         project_type: str,
         category: Optional[str] = None,
+        query: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Get lessons relevant to a project type.
         
-        TODO: Add embedding-based semantic search when embeddings are populated.
+        Supports both category-based filtering and semantic search via embeddings.
+        
+        Args:
+            project_type: Filter by project type (website, chatbot, etc.)
+            category: Optional category filter
+            query: Optional semantic search query (uses embeddings)
+            limit: Maximum results to return
+            
+        Returns:
+            List of relevant lessons
         """
+        # If query provided, try semantic search
+        if query:
+            try:
+                query_embedding = await openai_client.generate_embedding(query)
+                
+                if category:
+                    results = await db.fetch(
+                        """
+                        SELECT lesson_id, project_type, lesson_category,
+                               issue, solution, impact, times_applied,
+                               1 - (embedding <=> $1::vector) as similarity
+                        FROM vibe_lessons
+                        WHERE project_type = $2 
+                          AND lesson_category = $3
+                          AND embedding IS NOT NULL
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $4
+                        """,
+                        query_embedding, project_type, category, limit
+                    )
+                else:
+                    results = await db.fetch(
+                        """
+                        SELECT lesson_id, project_type, lesson_category,
+                               issue, solution, impact, times_applied,
+                               1 - (embedding <=> $1::vector) as similarity
+                        FROM vibe_lessons
+                        WHERE project_type = $2
+                          AND embedding IS NOT NULL
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $3
+                        """,
+                        query_embedding, project_type, limit
+                    )
+                
+                if results:
+                    return [dict(r) for r in results]
+                    
+            except Exception as e:
+                logger.warning("[VIBE] Semantic search failed, falling back: %s", e)
+        
+        # Fallback to category/popularity-based search
         if category:
             results = await db.fetch(
                 """

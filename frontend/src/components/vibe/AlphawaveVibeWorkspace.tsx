@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
+import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType, type VibeActivity } from '@/lib/hooks/useVibeProject';
 
 interface FileItem {
   name: string;
@@ -44,8 +44,8 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
   // Intake chat
   const [intakeMessage, setIntakeMessage] = useState('');
   
-  // Activities log
-  const [activities, setActivities] = useState<Array<{
+  // Local activity state for immediate UI feedback (will be replaced by API activities)
+  const [localActivities, setLocalActivities] = useState<Array<{
     agent: string;
     action: string;
     time: string;
@@ -69,6 +69,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     files,
     fileTree,
     intakeHistory,
+    activities,
     loading: projectLoading,
     error: projectError,
     operationStates,
@@ -79,6 +80,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     totalApiCost,
     fetchProject,
     fetchFiles,
+    fetchActivities,
     runIntake,
     runPlanning,
     runBuild,
@@ -100,11 +102,36 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
 
   // Add activity
   const addActivity = useCallback((agent: string, action: string) => {
-    setActivities(prev => [
+    setLocalActivities(prev => [
       { agent, action, time: 'Just now' },
       ...prev.slice(0, 9)
     ]);
   }, []);
+  
+  // Format activity time
+  const formatActivityTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return date.toLocaleDateString();
+  };
+  
+  // Combine local and API activities for display
+  const combinedActivities = useMemo(() => {
+    const apiFormatted = (activities || []).map(a => ({
+      agent: a.agent_name || 'System',
+      action: a.description,
+      time: formatActivityTime(a.created_at),
+    }));
+    
+    // Local activities first (most recent), then API activities
+    return [...localActivities, ...apiFormatted].slice(0, 10);
+  }, [localActivities, activities]);
 
   // Create new project
   const handleCreateProject = async () => {
@@ -725,6 +752,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
               if (selectedProjectId) {
                 fetchProject(selectedProjectId);
                 fetchFiles(selectedProjectId);
+                fetchActivities(selectedProjectId);
               }
             }}>
               Refresh
@@ -968,14 +996,14 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           <div className="vibe-activity-title">
             <svg viewBox="0 0 24 24" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             Activity
-            <span className="vibe-activity-badge">{activities.length}</span>
+            <span className="vibe-activity-badge">{combinedActivities.length}</span>
           </div>
           <button className="vibe-activity-toggle">
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6"/></svg>
           </button>
         </div>
         <div className="vibe-activity-list">
-          {activities.slice(0, 5).map((a, i) => (
+          {combinedActivities.slice(0, 5).map((a, i) => (
             <div key={i} className="vibe-activity-item">
               <span className="vibe-activity-dot" />
               <div className="vibe-activity-content">
@@ -986,7 +1014,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
               </div>
             </div>
           ))}
-          {activities.length === 0 && (
+          {combinedActivities.length === 0 && (
             <div className="vibe-activity-empty">No activity yet</div>
           )}
         </div>
