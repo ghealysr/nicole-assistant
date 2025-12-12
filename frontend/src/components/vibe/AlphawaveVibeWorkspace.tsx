@@ -1,8 +1,63 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 
+// ============================================================================
+// ERROR BOUNDARY - Catches React render errors
+// ============================================================================
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class VibeErrorBoundary extends Component<{ children: ReactNode; onReset?: () => void }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode; onReset?: () => void }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[VibeErrorBoundary] Caught error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="vibe-error-boundary">
+          <div className="vibe-error-content">
+            <h3>⚠️ Something went wrong</h3>
+            <p>The Vibe Dashboard encountered an error.</p>
+            <button
+              className="vibe-btn-primary"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                this.props.onReset?.();
+              }}
+            >
+              Try Again
+            </button>
+            <details style={{ marginTop: 12, fontSize: 12, color: '#999' }}>
+              <summary>Error Details</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {this.state.error?.message}
+              </pre>
+            </details>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ============================================================================
+// TYPES
+// ============================================================================
 interface FileItem {
   name: string;
   type: 'folder' | 'html' | 'css' | 'js' | 'json' | 'image' | 'md' | 'tsx' | 'ts';
@@ -73,6 +128,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     loading: projectLoading,
     filesLoading,
     filesError,
+    activitiesError,
     error: projectError,
     operationStates,
     isAnyOperationLoading,
@@ -1042,19 +1098,27 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           </button>
         </div>
         <div className="vibe-activity-list">
-          {combinedActivities.slice(0, 5).map((a, i) => (
-            <div key={i} className="vibe-activity-item">
-              <span className="vibe-activity-dot" />
-              <div className="vibe-activity-content">
-                <div className="vibe-activity-text">
-                  <strong>{a.agent}</strong> {a.action}
-                </div>
-                <div className="vibe-activity-time">{a.time}</div>
-              </div>
+          {activitiesError ? (
+            <div className="vibe-activity-error">
+              <span>Failed to load activities</span>
+              <button onClick={() => selectedProjectId && fetchActivities(selectedProjectId)}>
+                Retry
+              </button>
             </div>
-          ))}
-          {combinedActivities.length === 0 && (
+          ) : combinedActivities.length === 0 ? (
             <div className="vibe-activity-empty">No activity yet</div>
+          ) : (
+            combinedActivities.slice(0, 5).map((a, i) => (
+              <div key={i} className="vibe-activity-item">
+                <span className="vibe-activity-dot" />
+                <div className="vibe-activity-content">
+                  <div className="vibe-activity-text">
+                    <strong>{a.agent}</strong> {a.action}
+                  </div>
+                  <div className="vibe-activity-time">{a.time}</div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>
@@ -1072,24 +1136,27 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     }
   };
 
-  // Prevent rendering until hooks are initialized
-  if (projects === undefined) {
+  // Show loading state while fetching initial data
+  if (projectsLoading && (!projects || projects.length === 0)) {
     return (
       <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
-        <div className="vibe-loading">
-          Loading Vibe Dashboard...
+        <div className="vibe-loading-screen">
+          <div className="vibe-loading-spinner" />
+          <p>Loading Vibe Dashboard...</p>
         </div>
       </aside>
     );
   }
 
   return (
-    <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
-      <canvas ref={canvasRef} className="vibe-particle-canvas" />
+    <VibeErrorBoundary onReset={() => fetchProjects()}>
+      <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
+        <canvas ref={canvasRef} className="vibe-particle-canvas" />
 
-      <div className="vibe-inner">
-        {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}
-      </div>
-    </aside>
+        <div className="vibe-inner">
+          {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}
+        </div>
+      </aside>
+    </VibeErrorBoundary>
   );
 }

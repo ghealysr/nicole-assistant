@@ -1066,8 +1066,6 @@ export function useVibeProject(projectId?: number) {
 
   // Track previous loading state to detect operation completion
   const wasLoadingRef = useRef(false);
-  const sseRef = useRef<EventSource | null>(null);
-  const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Memoized computed values (must be before useEffects that use them)
   const isAnyOperationLoading = useMemo(() => 
@@ -1075,98 +1073,7 @@ export function useVibeProject(projectId?: number) {
     [operationStates]
   );
   
-  // SSE connection for real-time updates (with auto-reconnect)
-  useEffect(() => {
-    if (!projectId || !isAnyOperationLoading) {
-      // Close SSE when no operation is running
-      if (sseRef.current) {
-        sseRef.current.close();
-        sseRef.current = null;
-      }
-      if (sseReconnectTimeoutRef.current) {
-        clearTimeout(sseReconnectTimeoutRef.current);
-        sseReconnectTimeoutRef.current = null;
-      }
-      return;
-    }
-    
-    let mounted = true;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 10;
-    
-    const connectSSE = () => {
-      if (!mounted || reconnectAttempts >= maxReconnectAttempts) return;
-      
-      const url = `${API_URL}/vibe/projects/${projectId}/progress/stream`;
-      const eventSource = new EventSource(url);
-      sseRef.current = eventSource;
-      
-      eventSource.onopen = () => {
-        reconnectAttempts = 0; // Reset on successful connection
-      };
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Update activities if provided
-          if (data.latest_activity) {
-            setActivities(prev => {
-              // Avoid duplicates
-              const exists = prev.some(a => a.activity_id === data.latest_activity.activity_id);
-              if (exists) return prev;
-              return [data.latest_activity, ...prev].slice(0, 50);
-            });
-          }
-          
-          // Update project status if changed
-          if (data.status && project && data.status !== project.status) {
-            setProject(prev => prev ? { ...prev, status: data.status } : prev);
-          }
-        } catch {
-          // Ignore parse errors from ping messages
-        }
-      };
-      
-      eventSource.onerror = () => {
-        eventSource.close();
-        sseRef.current = null;
-        
-        // Auto-reconnect with exponential backoff
-        if (mounted && isAnyOperationLoading && reconnectAttempts < maxReconnectAttempts) {
-          reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 10000);
-          sseReconnectTimeoutRef.current = setTimeout(connectSSE, delay);
-        }
-      };
-      
-      // Auto-reconnect when SSE ends normally (60s timeout)
-      eventSource.addEventListener('end', () => {
-        eventSource.close();
-        sseRef.current = null;
-        if (mounted && isAnyOperationLoading) {
-          // Reconnect after a brief pause
-          sseReconnectTimeoutRef.current = setTimeout(connectSSE, 500);
-        }
-      });
-    };
-    
-    connectSSE();
-    
-    return () => {
-      mounted = false;
-      if (sseRef.current) {
-        sseRef.current.close();
-        sseRef.current = null;
-      }
-      if (sseReconnectTimeoutRef.current) {
-        clearTimeout(sseReconnectTimeoutRef.current);
-        sseReconnectTimeoutRef.current = null;
-      }
-    };
-  }, [projectId, isAnyOperationLoading, project]);
-  
-  // Fallback polling when SSE unavailable + final refresh on completion
+  // Polling for real-time updates during operations
   useEffect(() => {
     if (!projectId) return;
     
@@ -1183,14 +1090,11 @@ export function useVibeProject(projectId?: number) {
     // Initial refresh when operation starts
     fetchActivities(projectId, 25);
     
-    // Fallback periodic refresh (SSE is primary, this is backup)
+    // Periodic refresh during operations
     const interval = window.setInterval(() => {
-      // Only poll if SSE is not connected
-      if (!sseRef.current || sseRef.current.readyState !== EventSource.OPEN) {
-        fetchActivities(projectId, 25);
-        fetchProject(projectId);
-      }
-    }, 5000);
+      fetchActivities(projectId, 25);
+      fetchProject(projectId);
+    }, 4000);
     
     return () => window.clearInterval(interval);
   }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);
