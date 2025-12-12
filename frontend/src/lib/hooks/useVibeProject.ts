@@ -445,6 +445,8 @@ export function useVibeProject(projectId?: number) {
   // Global loading/error
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Operation-specific states
@@ -457,18 +459,6 @@ export function useVibeProject(projectId?: number) {
     approve: { loading: false, error: null },
     deploy: { loading: false, error: null },
   });
-  
-  // AbortController for cancelling in-flight requests
-  const abortControllerRef = useRef<AbortController | null>(null);
-  
-  // Cleanup: abort any in-flight request on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
   
   // API cost tracking
   const [totalApiCost, setTotalApiCost] = useState(0);
@@ -546,6 +536,7 @@ export function useVibeProject(projectId?: number) {
   // Fetch project files
   const fetchFiles = useCallback(async (id: number): Promise<void> => {
     setFilesLoading(true);
+    setFilesError(null);
     try {
       const response = await apiClient.request<{
         files: VibeFile[];
@@ -553,6 +544,9 @@ export function useVibeProject(projectId?: number) {
       }>(`/projects/${id}/files`);
       
       if (!response.success || !response.data) {
+        const errMsg = response.error || 'Failed to fetch files';
+        const friendlyMsg = getFriendlyErrorMessage(errMsg);
+        setFilesError(friendlyMsg);
         console.error('[useVibeProject] Fetch files error:', response.error);
         return;
       }
@@ -560,6 +554,9 @@ export function useVibeProject(projectId?: number) {
       setFiles(response.data.files);
       setFileTree(response.data.file_tree);
     } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch files';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setFilesError(friendlyMessage);
       console.error('[useVibeProject] Fetch files error:', err);
     } finally {
       setFilesLoading(false);
@@ -568,6 +565,7 @@ export function useVibeProject(projectId?: number) {
 
   // Fetch project activities (audit log)
   const fetchActivities = useCallback(async (id: number, limit = 50): Promise<void> => {
+    setActivitiesError(null);
     try {
       const response = await apiClient.request<{
         activities: VibeActivity[];
@@ -575,12 +573,18 @@ export function useVibeProject(projectId?: number) {
       }>(`/projects/${id}/activities?limit=${limit}`);
       
       if (!response.success || !response.data) {
+        const errMsg = response.error || 'Failed to fetch activities';
+        const friendlyMsg = getFriendlyErrorMessage(errMsg);
+        setActivitiesError(friendlyMsg);
         console.error('[useVibeProject] Fetch activities error:', response.error);
         return;
       }
       
       setActivities(response.data.activities);
     } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Failed to fetch activities';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage);
+      setActivitiesError(friendlyMessage);
       console.error('[useVibeProject] Fetch activities error:', err);
     }
   }, []);
@@ -590,6 +594,12 @@ export function useVibeProject(projectId?: number) {
     id: number,
     message: string
   ): Promise<IntakeData | null> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('intake', { loading: true, error: null });
     
     // Add user message to history immediately for responsiveness
@@ -605,7 +615,8 @@ export function useVibeProject(projectId?: number) {
         {
           message,
           conversation_history: intakeHistory,
-        }
+        },
+        abortControllerRef.current.signal
       );
       
       if (!response.success || !response.data) {
@@ -644,6 +655,12 @@ export function useVibeProject(projectId?: number) {
 
   // Run planning (architecture generation)
   const runPlanning = useCallback(async (id: number): Promise<BuildData | null> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('planning', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
       a.id === 'planning' ? { ...a, status: 'working' as const, progress: 25, task: 'Generating architecture...' } : a
@@ -652,7 +669,9 @@ export function useVibeProject(projectId?: number) {
     try {
       const response = await apiClient.request<BuildData>(
         `/projects/${id}/plan`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success || !response.data) {
@@ -740,6 +759,12 @@ export function useVibeProject(projectId?: number) {
 
   // Run QA
   const runQA = useCallback(async (id: number): Promise<BuildData | null> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('qa', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
       a.id === 'qa' ? { ...a, status: 'working' as const, progress: 25, task: 'Running QA checks...' } : a
@@ -748,7 +773,9 @@ export function useVibeProject(projectId?: number) {
     try {
       const response = await apiClient.request<BuildData>(
         `/projects/${id}/qa`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success || !response.data) {
@@ -793,6 +820,12 @@ export function useVibeProject(projectId?: number) {
 
   // Run review
   const runReview = useCallback(async (id: number): Promise<BuildData | null> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('review', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
       a.id === 'review' ? { ...a, status: 'working' as const, progress: 25, task: 'Final review...' } : a
@@ -801,7 +834,9 @@ export function useVibeProject(projectId?: number) {
     try {
       const response = await apiClient.request<BuildData>(
         `/projects/${id}/review`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success || !response.data) {
@@ -846,12 +881,20 @@ export function useVibeProject(projectId?: number) {
 
   // Manual approval
   const approveProject = useCallback(async (id: number): Promise<boolean> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('approve', { loading: true, error: null });
     
     try {
       const response = await apiClient.request(
         `/projects/${id}/approve`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success) {
@@ -877,6 +920,12 @@ export function useVibeProject(projectId?: number) {
 
   // Deploy project
   const deployProject = useCallback(async (id: number): Promise<boolean> => {
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setOperationState('deploy', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
       a.id === 'deploy' ? { ...a, status: 'working' as const, progress: 50, task: 'Deploying...' } : a
@@ -885,7 +934,9 @@ export function useVibeProject(projectId?: number) {
     try {
       const response = await apiClient.request(
         `/projects/${id}/deploy`,
-        'POST'
+        'POST',
+        undefined,
+        abortControllerRef.current.signal
       );
       
       if (!response.success) {
@@ -1014,8 +1065,101 @@ export function useVibeProject(projectId?: number) {
 
   // Track previous loading state to detect operation completion
   const wasLoadingRef = useRef(false);
+  const sseRef = useRef<EventSource | null>(null);
+  const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Auto-refresh activities while any operation is loading
+  // SSE connection for real-time updates (with auto-reconnect)
+  useEffect(() => {
+    if (!projectId || !isAnyOperationLoading) {
+      // Close SSE when no operation is running
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      if (sseReconnectTimeoutRef.current) {
+        clearTimeout(sseReconnectTimeoutRef.current);
+        sseReconnectTimeoutRef.current = null;
+      }
+      return;
+    }
+    
+    let mounted = true;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 10;
+    
+    const connectSSE = () => {
+      if (!mounted || reconnectAttempts >= maxReconnectAttempts) return;
+      
+      const url = `${API_BASE_URL}/projects/${projectId}/progress/stream`;
+      const eventSource = new EventSource(url);
+      sseRef.current = eventSource;
+      
+      eventSource.onopen = () => {
+        reconnectAttempts = 0; // Reset on successful connection
+      };
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Update activities if provided
+          if (data.latest_activity) {
+            setActivities(prev => {
+              // Avoid duplicates
+              const exists = prev.some(a => a.activity_id === data.latest_activity.activity_id);
+              if (exists) return prev;
+              return [data.latest_activity, ...prev].slice(0, 50);
+            });
+          }
+          
+          // Update project status if changed
+          if (data.status && project && data.status !== project.status) {
+            setProject(prev => prev ? { ...prev, status: data.status } : prev);
+          }
+        } catch {
+          // Ignore parse errors from ping messages
+        }
+      };
+      
+      eventSource.onerror = () => {
+        eventSource.close();
+        sseRef.current = null;
+        
+        // Auto-reconnect with exponential backoff
+        if (mounted && isAnyOperationLoading && reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 10000);
+          sseReconnectTimeoutRef.current = setTimeout(connectSSE, delay);
+        }
+      };
+      
+      // Auto-reconnect when SSE ends normally (60s timeout)
+      eventSource.addEventListener('end', () => {
+        eventSource.close();
+        sseRef.current = null;
+        if (mounted && isAnyOperationLoading) {
+          // Reconnect after a brief pause
+          sseReconnectTimeoutRef.current = setTimeout(connectSSE, 500);
+        }
+      });
+    };
+    
+    connectSSE();
+    
+    return () => {
+      mounted = false;
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      if (sseReconnectTimeoutRef.current) {
+        clearTimeout(sseReconnectTimeoutRef.current);
+        sseReconnectTimeoutRef.current = null;
+      }
+    };
+  }, [projectId, isAnyOperationLoading, project]);
+  
+  // Fallback polling when SSE unavailable + final refresh on completion
   useEffect(() => {
     if (!projectId) return;
     
@@ -1032,11 +1176,14 @@ export function useVibeProject(projectId?: number) {
     // Initial refresh when operation starts
     fetchActivities(projectId, 25);
     
-    // Periodic refresh during operation
+    // Fallback periodic refresh (SSE is primary, this is backup)
     const interval = window.setInterval(() => {
-      fetchActivities(projectId, 25);
-      fetchProject(projectId);
-    }, 3000);
+      // Only poll if SSE is not connected
+      if (!sseRef.current || sseRef.current.readyState !== EventSource.OPEN) {
+        fetchActivities(projectId, 25);
+        fetchProject(projectId);
+      }
+    }, 5000);
     
     return () => window.clearInterval(interval);
   }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);
@@ -1084,6 +1231,8 @@ export function useVibeProject(projectId?: number) {
     // Global state
     loading,
     filesLoading,
+    filesError,
+    activitiesError,
     error,
     
     // Operation-specific states

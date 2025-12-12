@@ -1,14 +1,27 @@
 """
 OpenAI integration for embeddings and O1-mini research.
+
+Features:
+- Embedding generation with retry + jitter
+- Batch embedding support
+- O1-mini for deep research
 """
 
 from typing import List, Optional
 import openai
 import logging
+import asyncio
+import random
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+BASE_DELAY = 1.0
+MAX_DELAY = 10.0
+JITTER_FACTOR = 0.3
 
 
 class AlphawaveOpenAIClient:
@@ -27,14 +40,16 @@ class AlphawaveOpenAIClient:
     async def generate_embedding(
         self,
         text: str,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        max_retries: int = MAX_RETRIES
     ) -> List[float]:
         """
-        Generate embedding vector for text.
+        Generate embedding vector for text with retry + jitter.
         
         Args:
             text: Text to embed
             model: Model to use (defaults to text-embedding-3-small)
+            max_retries: Maximum retry attempts (default: 3)
             
         Returns:
             Embedding vector (1536 dimensions)
@@ -43,32 +58,54 @@ class AlphawaveOpenAIClient:
         if model is None:
             model = self.embedding_model
         
-        try:
-            response = await self.client.embeddings.create(
-                model=model,
-                input=text
-            )
-            
-            if response.data and len(response.data) > 0:
-                return response.data[0].embedding
-            
-            raise ValueError("No embedding returned from OpenAI")
-            
-        except Exception as e:
-            logger.error(f"OpenAI embedding error: {e}", exc_info=True)
-            raise
+        last_error: Optional[Exception] = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.embeddings.create(
+                    model=model,
+                    input=text
+                )
+                
+                if response.data and len(response.data) > 0:
+                    return response.data[0].embedding
+                
+                raise ValueError("No embedding returned from OpenAI")
+                
+            except Exception as e:
+                last_error = e
+                
+                # Don't retry on final attempt
+                if attempt >= max_retries:
+                    break
+                
+                # Calculate delay with exponential backoff + jitter
+                delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+                jitter = delay * JITTER_FACTOR * random.uniform(-1, 1)
+                final_delay = max(0.1, delay + jitter)
+                
+                logger.warning(
+                    f"OpenAI embedding error (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {final_delay:.2f}s: {e}"
+                )
+                await asyncio.sleep(final_delay)
+        
+        logger.error(f"OpenAI embedding failed after {max_retries + 1} attempts: {last_error}", exc_info=True)
+        raise last_error or ValueError("Embedding generation failed")
     
     async def generate_embeddings_batch(
         self,
         texts: List[str],
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        max_retries: int = MAX_RETRIES
     ) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts (batch).
+        Generate embeddings for multiple texts (batch) with retry + jitter.
         
         Args:
             texts: List of texts to embed
             model: Model to use (defaults to text-embedding-3-small)
+            max_retries: Maximum retry attempts (default: 3)
             
         Returns:
             List of embedding vectors
@@ -77,20 +114,40 @@ class AlphawaveOpenAIClient:
         if model is None:
             model = self.embedding_model
         
-        try:
-            response = await self.client.embeddings.create(
-                model=model,
-                input=texts
-            )
-            
-            if response.data:
-                return [item.embedding for item in response.data]
-            
-            raise ValueError("No embeddings returned from OpenAI")
-            
-        except Exception as e:
-            logger.error(f"OpenAI batch embedding error: {e}", exc_info=True)
-            raise
+        last_error: Optional[Exception] = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.embeddings.create(
+                    model=model,
+                    input=texts
+                )
+                
+                if response.data:
+                    return [item.embedding for item in response.data]
+                
+                raise ValueError("No embeddings returned from OpenAI")
+                
+            except Exception as e:
+                last_error = e
+                
+                # Don't retry on final attempt
+                if attempt >= max_retries:
+                    break
+                
+                # Calculate delay with exponential backoff + jitter
+                delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+                jitter = delay * JITTER_FACTOR * random.uniform(-1, 1)
+                final_delay = max(0.1, delay + jitter)
+                
+                logger.warning(
+                    f"OpenAI batch embedding error (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {final_delay:.2f}s: {e}"
+                )
+                await asyncio.sleep(final_delay)
+        
+        logger.error(f"OpenAI batch embedding failed after {max_retries + 1} attempts: {last_error}", exc_info=True)
+        raise last_error or ValueError("Batch embedding generation failed")
     
     async def research_with_o1(
         self,

@@ -1252,17 +1252,19 @@ class VibeService:
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
         
-        # Call Claude
+        # Call Claude with retry for transient failures
         try:
-            response = await claude_client.generate_response(
+            response = await self._call_claude_with_retry(
                 messages=messages,
                 system_prompt=INTAKE_SYSTEM_PROMPT,
                 model=self.SONNET_MODEL,
                 max_tokens=2000,
-                temperature=0.7
+                temperature=0.7,
+                max_retries=3,
+                base_delay=1.0
             )
         except Exception as e:
-            logger.error("[VIBE] Intake Claude call failed: %s", e, exc_info=True)
+            logger.error("[VIBE] Intake Claude call failed after retries: %s", e, exc_info=True)
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (rough: ~500 input, ~1000 output tokens)
@@ -1366,9 +1368,9 @@ class VibeService:
                 error="Project has no brief. Complete intake first."
             )
         
-        # Call Opus for architecture
+        # Call Opus for architecture with retry for transient failures
         try:
-            response = await claude_client.generate_response(
+            response = await self._call_claude_with_retry(
                 messages=[{
                     "role": "user",
                     "content": f"Create a detailed architecture specification for this project:\n\n{json.dumps(brief, indent=2)}"
@@ -1376,10 +1378,12 @@ class VibeService:
                 system_prompt=ARCHITECTURE_SYSTEM_PROMPT,
                 model=self.OPUS_MODEL,
                 max_tokens=4000,
-                temperature=0.5
+                temperature=0.5,
+                max_retries=3,
+                base_delay=2.0
             )
         except Exception as e:
-            logger.error("[VIBE] Architecture Claude call failed: %s", e, exc_info=True)
+            logger.error("[VIBE] Architecture Claude call failed after retries: %s", e, exc_info=True)
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (Opus: ~1000 input, ~2000 output)
@@ -1662,15 +1666,17 @@ Total files: {len(files)}
 Perform a comprehensive QA review and output your findings as JSON."""
 
         try:
-            response = await claude_client.generate_response(
+            response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": qa_prompt}],
                 system_prompt=QA_SYSTEM_PROMPT,
                 model=self.SONNET_MODEL,
                 max_tokens=3000,
-                temperature=0.3
+                temperature=0.3,
+                max_retries=3,
+                base_delay=1.5
             )
         except Exception as e:
-            logger.error("[VIBE] QA Claude call failed: %s", e, exc_info=True)
+            logger.error("[VIBE] QA Claude call failed after retries: %s", e, exc_info=True)
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost
@@ -1700,9 +1706,25 @@ Perform a comprehensive QA review and output your findings as JSON."""
         if score >= 70 and not critical_issues:
             passed = True
         
-        # Update status based on QA result
+        # Update status atomically with optimistic locking
         new_status = ProjectStatus.REVIEW.value if passed else ProjectStatus.QA.value
-        await self.update_project(project_id, user_id, {"status": new_status})
+        try:
+            async with db.transaction() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET status = $1, updated_at = NOW()
+                    WHERE project_id = $2 AND user_id = $3 AND status = $4
+                    """,
+                    new_status, project_id, user_id, ProjectStatus.QA.value
+                )
+                if result and "UPDATE 0" in result:
+                    raise ConcurrencyError("Project was modified. Please refresh and retry.")
+        except ConcurrencyError:
+            raise
+        except Exception as e:
+            logger.error("[VIBE] QA status update failed: %s", e, exc_info=True)
+            return OperationResult(success=False, error=f"Failed to update status: {e}", api_cost=cost)
         
         # Log QA result
         issue_count = len(qa_result.get("issues", []))
@@ -1787,15 +1809,17 @@ Assess whether this project is ready for client delivery. Consider:
 Output your comprehensive review as JSON."""
 
         try:
-            response = await claude_client.generate_response(
+            response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": review_prompt}],
                 system_prompt=REVIEW_SYSTEM_PROMPT,
                 model=self.OPUS_MODEL,
                 max_tokens=2500,
-                temperature=0.3
+                temperature=0.3,
+                max_retries=3,
+                base_delay=2.0
             )
         except Exception as e:
-            logger.error("[VIBE] Review Claude call failed: %s", e, exc_info=True)
+            logger.error("[VIBE] Review Claude call failed after retries: %s", e, exc_info=True)
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (Opus)
@@ -1817,13 +1841,29 @@ Output your comprehensive review as JSON."""
         recommendation = review_result.get("recommendation", "revise")
         score = review_result.get("score", 0)
         
-        # Update status based on review
+        # Update status atomically with optimistic locking
         if approved or recommendation == "approve":
             new_status = ProjectStatus.APPROVED.value
         else:
             new_status = ProjectStatus.REVIEW.value  # Stay in review until fixed
         
-        await self.update_project(project_id, user_id, {"status": new_status})
+        try:
+            async with db.transaction() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET status = $1, updated_at = NOW()
+                    WHERE project_id = $2 AND user_id = $3 AND status = $4
+                    """,
+                    new_status, project_id, user_id, ProjectStatus.REVIEW.value
+                )
+                if result and "UPDATE 0" in result:
+                    raise ConcurrencyError("Project was modified. Please refresh and retry.")
+        except ConcurrencyError:
+            raise
+        except Exception as e:
+            logger.error("[VIBE] Review status update failed: %s", e, exc_info=True)
+            return OperationResult(success=False, error=f"Failed to update status: {e}", api_cost=cost)
         
         # Log review result
         await self._log_activity(
@@ -1873,9 +1913,25 @@ Output your comprehensive review as JSON."""
         except InvalidStatusTransitionError as e:
             return OperationResult(success=False, error=str(e))
         
-        await self.update_project(project_id, user_id, {
-            "status": ProjectStatus.APPROVED.value
-        })
+        # Atomically update status with optimistic locking
+        previous_status = project.get("status")
+        try:
+            async with db.transaction() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET status = $1, updated_at = NOW()
+                    WHERE project_id = $2 AND user_id = $3 AND status = $4
+                    """,
+                    ProjectStatus.APPROVED.value, project_id, user_id, previous_status
+                )
+                if result and "UPDATE 0" in result:
+                    raise ConcurrencyError("Project was modified. Please refresh and retry.")
+        except ConcurrencyError:
+            raise
+        except Exception as e:
+            logger.error("[VIBE] Approval status update failed: %s", e, exc_info=True)
+            return OperationResult(success=False, error=f"Failed to approve: {e}")
         
         logger.info("[VIBE] Project %d approved by user %d", project_id, user_id)
         
@@ -1885,7 +1941,7 @@ Output your comprehensive review as JSON."""
             activity_type=ActivityType.MANUALLY_APPROVED,
             description="Project manually approved for deployment",
             user_id=user_id,
-            metadata={"previous_status": project.get("status")}
+            metadata={"previous_status": previous_status}
         )
         
         return OperationResult(
@@ -1936,11 +1992,25 @@ Output your comprehensive review as JSON."""
             metadata={"preview_url": final_preview}
         )
         
-        await self.update_project(project_id, user_id, {
-            "status": ProjectStatus.DEPLOYED.value,
-            "preview_url": final_preview,
-            "production_url": final_production
-        })
+        # Atomically update status with optimistic locking
+        try:
+            async with db.transaction() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET status = $1, preview_url = $2, production_url = $3, updated_at = NOW()
+                    WHERE project_id = $4 AND user_id = $5 AND status = $6
+                    """,
+                    ProjectStatus.DEPLOYED.value, final_preview, final_production,
+                    project_id, user_id, ProjectStatus.APPROVED.value
+                )
+                if result and "UPDATE 0" in result:
+                    raise ConcurrencyError("Project was modified. Please refresh and retry.")
+        except ConcurrencyError:
+            raise
+        except Exception as e:
+            logger.error("[VIBE] Deployment status update failed: %s", e, exc_info=True)
+            return OperationResult(success=False, error=f"Failed to deploy: {e}")
         
         logger.info("[VIBE] Project %d deployed to %s", project_id, final_production)
         

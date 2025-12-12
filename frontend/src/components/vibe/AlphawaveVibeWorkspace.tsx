@@ -71,6 +71,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     intakeHistory,
     activities,
     loading: projectLoading,
+    filesLoading,
+    filesError,
+    activitiesError,
     error: projectError,
     operationStates,
     isAnyOperationLoading,
@@ -769,7 +772,23 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           </div>
 
           <div className="vibe-files-tree">
-            {convertedFileTree.length > 0 ? (
+            {filesLoading ? (
+              <div className="vibe-files-loading">
+                <div className="vibe-spinner-small" />
+                <span>Loading files...</span>
+              </div>
+            ) : filesError ? (
+              <div className="vibe-files-error">
+                <span className="vibe-error-icon">⚠️</span>
+                <span>{filesError}</span>
+                <button 
+                  className="vibe-btn-secondary vibe-btn-small"
+                  onClick={() => selectedProjectId && fetchFiles(selectedProjectId)}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : convertedFileTree.length > 0 ? (
               convertedFileTree.map(f => renderFileItem(f))
             ) : (
               <div className="vibe-files-empty">
