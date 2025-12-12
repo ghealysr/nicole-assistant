@@ -13,7 +13,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { getStoredToken } from '@/lib/google_auth';
-import { API_BASE_URL } from '@/lib/alphawave_config';
+import { API_URL } from '@/lib/alphawave_config';
 
 // ============================================================================
 // TYPES
@@ -255,7 +255,7 @@ class VibeAPIClient {
   private baseUrl: string;
   
   constructor() {
-    this.baseUrl = `${API_BASE_URL}/vibe`;
+    this.baseUrl = `${API_URL}/vibe`;
   }
   
   private getHeaders(): HeadersInit {
@@ -916,7 +916,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Approve error:', err);
       return false;
     }
-  }, [fetchProject, setOperationState]);
+  }, [fetchProject, setOperationState, trackApiCost]);
 
   // Deploy project
   const deployProject = useCallback(async (id: number): Promise<boolean> => {
@@ -965,7 +965,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Deploy error:', err);
       return false;
     }
-  }, [fetchProject, setOperationState]);
+  }, [fetchProject, setOperationState, trackApiCost]);
 
   // Run full pipeline
   const runPipeline = useCallback(async (id: number): Promise<boolean> => {
@@ -1090,7 +1090,7 @@ export function useVibeProject(projectId?: number) {
     const connectSSE = () => {
       if (!mounted || reconnectAttempts >= maxReconnectAttempts) return;
       
-      const url = `${API_BASE_URL}/projects/${projectId}/progress/stream`;
+      const url = `${API_URL}/vibe/projects/${projectId}/progress/stream`;
       const eventSource = new EventSource(url);
       sseRef.current = eventSource;
       

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType, type VibeActivity } from '@/lib/hooks/useVibeProject';
+import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 
 interface FileItem {
   name: string;
@@ -73,7 +73,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     loading: projectLoading,
     filesLoading,
     filesError,
-    activitiesError,
+    activitiesError: _activitiesError,
     error: projectError,
     operationStates,
     isAnyOperationLoading,
@@ -87,15 +87,15 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     fetchFiles,
     fetchActivities,
     runIntake,
-    runPlanning,
-    runBuild,
-    runQA,
-    runReview,
+    runPlanning: _runPlanning,
+    runBuild: _runBuild,
+    runQA: _runQA,
+    runReview: _runReview,
     approveProject,
     deployProject,
     runPipeline,
     clearIntakeHistory,
-    clearError,
+    clearError: _clearError,
   } = useVibeProject(selectedProjectId || undefined);
 
   // Fetch projects on mount
