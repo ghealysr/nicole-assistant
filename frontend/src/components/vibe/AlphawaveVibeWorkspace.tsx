@@ -248,19 +248,21 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     return langMap[ext] || 'text';
   };
 
-  // Convert file tree from API to UI format (memoized)
-  const convertFileTreeHelper = useCallback((items: typeof fileTree): FileItem[] => {
+  // Convert file tree from API to UI format (recursive helper)
+  const convertFileTree = useCallback((items: typeof fileTree): FileItem[] => {
+    if (!items || !Array.isArray(items)) return [];
+
     return items.map(item => ({
-      name: item.name,
-      type: (item.type === 'folder' ? 'folder' : item.type) as FileItem['type'],
+      name: item.name || 'Unknown',
+      type: (item.type === 'folder' ? 'folder' : item.type || 'text') as FileItem['type'],
       path: item.path,
-      children: item.children ? convertFileTreeHelper(item.children) : undefined,
+      children: item.children ? convertFileTree(item.children) : undefined,
     }));
   }, []);
-  
-  const convertedFileTree = useMemo(() => 
-    convertFileTreeHelper(fileTree), 
-    [fileTree, convertFileTreeHelper]
+
+  const convertedFileTree = useMemo(() =>
+    convertFileTree(fileTree),
+    [fileTree, convertFileTree]
   );
 
   // Particle system with mounted flag for safety
@@ -444,8 +446,10 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
   // PROJECTS LIST VIEW
   // ============================================================================
   
-  const renderProjectsView = () => (
-    <div className="vibe-projects-view">
+  const renderProjectsView = () => {
+    try {
+      return (
+        <div className="vibe-projects-view">
       {(projectsError || projectError) && (
         <div className="vibe-error" style={{ marginBottom: 16 }}>
           {projectsError || projectError}
@@ -610,14 +614,27 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
         ))}
       </div>
     </div>
-  );
+      );
+    } catch (error) {
+      console.error('Error rendering projects view:', error);
+      return (
+        <div className="vibe-projects-view">
+          <div className="vibe-error">
+            Failed to load projects view. Please refresh the page.
+          </div>
+        </div>
+      );
+    }
+  };
 
   // ============================================================================
   // WORKSPACE VIEW
   // ============================================================================
   
-  const renderWorkspaceView = () => (
-    <>
+  const renderWorkspaceView = () => {
+    try {
+      return (
+        <>
       {(projectsError || projectError) && (
         <div className="vibe-error" style={{ marginBottom: 12, marginLeft: 16, marginRight: 16 }}>
           {projectsError || projectError}
@@ -775,14 +792,14 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
               <div className="vibe-files-error">
                 <span className="vibe-error-icon">⚠️</span>
                 <span>{filesError}</span>
-                <button 
+                <button
                   className="vibe-btn-secondary vibe-btn-small"
                   onClick={() => selectedProjectId && fetchFiles(selectedProjectId)}
                 >
                   Retry
                 </button>
               </div>
-            ) : convertedFileTree.length > 0 ? (
+            ) : Array.isArray(convertedFileTree) && convertedFileTree.length > 0 ? (
               convertedFileTree.map(f => renderFileItem(f))
             ) : (
               <div className="vibe-files-empty">
@@ -967,7 +984,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           </div>
 
           <div className="vibe-agents-list">
-            {agents.map(agent => (
+            {Array.isArray(agents) && agents.map(agent => (
               <div key={agent.id} className={`vibe-agent-card ${agent.status}`}>
                 <div className="vibe-agent-header">
                   <div className={`vibe-agent-icon ${agent.id}`}>{agent.icon}</div>
@@ -996,7 +1013,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
           <div className="vibe-workflow-section">
             <div className="vibe-workflow-title">Pipeline</div>
             <div className="vibe-workflow-visual">
-              {workflow.map(step => (
+              {Array.isArray(workflow) && workflow.map(step => (
                 <div key={step.id} className={`vibe-workflow-step ${step.status}`}>
                   <div className="vibe-workflow-step-num">
                     {step.status === 'complete' ? '✓' : step.id}
@@ -1042,12 +1059,34 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
         </div>
       </div>
     </>
-  );
+      );
+    } catch (error) {
+      console.error('Error rendering workspace view:', error);
+      return (
+        <>
+          <div className="vibe-error" style={{ padding: 16 }}>
+            Failed to load workspace view. Please refresh the page.
+          </div>
+        </>
+      );
+    }
+  };
+
+  // Prevent rendering until hooks are initialized
+  if (projects === undefined) {
+    return (
+      <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
+        <div className="vibe-loading">
+          Loading Vibe Dashboard...
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
       <canvas ref={canvasRef} className="vibe-particle-canvas" />
-      
+
       <div className="vibe-inner">
         {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}
       </div>
