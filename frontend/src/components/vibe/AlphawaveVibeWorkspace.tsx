@@ -78,6 +78,8 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
     canApprove,
     canDeploy,
     totalApiCost,
+    apiBudget,
+    remainingApiBudget,
     fetchProject,
     fetchFiles,
     fetchActivities,
@@ -681,12 +683,13 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
         </div>
 
         <div className="vibe-project-bar-right">
-          {/* API Cost Display */}
-          {totalApiCost > 0 && (
-            <span className="vibe-api-cost" title="Estimated API cost for this session">
-              ${totalApiCost.toFixed(4)}
-            </span>
-          )}
+          {/* API Cost & Budget Display */}
+          <span className="vibe-api-cost" title="Estimated API cost for this session">
+            Cost: ${totalApiCost.toFixed(4)}
+          </span>
+          <span className={`vibe-api-budget ${remainingApiBudget <= 0 ? 'over' : ''}`} title="Budget remaining">
+            Budget left: ${remainingApiBudget.toFixed(2)} / ${apiBudget.toFixed(2)}
+          </span>
           
           {/* Deploy Button */}
           {canDeploy && (

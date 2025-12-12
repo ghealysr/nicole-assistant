@@ -616,6 +616,16 @@ class VibeService:
                 f"Current status: {current_status}"
             )
     
+    async def _generate_embedding_safe(self, text: str) -> Optional[List[float]]:
+        """Generate embedding with retry and graceful fallback."""
+        attempts = 2
+        for attempt in range(attempts):
+            try:
+                return await openai_client.generate_embedding(text)
+            except Exception as e:
+                logger.warning("[VIBE] Embedding attempt %d failed: %s", attempt + 1, e)
+        return None
+    
     async def _update_api_cost(
         self,
         project_id: int,
@@ -635,34 +645,59 @@ class VibeService:
     async def _save_files_batch(
         self,
         project_id: int,
-        files: List[ParsedFile]
+        files: List[ParsedFile],
+        user_id: Optional[int] = None,
+        agent_name: Optional[str] = None
     ) -> int:
-        """Save multiple files in a single batch operation."""
+        """
+        Save multiple files with non-destructive upsert and change logging.
+        """
         if not files:
             return 0
         
-        # Build batch upsert values
-        values_list = []
-        for f in files:
-            values_list.append((project_id, f.path, f.content))
-        
-        # Delete existing files for this project first (clean slate)
-        await db.execute(
-            "DELETE FROM vibe_files WHERE project_id = $1",
+        existing_rows = await db.fetch(
+            "SELECT file_path, content FROM vibe_files WHERE project_id = $1",
             project_id
         )
+        existing_map = {r["file_path"]: r["content"] for r in existing_rows} if existing_rows else {}
         
-        # Batch insert
         count = 0
-        for project_id, path, content in values_list:
+        for f in files:
+            previous_content = existing_map.get(f.path)
             await db.execute(
                 """
                 INSERT INTO vibe_files (project_id, file_path, content, created_at, updated_at)
                 VALUES ($1, $2, $3, NOW(), NOW())
+                ON CONFLICT (project_id, file_path)
+                DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
                 """,
-                project_id, path, content
+                project_id, f.path, f.content
             )
             count += 1
+            
+            # Log file change
+            if previous_content is None:
+                await self._log_activity(
+                    project_id,
+                    ActivityType.FILE_UPDATED,
+                    description=f"File added: {f.path}",
+                    user_id=user_id,
+                    agent_name=agent_name,
+                    metadata={"path": f.path, "change": "added"}
+                )
+            elif previous_content != f.content:
+                await self._log_activity(
+                    project_id,
+                    ActivityType.FILE_UPDATED,
+                    description=f"File updated: {f.path}",
+                    user_id=user_id,
+                    agent_name=agent_name,
+                    metadata={
+                        "path": f.path,
+                        "change": "modified",
+                        "previous_preview": previous_content[:200]
+                    }
+                )
         
         logger.info("[VIBE] Saved %d files for project %d", count, project_id)
         return count
@@ -1292,7 +1327,7 @@ Generate complete, working code for each file."""
             )
         
         # Save files atomically
-        file_count = await self._save_files_batch(project_id, files)
+        file_count = await self._save_files_batch(project_id, files, user_id=user_id, agent_name="Sonnet")
         
         # Generate preview URL and advance status
         preview_url = f"https://preview.alphawave.ai/p/{project_id}"
@@ -1751,14 +1786,12 @@ Output your comprehensive review as JSON."""
         project_type = project.get("project_type", "website") if project else "website"
         
         # Generate embedding for semantic search
-        embedding = None
-        try:
-            lesson_text = f"{category}: {issue}. Solution: {solution}"
-            embedding = await openai_client.generate_embedding(lesson_text)
+        lesson_text = f"{category}: {issue}. Solution: {solution}"
+        embedding = await self._generate_embedding_safe(lesson_text)
+        if embedding:
             logger.info("[VIBE] Generated embedding for lesson")
-        except Exception as e:
-            logger.warning("[VIBE] Failed to generate embedding: %s", e)
-            # Continue without embedding - it's optional
+        else:
+            logger.warning("[VIBE] Embedding unavailable, continuing without vector")
         
         try:
             if embedding:
@@ -1808,61 +1841,56 @@ Output your comprehensive review as JSON."""
         category: Optional[str] = None,
         query: Optional[str] = None,
         limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], bool]:
         """
         Get lessons relevant to a project type.
         
         Supports both category-based filtering and semantic search via embeddings.
-        
-        Args:
-            project_type: Filter by project type (website, chatbot, etc.)
-            category: Optional category filter
-            query: Optional semantic search query (uses embeddings)
-            limit: Maximum results to return
-            
-        Returns:
-            List of relevant lessons
+        Returns (lessons, semantic_used_flag).
         """
+        semantic_used = False
+        
         # If query provided, try semantic search
         if query:
             try:
-                query_embedding = await openai_client.generate_embedding(query)
-                
-                if category:
-                    results = await db.fetch(
-                        """
-                        SELECT lesson_id, project_type, lesson_category,
-                               issue, solution, impact, times_applied,
-                               1 - (embedding <=> $1::vector) as similarity
-                        FROM vibe_lessons
-                        WHERE project_type = $2 
-                          AND lesson_category = $3
-                          AND embedding IS NOT NULL
-                        ORDER BY embedding <=> $1::vector
-                        LIMIT $4
-                        """,
-                        query_embedding, project_type, category, limit
-                    )
-                else:
-                    results = await db.fetch(
-                        """
-                        SELECT lesson_id, project_type, lesson_category,
-                               issue, solution, impact, times_applied,
-                               1 - (embedding <=> $1::vector) as similarity
-                        FROM vibe_lessons
-                        WHERE project_type = $2
-                          AND embedding IS NOT NULL
-                        ORDER BY embedding <=> $1::vector
-                        LIMIT $3
-                        """,
-                        query_embedding, project_type, limit
-                    )
-                
-                if results:
-                    return [dict(r) for r in results]
+                query_embedding = await self._generate_embedding_safe(query)
+                if query_embedding:
+                    semantic_used = True
+                    if category:
+                        results = await db.fetch(
+                            """
+                            SELECT lesson_id, project_type, lesson_category,
+                                   issue, solution, impact, times_applied,
+                                   1 - (embedding <=> $1::vector) as similarity
+                            FROM vibe_lessons
+                            WHERE project_type = $2 
+                              AND lesson_category = $3
+                              AND embedding IS NOT NULL
+                            ORDER BY embedding <=> $1::vector
+                            LIMIT $4
+                            """,
+                            query_embedding, project_type, category, limit
+                        )
+                    else:
+                        results = await db.fetch(
+                            """
+                            SELECT lesson_id, project_type, lesson_category,
+                                   issue, solution, impact, times_applied,
+                                   1 - (embedding <=> $1::vector) as similarity
+                            FROM vibe_lessons
+                            WHERE project_type = $2
+                              AND embedding IS NOT NULL
+                            ORDER BY embedding <=> $1::vector
+                            LIMIT $3
+                            """,
+                            query_embedding, project_type, limit
+                        )
                     
+                    if results:
+                        return [dict(r) for r in results], semantic_used
             except Exception as e:
                 logger.warning("[VIBE] Semantic search failed, falling back: %s", e)
+                semantic_used = False
         
         # Fallback to category/popularity-based search
         if category:
@@ -1890,7 +1918,38 @@ Output your comprehensive review as JSON."""
                 project_type, limit
             )
         
-        return [dict(r) for r in results] if results else []
+        return [dict(r) for r in results] if results else [], semantic_used
+
+    async def backfill_lesson_embeddings(self, limit: int = 100) -> Dict[str, Any]:
+        """
+        Generate embeddings for lessons missing vectors.
+        """
+        rows = await db.fetch(
+            """
+            SELECT lesson_id, lesson_category, issue, solution
+            FROM vibe_lessons
+            WHERE embedding IS NULL
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            limit
+        )
+        updated = 0
+        for row in rows or []:
+            text = f"{row['lesson_category']}: {row['issue']}. Solution: {row['solution']}"
+            embedding = await self._generate_embedding_safe(text)
+            if not embedding:
+                continue
+            await db.execute(
+                """
+                UPDATE vibe_lessons
+                SET embedding = $1::vector
+                WHERE lesson_id = $2
+                """,
+                embedding, row["lesson_id"]
+            )
+            updated += 1
+        return {"updated": updated, "remaining": max(0, (len(rows or []) - updated))}
     
     # ========================================================================
     # UI HELPERS

@@ -12,6 +12,10 @@ Version: 2.0.0
 """
 
 import logging
+import time
+import json
+import asyncio
+from collections import defaultdict, deque
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field, field_validator
@@ -29,6 +33,35 @@ from app.services.vibe_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# Simple in-memory rate limiting (per user, per endpoint)
+# -----------------------------------------------------------------------------
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_MAX_REQUESTS = 30
+_rate_limit_buckets: Dict[str, deque] = defaultdict(deque)
+
+
+def _rate_limit_key(user_id: int, path: str) -> str:
+    return f"{user_id}:{path}"
+
+
+def enforce_rate_limit(user_id: int, path: str):
+    now = time.time()
+    key = _rate_limit_key(user_id, path)
+    bucket = _rate_limit_buckets[key]
+
+    # Drop timestamps outside window
+    while bucket and now - bucket[0] > RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+
+    if len(bucket) >= RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please slow down and try again shortly."
+        )
+
+    bucket.append(now)
 
 router = APIRouter(prefix="/vibe", tags=["Vibe Dashboard"])
 
@@ -115,6 +148,24 @@ def get_user_id(user: dict) -> int:
     return user_id
 
 
+def rate_limit(user_id: int, path: str) -> None:
+    """Apply simple per-user rate limiting for this path."""
+    enforce_rate_limit(user_id, path)
+
+
+def api_response_from_result(result) -> APIResponse:
+    """Build a consistent APIResponse from an OperationResult-like object."""
+    meta: Dict[str, Any] = {}
+    if getattr(result, "api_cost", 0):
+        meta["api_cost"] = float(result.api_cost)
+    return APIResponse(
+        success=result.success,
+        data=result.data,
+        error=result.error,
+        meta=meta or None
+    )
+
+
 def handle_service_error(e: Exception, context: str) -> HTTPException:
     """Convert service exceptions to appropriate HTTP responses."""
     if isinstance(e, ProjectNotFoundError):
@@ -143,6 +194,7 @@ async def create_project(
     Creates a project in 'intake' status, ready for requirements gathering.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects")
     
     result = await vibe_service.create_project(
         user_id=user_id,
@@ -155,10 +207,7 @@ async def create_project(
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data
-    )
+    return api_response_from_result(result)
 
 
 @router.get("/projects", response_model=APIResponse)
@@ -174,6 +223,7 @@ async def list_projects(
     Excludes archived projects by default. Use status='archived' to see them.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects")
     
     # Validate status if provided
     if status:
@@ -214,6 +264,7 @@ async def get_project(
     Returns full project data with UI helper configurations.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}")
     
     project = await vibe_service.get_project(project_id, user_id)
     
@@ -247,6 +298,7 @@ async def update_project(
     Only updates provided fields. Cannot change status directly (use pipeline endpoints).
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "PATCH:/vibe/projects/{id}")
     
     updates = data.model_dump(exclude_none=True)
     
@@ -279,6 +331,7 @@ async def delete_project(
     Project data is preserved but hidden from default list.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "DELETE:/vibe/projects/{id}")
     
     result = await vibe_service.delete_project(project_id, user_id)
     
@@ -305,6 +358,7 @@ async def run_intake(
     The brief is extracted automatically when sufficient information is gathered.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/intake")
     
     result = await vibe_service.run_intake(
         project_id=project_id,
@@ -317,11 +371,7 @@ async def run_intake(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data,
-        meta={"api_cost": float(result.api_cost)} if result.api_cost > 0 else None
-    )
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/plan", response_model=APIResponse)
@@ -336,6 +386,7 @@ async def run_architecture(
     Produces detailed technical specification for the build phase.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/plan")
     
     result = await vibe_service.run_architecture(
         project_id=project_id,
@@ -346,11 +397,7 @@ async def run_architecture(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data,
-        meta={"api_cost": float(result.api_cost)} if result.api_cost > 0 else None
-    )
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/build", response_model=APIResponse)
@@ -365,6 +412,7 @@ async def run_build(
     Generates complete Next.js project with all pages and components.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/build")
     
     result = await vibe_service.run_build(
         project_id=project_id,
@@ -375,11 +423,7 @@ async def run_build(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data,
-        meta={"api_cost": float(result.api_cost)} if result.api_cost > 0 else None
-    )
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/qa", response_model=APIResponse)
@@ -394,6 +438,7 @@ async def run_qa(
     and other quality concerns. Returns pass/fail with detailed issues list.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/qa")
     
     result = await vibe_service.run_qa(
         project_id=project_id,
@@ -404,11 +449,7 @@ async def run_qa(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data,
-        meta={"api_cost": float(result.api_cost)} if result.api_cost > 0 else None
-    )
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/review", response_model=APIResponse)
@@ -423,6 +464,7 @@ async def run_review(
     client-readiness. Returns approval recommendation.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/review")
     
     result = await vibe_service.run_review(
         project_id=project_id,
@@ -433,11 +475,7 @@ async def run_review(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(
-        success=True,
-        data=result.data,
-        meta={"api_cost": float(result.api_cost)} if result.api_cost > 0 else None
-    )
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/approve", response_model=APIResponse)
@@ -452,6 +490,7 @@ async def approve_project(
     Marks project ready for the deployment phase.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/approve")
     
     result = await vibe_service.approve_project(
         project_id=project_id,
@@ -462,7 +501,7 @@ async def approve_project(
         status_code = 400 if "not found" in str(result.error).lower() else 400
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(success=True, data=result.data)
+    return api_response_from_result(result)
 
 
 @router.post("/projects/{project_id}/deploy", response_model=APIResponse)
@@ -477,6 +516,7 @@ async def deploy_project(
     Future: Integrates with GitHub for repo creation and Vercel for hosting.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/deploy")
     
     result = await vibe_service.deploy_project(
         project_id=project_id,
@@ -487,7 +527,7 @@ async def deploy_project(
         status_code = 400 if "status" in str(result.error).lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
     
-    return APIResponse(success=True, data=result.data)
+    return api_response_from_result(result)
 
 
 # ============================================================================
@@ -505,6 +545,7 @@ async def get_project_files(
     Returns flat file list and hierarchical tree for UI rendering.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/files")
     
     # Verify project access
     project = await vibe_service.get_project(project_id, user_id)
@@ -538,6 +579,7 @@ async def get_file_content(
     Returns file content with detected language for syntax highlighting.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/files/{path}")
     
     # Verify project access
     project = await vibe_service.get_project(project_id, user_id)
@@ -578,6 +620,7 @@ async def get_project_activities(
     Useful for displaying timeline of project events.
     """
     user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/activities")
     
     # Verify project access first
     project = await vibe_service.get_project(project_id, user_id)
@@ -595,6 +638,36 @@ async def get_project_activities(
     )
 
 
+@router.get("/projects/{project_id}/progress/stream")
+async def stream_project_progress(
+    project_id: int,
+    user: dict = Depends(verify_jwt)
+):
+    """
+    Minimal SSE-like progress stream for a project.
+    
+    Emits current status and latest activities for a short polling window.
+    Intended for UX feedback during long operations.
+    """
+    from fastapi.responses import StreamingResponse
+    user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/progress/stream")
+
+    async def event_generator():
+        for _ in range(5):  # ~10 seconds at 2s interval
+            project = await vibe_service.get_project(project_id, user_id)
+            activities = await vibe_service.get_project_activities(project_id, limit=10)
+            payload = {
+                "status": project.get("status") if project else None,
+                "updated_at": project.get("updated_at") if project else None,
+                "activities": activities
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 # ============================================================================
 # LESSONS ENDPOINTS
 # ============================================================================
@@ -609,7 +682,8 @@ async def create_lesson(
     
     Lessons are stored for retrieval during future project planning.
     """
-    get_user_id(user)  # Verify authenticated
+    user_id = get_user_id(user)  # Verify authenticated
+    rate_limit(user_id, "POST:/vibe/lessons")
     
     result = await vibe_service.capture_lesson(
         project_id=data.project_id,
@@ -640,7 +714,8 @@ async def get_lessons(
     Supports both category-based filtering and semantic search via embeddings.
     Returns lessons ordered by relevance (if query provided) or by application frequency.
     """
-    get_user_id(user)  # Verify authenticated
+    user_id = get_user_id(user)  # Verify authenticated
+    rate_limit(user_id, "GET:/vibe/lessons")
     
     # Validate project type
     valid_types = [t.value for t in ProjectType]
@@ -659,7 +734,7 @@ async def get_lessons(
                 detail=f"Invalid category. Must be one of: {', '.join(valid_cats)}"
             )
     
-    lessons = await vibe_service.get_relevant_lessons(
+    lessons, semantic_used = await vibe_service.get_relevant_lessons(
         project_type=project_type,
         category=category,
         query=query,
@@ -669,8 +744,25 @@ async def get_lessons(
     return APIResponse(
         success=True,
         data={"lessons": lessons},
-        meta={"count": len(lessons)}
+        meta={"count": len(lessons), "semantic_used": semantic_used}
     )
+
+
+@router.post("/lessons/backfill_embeddings", response_model=APIResponse)
+async def backfill_lesson_embeddings(
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(verify_jwt)
+) -> APIResponse:
+    """
+    Backfill embeddings for lessons missing vectors.
+    
+    Useful when enabling semantic search after lessons were created.
+    """
+    user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/lessons/backfill_embeddings")
+    
+    result = await vibe_service.backfill_lesson_embeddings(limit=limit)
+    return APIResponse(success=True, data=result)
 
 
 # ============================================================================

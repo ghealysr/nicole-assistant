@@ -295,6 +295,8 @@ class VibeAPIClient {
 
 const apiClient = new VibeAPIClient();
 
+const DEFAULT_API_BUDGET = 5; // dollars per project session
+
 // ============================================================================
 // HOOK: useVibeProjects (List)
 // ============================================================================
@@ -452,6 +454,7 @@ export function useVibeProject(projectId?: number) {
   
   // API cost tracking
   const [totalApiCost, setTotalApiCost] = useState(0);
+  const [apiBudget] = useState(DEFAULT_API_BUDGET);
   
   // Refs for avoiding stale closures
   const projectRef = useRef<VibeProject | null>(null);
@@ -589,6 +592,7 @@ export function useVibeProject(projectId?: number) {
         setError(errMsg);
         return null;
       }
+      if (response.meta?.api_cost) trackApiCost(response.meta.api_cost);
       
       // Update history with assistant response
       setIntakeHistory([
@@ -829,6 +833,7 @@ export function useVibeProject(projectId?: number) {
       
       await fetchProject(id);
       setOperationState('approve', { loading: false, error: null });
+      if (response.meta?.api_cost) trackApiCost(response.meta.api_cost);
       return true;
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Approval failed';
@@ -869,6 +874,7 @@ export function useVibeProject(projectId?: number) {
       
       await fetchProject(id);
       setOperationState('deploy', { loading: false, error: null });
+      if (response.meta?.api_cost) trackApiCost(response.meta.api_cost);
       return true;
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Deployment failed';
@@ -973,12 +979,29 @@ export function useVibeProject(projectId?: number) {
       setIntakeHistory([]);
       setError(null);
     }
-  }, [projectId, fetchProject, fetchFiles]);
+  }, [projectId, fetchProject, fetchFiles, fetchActivities]);
+
+  // Auto-refresh activities while any operation is loading
+  useEffect(() => {
+    if (!projectId) return;
+    if (!isAnyOperationLoading) return;
+    fetchActivities(projectId, 25);
+    const interval = window.setInterval(() => {
+      fetchActivities(projectId, 25);
+      fetchProject(projectId);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);
 
   // Memoized computed values
   const isAnyOperationLoading = useMemo(() => 
     Object.values(operationStates).some(s => s.loading),
     [operationStates]
+  );
+  
+  const remainingApiBudget = useMemo(() =>
+    Math.max(0, apiBudget - totalApiCost),
+    [apiBudget, totalApiCost]
   );
   
   const canRunPipeline = useMemo(() => 
@@ -1025,6 +1048,8 @@ export function useVibeProject(projectId?: number) {
     
     // Cost tracking
     totalApiCost,
+    apiBudget,
+    remainingApiBudget,
     
     // Actions
     fetchProject,
