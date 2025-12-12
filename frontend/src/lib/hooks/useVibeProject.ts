@@ -853,6 +853,7 @@ export function useVibeProject(projectId?: number) {
       
       const approved = response.data.approved;
       const score = response.data.score || 0;
+      const recommendation = response.data.recommendation || 'Needs revision';
       
       setAgents(prev => prev.map(a => 
         a.id === 'review' 
@@ -860,7 +861,7 @@ export function useVibeProject(projectId?: number) {
               ...a, 
               status: approved ? 'complete' as const : 'error' as const, 
               progress: 100, 
-              task: approved ? `Approved (${score}/10)` : response.data.recommendation || 'Needs revision'
+              task: approved ? `Approved (${score}/10)` : recommendation
             } 
           : a
       ));
