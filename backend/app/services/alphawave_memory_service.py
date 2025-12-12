@@ -695,17 +695,18 @@ class MemoryService:
             pass
         
         # Fallback to comprehensive stats query
+        # Note: DB columns are 'confidence' and 'importance' (not _score suffix)
         row = await db.fetchrow(
             """
             SELECT
                 COUNT(*) FILTER (WHERE archived_at IS NULL) AS total_active,
                 COUNT(*) FILTER (WHERE archived_at IS NOT NULL) AS total_archived,
-                AVG(confidence_score) AS avg_confidence,
-                AVG(importance_score) AS avg_importance,
+                AVG(confidence) AS avg_confidence,
+                AVG(importance) AS avg_importance,
                 SUM(access_count) AS total_accesses,
                 COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS recent_count,
-                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence_score >= 0.7) AS high_confidence,
-                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence_score < 0.4) AS low_confidence,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence >= 0.7) AS high_confidence,
+                COUNT(*) FILTER (WHERE archived_at IS NULL AND confidence < 0.4) AS low_confidence,
                 COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'fact') AS fact_count,
                 COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'preference') AS preference_count,
                 COUNT(*) FILTER (WHERE archived_at IS NULL AND memory_type = 'pattern') AS pattern_count,

@@ -437,13 +437,14 @@ class AlphawaveUsageService:
             )
             
             # Get memory health
+            # Note: DB column is 'confidence' not 'confidence_score'
             memory_health = await db.fetchrow(
                 """
                 SELECT
                     COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE confidence_score < 0.3) AS low_confidence,
+                    COUNT(*) FILTER (WHERE confidence < 0.3) AS low_confidence,
                     COUNT(*) FILTER (WHERE archived_at IS NOT NULL) AS archived,
-                    AVG(confidence_score) AS avg_confidence,
+                    AVG(confidence) AS avg_confidence,
                     MAX(created_at) AS last_memory_created,
                     MAX(last_accessed) AS last_memory_accessed
                 FROM memory_entries
