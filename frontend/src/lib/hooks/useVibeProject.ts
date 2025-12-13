@@ -275,7 +275,10 @@ class VibeAPIClient {
     body?: Record<string, unknown>,
     signal?: AbortSignal
   ): Promise<APIResponse<T>> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const url = `${this.baseUrl}${endpoint}`;
+    console.log(`[VibeAPI] ${method} ${url}`, body);
+    
+    const response = await fetch(url, {
       method,
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -283,6 +286,7 @@ class VibeAPIClient {
     });
     
     const data = await response.json();
+    console.log(`[VibeAPI] Response:`, response.status, data);
     
     if (!response.ok) {
       // Handle FastAPI validation errors (detail is array of {type, loc, msg, input})
@@ -385,16 +389,27 @@ export function useVibeProjects() {
     setError(null);
     
     try {
+      // Build request body, omitting empty optional fields
+      const body: Record<string, string> = {
+        name: name.trim(),
+        project_type: projectType,
+      };
+      if (clientName && clientName.trim()) {
+        body.client_name = clientName.trim();
+      }
+      if (clientEmail && clientEmail.trim()) {
+        body.client_email = clientEmail.trim();
+      }
+      
+      console.log('[createProject] Sending:', body);
+      
       const response = await apiClient.request<{ project: VibeProject }>(
         '/projects',
         'POST',
-        {
-          name,
-          project_type: projectType,
-          client_name: clientName,
-          client_email: clientEmail,
-        }
+        body
       );
+      
+      console.log('[createProject] Response:', response);
       
       if (!response.success || !response.data?.project) {
         setError(response.error || 'Failed to create project');
