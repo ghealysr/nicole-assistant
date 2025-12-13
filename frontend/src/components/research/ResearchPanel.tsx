@@ -1,14 +1,13 @@
 'use client';
 
 /**
- * ResearchPanel - Memory Dashboard-style Research Panel
+ * ResearchPanel - Editorial-quality Research Panel
  * 
- * Matches the design pattern of AlphawaveMemoryDashboard:
- * - Resizable side panel (400px - 800px)
- * - No backdrop/modal overlay
- * - Tab-based navigation
- * - Widget-based content layout
- * - Slides in from right edge
+ * Design Philosophy:
+ * - Narrow panel for search input
+ * - Expands to full article width when showing results
+ * - Magazine-quality typography and layout
+ * - Inspired by New Yorker, Time, Medium
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -19,6 +18,7 @@ import {
   ResearchType,
   ImageFeedback 
 } from '@/lib/hooks/useResearch';
+import { ResearchArticle } from './ResearchArticle';
 
 interface ResearchPanelProps {
   isOpen: boolean;
@@ -68,14 +68,21 @@ export function ResearchPanel({
   const startWidthRef = useRef(520);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Dynamic width: narrow for search, wide for article reading
   const MIN_WIDTH = 400;
-  const MAX_WIDTH = 800;
+  const MAX_WIDTH = 900;
+  const ARTICLE_WIDTH = 720; // Optimal reading width for articles
   
   const isOfflineMode = !authToken;
   const isLoading = status === 'pending' || status === 'researching' || status === 'synthesizing';
   const hasResearch = research !== null && status === 'complete';
   const hasInspirations = vibeInspirations !== null && vibeInspirations.inspirations?.length > 0;
-
+  
+  // Auto-expand when showing results
+  const effectiveWidth = (hasResearch || hasInspirations) && activeTab === 'results' 
+    ? Math.max(dashboardWidth, ARTICLE_WIDTH) 
+    : dashboardWidth;
+  
   // Resize handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -143,8 +150,8 @@ export function ResearchPanel({
 
   return (
     <aside 
-      className={`mem-dashboard-panel ${isOpen ? 'mem-open' : ''}`}
-      style={{ '--mem-dashboard-width': `${dashboardWidth}px` } as React.CSSProperties}
+      className={`mem-dashboard-panel ${isOpen ? 'mem-open' : ''} ${hasResearch && activeTab === 'results' ? 'research-article-mode' : ''}`}
+      style={{ '--mem-dashboard-width': `${effectiveWidth}px` } as React.CSSProperties}
     >
       {/* Resize Handle */}
       <div 
@@ -391,185 +398,9 @@ export function ResearchPanel({
                 </div>
               )}
 
-              {/* Research Results */}
-              {hasResearch && (
-                <>
-                  {/* Summary Widget */}
-                  <div className="mem-widget">
-                    <div className="mem-widget-header">
-                      <span className="mem-widget-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <path d="M14 2v6h6"/>
-                        </svg>
-                        Executive Summary
-                      </span>
-                      <span className="mem-widget-badge mem-badge-success">Complete</span>
-                    </div>
-                    <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--alphawave-text-primary)' }}>
-                      {research.executive_summary}
-                    </p>
-                  </div>
-
-                  {/* Nicole's Synthesis */}
-                  {research.nicole_synthesis && (
-                    <div className="mem-widget" style={{ borderLeft: '3px solid var(--alphawave-primary)' }}>
-                      <div className="mem-widget-header">
-                        <span className="mem-widget-title">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
-                          </svg>
-                          Nicole&apos;s Analysis
-                        </span>
-                      </div>
-                      <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--alphawave-text-primary)', fontStyle: 'italic' }}>
-                        {research.nicole_synthesis}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Key Findings */}
-                  {research.findings?.length > 0 && (
-                    <div className="mem-widget">
-                      <div className="mem-widget-header">
-                        <span className="mem-widget-title">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                            <polyline points="9 11 12 14 22 4"/>
-                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                          </svg>
-                          Key Findings
-                        </span>
-                        <span className="mem-widget-badge mem-badge-info">{research.findings.length}</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {research.findings.map((finding, i) => {
-                          // Handle both string and object findings
-                          const content = typeof finding === 'string' ? finding : (finding?.content || finding?.text || JSON.stringify(finding));
-                          const sourceUrl = typeof finding === 'object' ? finding?.source_url : null;
-                          const sourceTitle = typeof finding === 'object' ? finding?.source_title : null;
-                          
-                          return (
-                            <div key={i} style={{ padding: '12px', background: 'var(--alphawave-surface)', borderRadius: '8px' }}>
-                              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6 }}>{content}</p>
-                              {sourceUrl && (
-                                <a 
-                                  href={sourceUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  style={{ fontSize: '12px', color: 'var(--alphawave-primary)', marginTop: '8px', display: 'inline-block' }}
-                                >
-                                  {sourceTitle || 'Source'} ↗
-                                </a>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Recommendations */}
-                  {research.recommendations?.length > 0 && (
-                    <div className="mem-widget">
-                      <div className="mem-widget-header">
-                        <span className="mem-widget-title">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                            <path d="M2 17l10 5 10-5"/>
-                            <path d="M2 12l10 5 10-5"/>
-                          </svg>
-                          Recommendations
-                        </span>
-                      </div>
-                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                        {research.recommendations.map((rec, i) => (
-                          <li key={i} style={{ marginBottom: '8px', fontSize: '13px', lineHeight: 1.6 }}>{rec}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Sources */}
-                  {research.sources?.length > 0 && (
-                    <div className="mem-widget">
-                      <div className="mem-widget-header">
-                        <span className="mem-widget-title">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                          </svg>
-                          Sources
-                        </span>
-                        <span className="mem-widget-badge mem-badge-info">{research.sources.length}</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {research.sources.map((source, i) => {
-                          // Handle both string URLs and {url, title} objects
-                          const url = typeof source === 'string' ? source : source?.url;
-                          const title = typeof source === 'object' ? source?.title : null;
-                          
-                          if (!url) return null;
-                          
-                          return (
-                            <a
-                              key={i}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: 'block',
-                                padding: '8px 12px',
-                                background: 'var(--alphawave-surface)',
-                                borderRadius: '6px',
-                                fontSize: '13px',
-                                color: 'var(--alphawave-primary)',
-                                textDecoration: 'none',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {title || url} ↗
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Metadata */}
-                  {research.metadata && (
-                    <div className="mem-widget">
-                      <div className="mem-widget-header">
-                        <span className="mem-widget-title">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M12 6v6l4 2"/>
-                          </svg>
-                          Research Details
-                        </span>
-                      </div>
-                      <div className="mem-stat-grid mem-stat-grid-2">
-                        <div className="mem-stat-box">
-                          <div className="mem-stat-value mem-small">{(research.metadata?.elapsed_seconds ?? 0).toFixed(1)}s</div>
-                          <div className="mem-stat-label">Duration</div>
-                        </div>
-                        <div className="mem-stat-box">
-                          <div className="mem-stat-value mem-small mem-success">${research.metadata.cost_usd?.toFixed(4)}</div>
-                          <div className="mem-stat-label">Cost</div>
-                        </div>
-                        <div className="mem-stat-box">
-                          <div className="mem-stat-value mem-small">{((research.metadata.input_tokens || 0) / 1000).toFixed(1)}K</div>
-                          <div className="mem-stat-label">Input Tokens</div>
-                        </div>
-                        <div className="mem-stat-box">
-                          <div className="mem-stat-value mem-small">{((research.metadata.output_tokens || 0) / 1000).toFixed(1)}K</div>
-                          <div className="mem-stat-label">Output Tokens</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
+              {/* Research Results - Editorial Article Format */}
+              {hasResearch && research && (
+                <ResearchArticle data={research} />
               )}
 
               {/* Inspiration Results */}
