@@ -18,6 +18,36 @@ interface ResearchArticleProps {
 }
 
 export function ResearchArticle({ data }: ResearchArticleProps) {
+  // Convert query to proper headline case
+  const toHeadlineCase = (str: string): string => {
+    if (!str) return '';
+    
+    // Words that should remain lowercase (unless first word)
+    const lowercaseWords = new Set([
+      'a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at', 
+      'to', 'by', 'in', 'of', 'up', 'as', 'is', 'it', 'so', 'be'
+    ]);
+    
+    // Clean up the string - remove "research" prefix patterns
+    let cleaned = str
+      .replace(/^research\s+(the\s+)?/i, '')
+      .replace(/^(what|how|why|when|where|who)\s+(is|are|do|does|can|could|would|should)\s+/i, '')
+      .trim();
+    
+    if (!cleaned) cleaned = str;
+    
+    return cleaned
+      .toLowerCase()
+      .split(' ')
+      .map((word, index) => {
+        if (index === 0 || !lowercaseWords.has(word)) {
+          return word.charAt(0).toUpperCase() + word.slice(1);
+        }
+        return word;
+      })
+      .join(' ');
+  };
+
   // Format date nicely
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return new Date().toLocaleDateString('en-US', { 
@@ -45,18 +75,145 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
     return labels[type || 'general'] || 'Research Report';
   };
 
-  // Extract first paragraph for lead
+  // Extract lead paragraph (first 2 sentences)
   const getLeadParagraph = (text: string) => {
-    const sentences = text.split('. ').slice(0, 2);
-    return sentences.join('. ') + (sentences.length > 0 ? '.' : '');
+    if (!text) return '';
+    const sentences = text.split(/(?<=[.!?])\s+/).slice(0, 2);
+    return sentences.join(' ');
   };
 
   // Get remaining paragraphs
   const getBodyParagraphs = (text: string) => {
-    const sentences = text.split('. ');
-    if (sentences.length <= 2) return [];
-    return sentences.slice(2).join('. ');
+    if (!text) return '';
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    if (sentences.length <= 2) return '';
+    return sentences.slice(2).join(' ');
   };
+
+  // Parse finding to extract content
+  const parseFinding = (finding: unknown): { title: string; body: string } => {
+    // If it's a string
+    if (typeof finding === 'string') {
+      // Check for title:body pattern
+      const colonIndex = finding.indexOf(':');
+      if (colonIndex > 0 && colonIndex < 60) {
+        return {
+          title: finding.slice(0, colonIndex).trim(),
+          body: finding.slice(colonIndex + 1).trim()
+        };
+      }
+      return { title: '', body: finding };
+    }
+    
+    // If it's an object
+    if (typeof finding === 'object' && finding !== null) {
+      const obj = finding as Record<string, unknown>;
+      
+      // Try common field patterns
+      const content = obj.content || obj.text || obj.finding || obj.summary || '';
+      const title = obj.title || obj.category || obj.insight || '';
+      
+      if (typeof content === 'string' && content) {
+        return { 
+          title: typeof title === 'string' ? title : '', 
+          body: content 
+        };
+      }
+      
+      // If no content field, try to extract meaningful text
+      if (obj.action && typeof obj.action === 'string') {
+        return {
+          title: (obj.category || obj.insight || '') as string,
+          body: obj.action
+        };
+      }
+    }
+    
+    return { title: '', body: '' };
+  };
+
+  // Parse recommendation
+  const parseRecommendation = (rec: unknown): string => {
+    if (typeof rec === 'string') return rec;
+    
+    if (typeof rec === 'object' && rec !== null) {
+      const obj = rec as Record<string, unknown>;
+      
+      // Try to build a readable recommendation
+      if (obj.action && typeof obj.action === 'string') {
+        const category = obj.category ? `${obj.category}: ` : '';
+        return `${category}${obj.action}`;
+      }
+      
+      // Fallback to content/text fields
+      const content = obj.content || obj.text || obj.recommendation || '';
+      if (typeof content === 'string') return content;
+    }
+    
+    return '';
+  };
+
+  // Get favicon URL for a domain
+  const getFaviconUrl = (url: string): string => {
+    try {
+      const domain = new URL(url).hostname;
+      // Use Google's favicon service - reliable and fast
+      return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Get display info for a source
+  const getSourceInfo = (url: string): { domain: string; displayName: string } => {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace(/^www\./, '');
+      
+      // Map common domains to friendly names
+      const domainNames: Record<string, string> = {
+        'medium.com': 'Medium',
+        'newyorker.com': 'The New Yorker',
+        'time.com': 'TIME',
+        'nytimes.com': 'The New York Times',
+        'washingtonpost.com': 'Washington Post',
+        'theguardian.com': 'The Guardian',
+        'bbc.com': 'BBC',
+        'forbes.com': 'Forbes',
+        'wired.com': 'WIRED',
+        'techcrunch.com': 'TechCrunch',
+        'arstechnica.com': 'Ars Technica',
+        'theverge.com': 'The Verge',
+        'wikipedia.org': 'Wikipedia',
+        'github.com': 'GitHub',
+        'stackoverflow.com': 'Stack Overflow',
+        'dev.to': 'DEV',
+        'linkedin.com': 'LinkedIn',
+        'twitter.com': 'Twitter/X',
+        'x.com': 'X',
+        'youtube.com': 'YouTube',
+        'reddit.com': 'Reddit',
+      };
+      
+      const displayName = domainNames[hostname] || 
+        hostname.split('.').slice(-2, -1)[0]?.charAt(0).toUpperCase() + 
+        hostname.split('.').slice(-2, -1)[0]?.slice(1) || hostname;
+      
+      return { domain: hostname, displayName };
+    } catch {
+      return { domain: url, displayName: 'Source' };
+    }
+  };
+
+  // Filter out empty findings
+  const validFindings = (data.findings || [])
+    .map(parseFinding)
+    .filter(f => f.body.length > 0);
+
+  // Filter out empty recommendations
+  const validRecommendations = (data.recommendations || [])
+    .map(parseRecommendation)
+    .filter(r => r.length > 0);
 
   return (
     <article className="research-article">
@@ -66,7 +223,7 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
           {getTypeLabel(data.research_type)}
         </div>
         <h1 className="research-article-title">
-          {data.query}
+          {toHeadlineCase(data.query || '')}
         </h1>
         <p className="research-article-subtitle">
           {getLeadParagraph(data.executive_summary || '')}
@@ -89,7 +246,7 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
 
       {/* Article Body */}
       <div className="research-article-body">
-        {/* Executive Summary as Lead */}
+        {/* Executive Summary continuation */}
         {data.executive_summary && getBodyParagraphs(data.executive_summary) && (
           <p className="research-article-lead">
             {getBodyParagraphs(data.executive_summary)}
@@ -106,46 +263,35 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
         )}
 
         {/* Key Findings as Structured Content */}
-        {data.findings && data.findings.length > 0 && (
+        {validFindings.length > 0 && (
           <section className="research-article-section">
             <h2 className="research-article-section-title">Key Findings</h2>
             <div className="research-article-findings">
-              {data.findings.map((finding, i) => {
-                const content = typeof finding === 'string' 
-                  ? finding 
-                  : (finding?.content || finding?.text || '');
-                
-                // Check if it looks like a structured finding with a title
-                const hasTitle = content.includes(':') && content.indexOf(':') < 50;
-                const [title, ...rest] = hasTitle ? content.split(':') : ['', content];
-                const body = hasTitle ? rest.join(':').trim() : content;
-
-                return (
-                  <div key={i} className="research-finding-card">
-                    {hasTitle && title && (
-                      <h3 className="research-finding-title">{title}</h3>
-                    )}
-                    <p className="research-finding-text">{body}</p>
-                  </div>
-                );
-              })}
+              {validFindings.map((finding, i) => (
+                <div key={i} className="research-finding-card">
+                  {finding.title && (
+                    <h3 className="research-finding-title">{finding.title}</h3>
+                  )}
+                  <p className="research-finding-text">{finding.body}</p>
+                </div>
+              ))}
             </div>
           </section>
         )}
 
         {/* Recommendations as Action Items */}
-        {data.recommendations && data.recommendations.length > 0 && (
+        {validRecommendations.length > 0 && (
           <section className="research-article-section">
             <h2 className="research-article-section-title">Recommendations</h2>
             <ul className="research-article-recommendations">
-              {data.recommendations.map((rec, i) => (
-                <li key={i}>{typeof rec === 'string' ? rec : JSON.stringify(rec)}</li>
+              {validRecommendations.map((rec, i) => (
+                <li key={i}>{rec}</li>
               ))}
             </ul>
           </section>
         )}
 
-        {/* Sources as References */}
+        {/* Sources as References with Favicons */}
         {data.sources && data.sources.length > 0 && (
           <section className="research-article-sources">
             <h3 className="research-sources-title">Sources</h3>
@@ -155,6 +301,9 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
                 const title = typeof source === 'object' ? source?.title : null;
                 if (!url) return null;
                 
+                const { domain, displayName } = getSourceInfo(url);
+                const faviconUrl = getFaviconUrl(url);
+                
                 return (
                   <a
                     key={i}
@@ -163,8 +312,39 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
                     rel="noopener noreferrer"
                     className="research-source-link"
                   >
-                    <span className="source-number">{i + 1}</span>
-                    <span className="source-title">{title || new URL(url).hostname}</span>
+                    <span className="source-favicon">
+                      {faviconUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img 
+                          src={faviconUrl} 
+                          alt="" 
+                          width={16} 
+                          height={16}
+                          onError={(e) => {
+                            // Fallback to generic icon on error
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <svg 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth={2} 
+                        className={faviconUrl ? 'hidden' : ''}
+                        width={16}
+                        height={16}
+                      >
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="2" y1="12" x2="22" y2="12"/>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                      </svg>
+                    </span>
+                    <span className="source-info">
+                      <span className="source-title">{title || displayName}</span>
+                      <span className="source-domain">{domain}</span>
+                    </span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="source-icon">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                       <polyline points="15 3 21 3 21 9"/>
@@ -206,4 +386,3 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
 }
 
 export default ResearchArticle;
-
