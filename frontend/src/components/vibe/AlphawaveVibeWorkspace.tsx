@@ -84,14 +84,19 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('projects');
-  const [isExpanded, setIsExpanded] = useState(true);  // Default to full width
+  const [isExpanded, setIsExpanded] = useState(true);  // Full width when open
   
-  // Notify parent of expanded state when panel opens
+  // Sync expanded state with parent - notify when opening, reset when closing
   useEffect(() => {
     if (isOpen) {
+      // Panel is opening - tell parent we're expanded
       onExpandChange?.(isExpanded);
+    } else {
+      // Panel is closing - tell parent we're not expanded anymore
+      onExpandChange?.(false);
     }
-  }, [isOpen, isExpanded, onExpandChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // Only react to isOpen changes
   
   // Handle expand toggle
   const handleExpandToggle = useCallback(() => {
