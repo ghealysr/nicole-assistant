@@ -245,7 +245,7 @@ ORIGINAL QUERY:
 {query}
 
 RESEARCH TYPE:
-{research_type.value}
+{research_type.value if hasattr(research_type, 'value') else str(research_type)}
 
 GUIDELINES:
 - Speak as Nicole, not as a generic AI
@@ -282,6 +282,9 @@ Provide a 2-3 paragraph synthesis that Nicole would present to Glen."""
     ) -> int:
         """Store research request in database."""
         try:
+            # Handle both enum and string research_type
+            research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
+            
             row = await db.fetchrow(
                 """
                 INSERT INTO research_requests (
@@ -289,7 +292,7 @@ Provide a 2-3 paragraph synthesis that Nicole would present to Glen."""
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 RETURNING id
                 """,
-                research_type.value,
+                research_type_str,
                 query,
                 json.dumps(context or {}),
                 json.dumps({}),

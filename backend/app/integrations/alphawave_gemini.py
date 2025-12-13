@@ -240,10 +240,13 @@ class GeminiClient:
             
             logger.info(f"[GEMINI] Research completed in {elapsed:.1f}s, cost: ${cost}")
             
+            # Handle both enum and string research_type
+            research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
+            
             return {
                 "success": True,
                 "query": query,
-                "research_type": research_type.value,
+                "research_type": research_type_str,
                 "results": result,
                 "sources": result.get("sources", []),
                 "thinking": result.get("thinking"),
