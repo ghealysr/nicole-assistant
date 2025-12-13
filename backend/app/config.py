@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     BRAVE_API_KEY: str = ""
     RECRAFT_API_KEY: str = ""  # For image generation via MCP bridge
 
+    # Gemini 3 Pro API
+    GEMINI_API_KEY: str = ""
+    GEMINI_PRO_MODEL: str = "gemini-3-pro-preview"
+    GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
+
     class Config:
         env_file = ".env" if os.path.exists(".env") else "/opt/nicole/.env"
         env_file_encoding = "utf-8"

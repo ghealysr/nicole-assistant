@@ -45,6 +45,7 @@ from app.routers import (
     alphawave_dashboard,
     alphawave_claude_skills,
     alphawave_vibe,
+    alphawave_research,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,7 @@ app.include_router(alphawave_workflows.router, prefix="/workflows", tags=["Workf
 app.include_router(alphawave_dashboard.router, prefix="/dashboard", tags=["Dashboard Metrics"])
 app.include_router(alphawave_claude_skills.router, prefix="/claude-skills", tags=["Claude Skills"])
 app.include_router(alphawave_vibe.router, tags=["Vibe Dashboard"])
+app.include_router(alphawave_research.router, tags=["Research"])
 
 
 @app.get("/healthz")

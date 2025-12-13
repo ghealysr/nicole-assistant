@@ -61,6 +61,7 @@ class ImageGenerationService:
         "flux_pro": 0.055,
         "flux_schnell": 0.003,
         "ideogram": 0.08,
+        "gemini": 0.134,  # Per image, 1K-2K resolution
     }
 
     # Model configurations with provider-specific settings
@@ -118,6 +119,22 @@ class ImageGenerationService:
                 "magic_prompt_option": "Auto",
             },
             "style_types": ["Auto", "General", "Realistic", "Design", "Render 3D", "Anime"],
+        },
+        "gemini": {
+            "name": "Gemini 3 Pro Image",
+            "mode": "gemini",
+            "supports_batch": False,
+            "supports_thinking": True,
+            "supports_image_input": True,
+            "default_params": {
+                "size": "1024x1024",
+            },
+            "sizes": ["1024x1024", "2048x2048", "4096x4096"],
+            "cost_per_image": {
+                "1024x1024": 0.134,
+                "2048x2048": 0.134,
+                "4096x4096": 0.24,
+            },
         },
     }
 

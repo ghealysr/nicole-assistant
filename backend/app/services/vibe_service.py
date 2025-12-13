@@ -468,6 +468,25 @@ VIBE_INTAKE_TOOLS = [
             },
             "required": ["url", "category", "notes"]
         }
+    },
+    {
+        "name": "deep_research",
+        "description": "Conduct deep web research using Google Search. Use this for comprehensive research on topics like industry trends, competitor analysis, design patterns, or technical information. Returns detailed findings with sources and citations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Research query. Be specific: 'doula website design trends 2024' or 'best booking systems for wellness businesses'"
+                },
+                "research_type": {
+                    "type": "string",
+                    "enum": ["general", "vibe_inspiration", "competitor", "technical"],
+                    "description": "Type of research: general (broad), vibe_inspiration (design focus), competitor (analysis), technical (docs/code)"
+                }
+            },
+            "required": ["query"]
+        }
     }
 ]
 
@@ -965,6 +984,13 @@ class VibeService:
                     project_id=project_id
                 )
             
+            elif tool_name == "deep_research":
+                return await self._tool_deep_research(
+                    query=tool_input.get("query", ""),
+                    research_type=tool_input.get("research_type", "general"),
+                    project_id=project_id
+                )
+            
             else:
                 return {
                     "success": False,
@@ -1205,6 +1231,87 @@ class VibeService:
                 "category": category,
                 "notes": notes,
                 "message": f"Saved {url} as {category} inspiration"
+            }
+        }
+    
+    async def _tool_deep_research(
+        self,
+        query: str,
+        research_type: str,
+        project_id: int
+    ) -> Dict[str, Any]:
+        """
+        Execute deep research using Gemini 3 Pro with Google Search grounding.
+        
+        This provides comprehensive research with citations and sources.
+        """
+        from app.integrations.alphawave_gemini import gemini_client, ResearchType
+        
+        # Map string to enum
+        try:
+            rt = ResearchType(research_type)
+        except ValueError:
+            rt = ResearchType.GENERAL
+        
+        # Get project context if available
+        context = None
+        if project_id:
+            project = await self.get_project(user_id=0, project_id=project_id)
+            if project.success and project.data:
+                context = {
+                    "project_brief": project.data.get("brief"),
+                    "project_name": project.data.get("name"),
+                    "project_type": project.data.get("project_type")
+                }
+        
+        # Execute research
+        result = await gemini_client.deep_research(
+            query=query,
+            research_type=rt,
+            context=context,
+            enable_thinking=True
+        )
+        
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error": result.get("error", "Research failed")
+            }
+        
+        # Format results for Nicole to present
+        parsed = result.get("results", {})
+        sources = result.get("sources", [])
+        
+        # Log research activity
+        try:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.INTAKE_MESSAGE,
+                description=f"Deep research: {query[:50]}...",
+                agent_name="Nicole",
+                metadata={
+                    "query": query,
+                    "research_type": research_type,
+                    "source_count": len(sources),
+                    "cost_usd": result.get("metadata", {}).get("cost_usd", 0)
+                }
+            )
+        except Exception as e:
+            logger.warning(f"[VIBE] Failed to log research: {e}")
+        
+        return {
+            "success": True,
+            "result": {
+                "query": query,
+                "research_type": research_type,
+                "executive_summary": parsed.get("executive_summary", ""),
+                "key_findings": parsed.get("key_findings", [])[:5],  # Top 5 findings
+                "recommendations": parsed.get("recommendations", [])[:3],
+                "sources": [
+                    {"url": s.get("url", ""), "title": s.get("title", "")}
+                    for s in sources[:5]
+                ],
+                "message": f"Research complete. Found {len(sources)} relevant sources."
             }
         }
     
