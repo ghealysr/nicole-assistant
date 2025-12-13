@@ -916,34 +916,85 @@ class VibeService:
         project_id: int
     ) -> Dict[str, Any]:
         """
-        Capture a website screenshot.
+        Capture a website screenshot using Puppeteer MCP and store in Cloudinary.
         
-        Note: For now, returns a placeholder. Full implementation would use
-        Playwright MCP or a screenshot service.
+        Flow:
+        1. Use Puppeteer MCP to navigate and screenshot
+        2. Upload base64 image to Cloudinary
+        3. Store reference in inspiration cache
+        4. Return permanent URL
         """
-        # TODO: Integrate with Playwright MCP when available
-        # For now, save the URL reference and suggest the user can view it
+        from app.mcp.alphawave_playwright_mcp import playwright_mcp
+        from app.services.alphawave_cloudinary_service import cloudinary_service
         
+        # Get project name for folder organization
+        project = await self.get_project(user_id=0, project_id=project_id)
+        project_name = project.data.get("name", f"project_{project_id}") if project.success else f"project_{project_id}"
+        project_slug = project_name.lower().replace(" ", "-")[:30]
+        
+        screenshot_url = None
+        
+        # Try Puppeteer MCP for actual screenshot
+        if playwright_mcp.is_connected or await playwright_mcp.connect():
+            try:
+                # Navigate to URL
+                await playwright_mcp.navigate(url, wait_until="networkidle")
+                
+                # Take screenshot
+                result = await playwright_mcp.screenshot(full_page=False, format="png")
+                
+                if result and not result.get("error"):
+                    # Get base64 data from result
+                    base64_data = result.get("data") or result.get("screenshot")
+                    
+                    if base64_data and cloudinary_service.is_configured:
+                        # Upload to Cloudinary
+                        upload_result = await cloudinary_service.upload_screenshot(
+                            base64_data=base64_data,
+                            project_name=project_slug,
+                            description=description,
+                            url_source=url
+                        )
+                        
+                        if upload_result.get("success"):
+                            screenshot_url = upload_result.get("url")
+                            logger.info(f"[VIBE] Screenshot captured and uploaded: {screenshot_url}")
+                        
+            except Exception as e:
+                logger.warning(f"[VIBE] Screenshot capture failed: {e}")
+        
+        # Store in inspiration cache
         if project_id not in self._inspiration_cache:
             self._inspiration_cache[project_id] = []
         
         self._inspiration_cache[project_id].append({
             "url": url,
             "description": description,
-            "type": "screenshot_reference",
+            "type": "screenshot" if screenshot_url else "screenshot_reference",
+            "image_url": screenshot_url,
             "captured_at": datetime.now().isoformat()
         })
         
-        return {
-            "success": True,
-            "result": {
-                "url": url,
-                "description": description,
-                "message": f"Referenced {url} - you can view this site for design inspiration",
-                # When Playwright is available:
-                # "image_url": captured_screenshot_url
+        if screenshot_url:
+            return {
+                "success": True,
+                "result": {
+                    "url": url,
+                    "description": description,
+                    "image_url": screenshot_url,
+                    "message": f"Screenshot captured and saved: {description}"
+                }
             }
-        }
+        else:
+            # Fallback to reference
+            return {
+                "success": True,
+                "result": {
+                    "url": url,
+                    "description": description,
+                    "message": f"Referenced {url} for inspiration (screenshot service unavailable)"
+                }
+            }
     
     async def _tool_memory_search(
         self, 

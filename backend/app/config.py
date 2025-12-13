@@ -40,12 +40,17 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str = ""
     NICOLE_VOICE_ID: str = ""
 
-    # File Storage
+    # File Storage - DigitalOcean Spaces
     DO_SPACES_ENDPOINT: str = ""
     DO_SPACES_BUCKET: str = ""
     DO_SPACES_BACKUP_BUCKET: str = ""
     DO_SPACES_ACCESS_KEY: str = ""
     DO_SPACES_SECRET_KEY: str = ""
+
+    # Cloudinary - Image/Screenshot Storage
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
 
     # UploadThing
     UPLOADTHING_APP_ID: str = ""

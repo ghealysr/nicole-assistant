@@ -24,6 +24,9 @@ from app.services.alphawave_correction_service import correction_service
 from app.services.alphawave_file_processor import file_processor
 from app.services.alphawave_link_processor import link_processor
 
+# Media/Storage services
+from app.services.alphawave_cloudinary_service import cloudinary_service
+
 # Agent Architecture Services (Anthropic Patterns)
 from app.services.think_tool import think_tool_service, ThinkingStep, ThinkingSession
 from app.services.tool_search_service import tool_search_service, ToolCategory
@@ -51,6 +54,9 @@ __all__ = [
     # Processing
     "file_processor",
     "link_processor",
+    
+    # Media/Storage
+    "cloudinary_service",
     
     # Agent Architecture
     "think_tool_service",

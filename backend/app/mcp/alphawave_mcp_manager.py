@@ -196,6 +196,20 @@ class AlphawaveMCPManager:
             )
         )
         
+        # Brave Search MCP (web search)
+        self._servers["brave-search"] = MCPServerState(
+            config=MCPServerConfig(
+                name="brave-search",
+                command="npx",
+                args=["-y", "@modelcontextprotocol/server-brave-search"],
+                env={
+                    "BRAVE_API_KEY": os.getenv("BRAVE_API_KEY", ""),
+                },
+                # Enabled when BRAVE_API_KEY is present
+                enabled=bool(os.getenv("BRAVE_API_KEY")),
+            )
+        )
+        
         logger.info(f"[MCP] Registered {len(self._servers)} server configurations")
     
     def register_server(self, config: MCPServerConfig) -> None:
