@@ -30,7 +30,7 @@ interface ResearchPanelProps {
   statusMessage: string;
   progress: number;
   error: string | null;
-  onFeedback?: (feedback: ImageFeedback) => void;
+  onFeedback?: (feedback: ImageFeedback) => void;  // Reserved for future inspiration feedback
   onRetry?: () => void;
   onExecuteResearch?: (query: string, type: ResearchType) => void;
 }
@@ -53,7 +53,7 @@ export function ResearchPanel({
   statusMessage,
   progress,
   error,
-  onFeedback,
+  onFeedback: _onFeedback,  // Reserved for future use
   onRetry,
   onExecuteResearch,
 }: ResearchPanelProps) {

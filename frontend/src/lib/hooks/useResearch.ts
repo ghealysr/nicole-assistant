@@ -14,10 +14,10 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { API_CONFIG } from '@/lib/alphawave_config';
+import { API_URL as CONFIG_API_URL } from '@/lib/alphawave_config';
 
 // API base URL
-const API_URL = API_CONFIG?.apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = CONFIG_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Research types
 export type ResearchType = 'general' | 'vibe_inspiration' | 'competitor' | 'technical';
