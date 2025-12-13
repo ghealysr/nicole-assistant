@@ -1065,6 +1065,14 @@ body.resizing * {
   gap: 2px;
 }
 
+/* Brand label (project view) */
+.vibe-brand {
+  color: var(--vibe-text);
+  font-weight: 700;
+  margin-left: 8px;
+  letter-spacing: 0.2px;
+}
+
 .vibe-project-name-input {
   background: transparent;
   border: none;
