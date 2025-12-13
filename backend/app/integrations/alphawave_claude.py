@@ -172,7 +172,8 @@ class AlphawaveClaudeClient:
             iterations += 1
             
             try:
-                response = self.client.messages.create(
+                # Use async client for proper async operation
+                response = await self.async_client.messages.create(
                     model=model,
                     max_tokens=max_tokens,
                     temperature=temperature,
