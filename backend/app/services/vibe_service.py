@@ -1629,41 +1629,62 @@ class VibeService:
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
         
-        # Create tool executor for this project
-        async def tool_executor(tool_name: str, tool_input: Dict[str, Any]) -> str:
-            """Execute Vibe tools and return results."""
-            result = await self._execute_vibe_tool(tool_name, tool_input, project_id)
-            return json.dumps(result, default=str)
+        # Feature flag for tool-enabled intake (can disable if causing issues)
+        USE_INTAKE_TOOLS = False  # Temporarily disabled until fully tested
         
-        # Call Claude with tools for collaborative intake
-        try:
-            response, tool_uses = await claude_client.generate_response_with_tools(
-                messages=messages,
-                tools=VIBE_INTAKE_TOOLS,
-                tool_executor=tool_executor,
-                system_prompt=INTAKE_SYSTEM_PROMPT,
-                model=self.SONNET_MODEL,
-                max_tokens=3000,  # More room for tool reasoning
-                temperature=0.7,
-                max_tool_iterations=5  # Allow multiple tool uses
-            )
+        response = None
+        tool_uses = []
+        
+        if USE_INTAKE_TOOLS:
+            # Create tool executor for this project
+            async def tool_executor(tool_name: str, tool_input: Dict[str, Any]) -> str:
+                """Execute Vibe tools and return results."""
+                result = await self._execute_vibe_tool(tool_name, tool_input, project_id)
+                return json.dumps(result, default=str)
             
-            # Log tool usage if any
-            if tool_uses:
-                logger.info("[VIBE] Intake used %d tools: %s", 
-                           len(tool_uses), 
-                           [t.get("name") for t in tool_uses])
-                await self._log_activity(
-                    project_id=project_id,
-                    activity_type=ActivityType.INTAKE_MESSAGE,
-                    description=f"Nicole used {len(tool_uses)} research tools",
-                    agent_name="Nicole",
-                    metadata={"tools_used": [t.get("name") for t in tool_uses]}
+            # Try tool-enabled call, fall back to simple if it fails
+            try:
+                response, tool_uses = await claude_client.generate_response_with_tools(
+                    messages=messages,
+                    tools=VIBE_INTAKE_TOOLS,
+                    tool_executor=tool_executor,
+                    system_prompt=INTAKE_SYSTEM_PROMPT,
+                    model=self.SONNET_MODEL,
+                    max_tokens=3000,
+                    temperature=0.7,
+                    max_tool_iterations=5
                 )
                 
-        except Exception as e:
-            logger.error("[VIBE] Intake Claude call failed: %s", e, exc_info=True)
-            return OperationResult(success=False, error=f"AI service error: {e}")
+                # Log tool usage if any
+                if tool_uses:
+                    logger.info("[VIBE] Intake used %d tools: %s", 
+                               len(tool_uses), 
+                               [t.get("name") for t in tool_uses])
+                    await self._log_activity(
+                        project_id=project_id,
+                        activity_type=ActivityType.INTAKE_MESSAGE,
+                        description=f"Nicole used {len(tool_uses)} research tools",
+                        agent_name="Nicole",
+                        metadata={"tools_used": [t.get("name") for t in tool_uses]}
+                    )
+                    
+            except Exception as e:
+                logger.warning("[VIBE] Tool-enabled intake failed, falling back to simple: %s", e)
+                response = None  # Fall through to simple mode
+        
+        # Simple mode (no tools) - more reliable for initial launch
+        if response is None:
+            try:
+                response = await claude_client.generate_response(
+                    messages=messages,
+                    system_prompt=INTAKE_SYSTEM_PROMPT,
+                    model=self.SONNET_MODEL,
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+            except Exception as e:
+                logger.error("[VIBE] Intake Claude call failed: %s", e, exc_info=True)
+                return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (rough: ~500 input, ~1000 output tokens)
         cost = estimate_api_cost(self.SONNET_MODEL, 500, 1000)
