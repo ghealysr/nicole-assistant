@@ -23,8 +23,9 @@ def get_cors_origins() -> list[str]:
     
     return [
         "https://nicole.alphawavetech.com",
+        "https://nicole.alphawavelabs.io",
         "https://nicole-v7.vercel.app",
-        "https://ghealysr-nicole-assistant-yyr5.vercel.app",
+        "https://nicole-assistant-yyr5.vercel.app",
     ]
 
 
@@ -36,8 +37,8 @@ def get_cors_origin_regex() -> str:
     if settings.ENVIRONMENT == "development":
         return None
     
-    # Match any Vercel preview URL for this project
-    return r"https://ghealysr-nicole-assistant.*\.vercel\.app"
+    # Match any Vercel preview URL for this project (multiple patterns)
+    return r"https://(nicole-assistant.*|ghealysr-nicole-assistant.*)\.vercel\.app"
 
 
 def configure_cors(app) -> None:
