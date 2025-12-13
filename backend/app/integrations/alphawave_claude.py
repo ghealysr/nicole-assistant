@@ -73,7 +73,7 @@ class AlphawaveClaudeClient:
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
-        Generate response from Claude (non-streaming).
+        Generate response from Claude (non-streaming, async).
         
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -102,7 +102,10 @@ class AlphawaveClaudeClient:
             if tools:
                 kwargs["tools"] = tools
             
-            response = self.client.messages.create(**kwargs)
+            logger.debug(f"[Claude] Calling {model} with {len(messages)} messages")
+            
+            # Use async client for true async operation
+            response = await self.async_client.messages.create(**kwargs)
             
             # Extract text from response
             if response.content and len(response.content) > 0:
@@ -111,12 +114,18 @@ class AlphawaveClaudeClient:
                 for block in response.content:
                     if hasattr(block, 'text'):
                         text_parts.append(block.text)
-                return "".join(text_parts)
+                result = "".join(text_parts)
+                logger.debug(f"[Claude] Response: {len(result)} chars")
+                return result
             
+            logger.warning("[Claude] Empty response from API")
             return ""
             
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error: {e.status_code} - {e.message}", exc_info=True)
+            raise
         except Exception as e:
-            logger.error(f"Claude API error: {e}", exc_info=True)
+            logger.error(f"Claude unexpected error: {e}", exc_info=True)
             raise
     
     async def generate_response_with_tools(
