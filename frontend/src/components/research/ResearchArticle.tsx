@@ -18,6 +18,35 @@ interface ResearchArticleProps {
 }
 
 export function ResearchArticle({ data }: ResearchArticleProps) {
+  // Strip markdown formatting from text
+  const stripMarkdown = (text: string): string => {
+    if (!text) return '';
+    return text
+      // Remove headers (###, ##, #)
+      .replace(/#{1,6}\s*/g, '')
+      // Remove bold (**text** or __text__)
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      // Remove italic (*text* or _text_)
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Remove inline code (`code`)
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove links [text](url) -> text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove bullet points
+      .replace(/^\s*[-*+]\s+/gm, '')
+      // Remove numbered lists
+      .replace(/^\s*\d+\.\s+/gm, '')
+      // Remove blockquotes
+      .replace(/^\s*>\s+/gm, '')
+      // Remove horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Remove extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   // Convert query to proper headline case
   const toHeadlineCase = (str: string): string => {
     if (!str) return '';
@@ -78,31 +107,37 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
   // Extract lead paragraph (first 2 sentences)
   const getLeadParagraph = (text: string) => {
     if (!text) return '';
-    const sentences = text.split(/(?<=[.!?])\s+/).slice(0, 2);
+    const cleaned = stripMarkdown(text);
+    const sentences = cleaned.split(/(?<=[.!?])\s+/).slice(0, 2);
     return sentences.join(' ');
   };
 
   // Get remaining paragraphs
   const getBodyParagraphs = (text: string) => {
     if (!text) return '';
-    const sentences = text.split(/(?<=[.!?])\s+/);
+    const cleaned = stripMarkdown(text);
+    const sentences = cleaned.split(/(?<=[.!?])\s+/);
     if (sentences.length <= 2) return '';
     return sentences.slice(2).join(' ');
   };
+  
+  // Clean nicole synthesis
+  const cleanedSynthesis = data.nicole_synthesis ? stripMarkdown(data.nicole_synthesis) : '';
 
   // Parse finding to extract content
   const parseFinding = (finding: unknown): { title: string; body: string } => {
     // If it's a string
     if (typeof finding === 'string') {
+      const cleaned = stripMarkdown(finding);
       // Check for title:body pattern
-      const colonIndex = finding.indexOf(':');
+      const colonIndex = cleaned.indexOf(':');
       if (colonIndex > 0 && colonIndex < 60) {
         return {
-          title: finding.slice(0, colonIndex).trim(),
-          body: finding.slice(colonIndex + 1).trim()
+          title: cleaned.slice(0, colonIndex).trim(),
+          body: cleaned.slice(colonIndex + 1).trim()
         };
       }
-      return { title: '', body: finding };
+      return { title: '', body: cleaned };
     }
     
     // If it's an object
@@ -115,16 +150,16 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
       
       if (typeof content === 'string' && content) {
         return { 
-          title: typeof title === 'string' ? title : '', 
-          body: content 
+          title: stripMarkdown(typeof title === 'string' ? title : ''), 
+          body: stripMarkdown(content) 
         };
       }
       
       // If no content field, try to extract meaningful text
       if (obj.action && typeof obj.action === 'string') {
         return {
-          title: (obj.category || obj.insight || '') as string,
-          body: obj.action
+          title: stripMarkdown((obj.category || obj.insight || '') as string),
+          body: stripMarkdown(obj.action)
         };
       }
     }
@@ -134,20 +169,20 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
 
   // Parse recommendation
   const parseRecommendation = (rec: unknown): string => {
-    if (typeof rec === 'string') return rec;
+    if (typeof rec === 'string') return stripMarkdown(rec);
     
     if (typeof rec === 'object' && rec !== null) {
       const obj = rec as Record<string, unknown>;
       
       // Try to build a readable recommendation
       if (obj.action && typeof obj.action === 'string') {
-        const category = obj.category ? `${obj.category}: ` : '';
-        return `${category}${obj.action}`;
+        const category = obj.category ? `${stripMarkdown(obj.category as string)}: ` : '';
+        return `${category}${stripMarkdown(obj.action)}`;
       }
       
       // Fallback to content/text fields
       const content = obj.content || obj.text || obj.recommendation || '';
-      if (typeof content === 'string') return content;
+      if (typeof content === 'string') return stripMarkdown(content);
     }
     
     return '';
@@ -254,10 +289,10 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
         )}
 
         {/* Nicole's Synthesis - The Heart of the Article */}
-        {data.nicole_synthesis && (
+        {cleanedSynthesis && (
           <section className="research-article-section">
             <p className="research-article-text">
-              {data.nicole_synthesis}
+              {cleanedSynthesis}
             </p>
           </section>
         )}
@@ -377,7 +412,7 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
             {data.sources?.length || 0} sources analyzed
           </span>
           <span className="stat cost">
-            Powered by Gemini 3 Pro
+            Powered by AlphaWave Research
           </span>
         </div>
       </footer>

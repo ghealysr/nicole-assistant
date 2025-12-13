@@ -206,7 +206,7 @@ export function ResearchPanel({
               </svg>
               <div className="skills-offline-text">
                 <strong>Sign In Required</strong>
-                <span>Sign in to use Gemini Deep Research.</span>
+                <span>Sign in to use AlphaWave Research.</span>
               </div>
             </div>
           )}
@@ -246,7 +246,7 @@ export function ResearchPanel({
                     <div style={{ background: 'var(--alphawave-primary)', height: '100%', width: `${progress}%`, transition: 'width 0.3s ease' }} />
                   </div>
                   <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--alphawave-text-secondary)' }}>
-                    Powered by Gemini 3 Pro + Google Search
+                    AlphaWave Research
                   </div>
                 </div>
               )}
@@ -372,12 +372,12 @@ export function ResearchPanel({
                       </span>
                     </div>
                     <p style={{ fontSize: '13px', color: 'var(--alphawave-text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                      Uses <strong>Gemini 3 Pro</strong> with Google Search grounding to perform real-time web research. 
-                      Results are synthesized by <strong>Nicole</strong> into actionable insights.
+                      AlphaWave Research uses real-time web search to gather information, 
+                      then <strong>Nicole</strong> synthesizes findings into actionable insights.
                     </p>
                     <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <span className="mem-widget-badge mem-badge-success">Google Search Grounding FREE</span>
-                      <span className="mem-widget-badge mem-badge-info">Until Jan 2026</span>
+                      <span className="mem-widget-badge mem-badge-success">Real-time Search</span>
+                      <span className="mem-widget-badge mem-badge-info">AI Synthesis</span>
                     </div>
                   </div>
                 </>
