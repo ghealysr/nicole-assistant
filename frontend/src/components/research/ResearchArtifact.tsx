@@ -140,6 +140,18 @@ export function ResearchArtifact({ data }: ResearchArtifactProps) {
             </svg>
             ${data.metadata.cost_usd.toFixed(3)}
           </span>
+          {data.sources.length > 0 && (
+            <>
+              <span className="meta-separator">•</span>
+              <span className="meta-item grounding">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                Search FREE
+              </span>
+            </>
+          )}
         </div>
       </header>
 

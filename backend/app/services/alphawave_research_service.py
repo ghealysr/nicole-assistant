@@ -285,16 +285,17 @@ Provide a 2-3 paragraph synthesis that Nicole would present to Glen."""
             row = await db.fetchrow(
                 """
                 INSERT INTO research_requests (
-                    type, query, context, constraints, status, project_id, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                    type, query, context, constraints, status, project_id, user_id, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 RETURNING id
                 """,
                 research_type.value,
                 query,
                 json.dumps(context or {}),
-                json.dumps({"user_id": user_id}),
+                json.dumps({}),
                 ResearchStatus.PENDING.value,
-                project_id
+                project_id,
+                user_id if user_id else None
             )
             return row["id"] if row else 0
         except Exception as e:

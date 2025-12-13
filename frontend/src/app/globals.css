@@ -7314,6 +7314,15 @@ body.resizing * {
   color: var(--research-success);
 }
 
+.meta-item.grounding {
+  color: #4285F4;  /* Google Blue */
+  background: rgba(66, 133, 244, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .meta-separator {
   color: var(--research-text-dim);
 }

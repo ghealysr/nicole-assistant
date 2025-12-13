@@ -20,14 +20,73 @@ Pricing Notes (as of Dec 2025):
 import logging
 import json
 import asyncio
-from typing import Optional, Dict, Any, List
+import random
+from typing import Optional, Dict, Any, List, Callable, TypeVar
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from functools import wraps
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Type variable for generic retry decorator
+T = TypeVar('T')
+
+
+def async_retry_with_backoff(
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+    jitter: bool = True
+) -> Callable:
+    """
+    Decorator for async functions that retries with exponential backoff.
+    
+    Args:
+        max_attempts: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay cap
+        exponential_base: Base for exponential calculation
+        jitter: Add randomness to prevent thundering herd
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    
+                    if attempt == max_attempts:
+                        logger.error(
+                            f"[GEMINI] {func.__name__} failed after {max_attempts} attempts: {e}"
+                        )
+                        raise
+                    
+                    # Calculate delay with exponential backoff
+                    delay = min(base_delay * (exponential_base ** (attempt - 1)), max_delay)
+                    
+                    # Add jitter
+                    if jitter:
+                        delay = delay * (0.5 + random.random())
+                    
+                    logger.warning(
+                        f"[GEMINI] {func.__name__} attempt {attempt} failed: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    
+                    await asyncio.sleep(delay)
+            
+            raise last_exception
+        
+        return wrapper
+    return decorator
 
 # Try to import google-genai SDK
 try:
@@ -153,13 +212,17 @@ class GeminiClient:
                     thinking_budget=8000  # Tokens for thinking
                 )
             
-            # Execute research
-            response = await asyncio.to_thread(
-                self._client.models.generate_content,
-                model=settings.GEMINI_PRO_MODEL,
-                contents=self._format_research_query(query, research_type, context),
-                config=config
-            )
+            # Execute research with retry
+            @async_retry_with_backoff(max_attempts=3, base_delay=1.0)
+            async def _execute_research():
+                return await asyncio.to_thread(
+                    self._client.models.generate_content,
+                    model=settings.GEMINI_PRO_MODEL,
+                    contents=self._format_research_query(query, research_type, context),
+                    config=config
+                )
+            
+            response = await _execute_research()
             
             # Parse response
             result = self._parse_research_response(response)
@@ -396,13 +459,17 @@ TECHNICAL RESEARCH MODE:
                     full_prompt
                 ]
             
-            # Generate
-            response = await asyncio.to_thread(
-                self._client.models.generate_content,
-                model=settings.GEMINI_IMAGE_MODEL,
-                contents=contents,
-                config=config
-            )
+            # Generate with retry
+            @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
+            async def _execute_image_gen():
+                return await asyncio.to_thread(
+                    self._client.models.generate_content,
+                    model=settings.GEMINI_IMAGE_MODEL,
+                    contents=contents,
+                    config=config
+                )
+            
+            response = await _execute_image_gen()
             
             # Extract image from response
             image_data = None
