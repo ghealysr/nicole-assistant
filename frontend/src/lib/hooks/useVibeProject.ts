@@ -276,7 +276,6 @@ class VibeAPIClient {
     signal?: AbortSignal
   ): Promise<APIResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    console.log(`[VibeAPI] ${method} ${url}`, body);
     
     const response = await fetch(url, {
       method,
@@ -286,7 +285,6 @@ class VibeAPIClient {
     });
     
     const data = await response.json();
-    console.log(`[VibeAPI] Response:`, response.status, data);
     
     if (!response.ok) {
       // Handle FastAPI validation errors (detail is array of {type, loc, msg, input})
@@ -401,15 +399,11 @@ export function useVibeProjects() {
         body.client_email = clientEmail.trim();
       }
       
-      console.log('[createProject] Sending:', body);
-      
       const response = await apiClient.request<{ project: VibeProject }>(
         '/projects',
         'POST',
         body
       );
-      
-      console.log('[createProject] Response:', response);
       
       if (!response.success || !response.data?.project) {
         setError(response.error || 'Failed to create project');
@@ -645,6 +639,8 @@ export function useVibeProject(projectId?: number) {
     ]);
     
     try {
+      console.log('[runIntake] Sending to API:', { id, message: message.slice(0, 50) + '...' });
+      
       const response = await apiClient.request<IntakeData>(
         `/projects/${id}/intake`,
         'POST',
@@ -655,14 +651,23 @@ export function useVibeProject(projectId?: number) {
         abortControllerRef.current.signal
       );
       
+      console.log('[runIntake] API Response:', response);
+      
       if (!response.success || !response.data) {
         const errMsg = response.error || 'Intake failed';
+        console.error('[runIntake] API failed:', errMsg);
         setOperationState('intake', { loading: false, error: errMsg });
         setError(errMsg);
+        // Add error message to chat so user sees it
+        setIntakeHistory(prev => [
+          ...prev,
+          { role: 'assistant', content: `⚠️ Error: ${errMsg}` },
+        ]);
         return null;
       }
       
       const intakeData = response.data;
+      console.log('[runIntake] Success, response:', intakeData.response?.slice(0, 100) + '...');
       
       // Track API cost (once only)
       if (response.meta?.api_cost) {
