@@ -84,7 +84,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('projects');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);  // Default to full width
   
   // Handle expand toggle
   const handleExpandToggle = useCallback(() => {
