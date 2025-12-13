@@ -220,16 +220,26 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
 
   // Send intake message
   const handleSendIntake = async () => {
-    if (!intakeMessage.trim() || !selectedProjectId) return;
+    if (!intakeMessage.trim() || !selectedProjectId) {
+      console.log('[handleSendIntake] Blocked - empty message or no project', { intakeMessage, selectedProjectId });
+      return;
+    }
     
     const message = intakeMessage;
     setIntakeMessage('');
     addActivity('Intake', `Processing: "${message.slice(0, 40)}..."`);
     
-    const result = await runIntake(selectedProjectId, message);
+    console.log('[handleSendIntake] Sending intake:', { projectId: selectedProjectId, message });
     
-    if (result?.brief) {
-      addActivity('Intake', 'Brief extracted - ready for planning');
+    try {
+      const result = await runIntake(selectedProjectId, message);
+      console.log('[handleSendIntake] Result:', result);
+      
+      if (result?.brief) {
+        addActivity('Intake', 'Brief extracted - ready for planning');
+      }
+    } catch (err) {
+      console.error('[handleSendIntake] Error:', err);
     }
   };
 

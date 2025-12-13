@@ -637,11 +637,12 @@ export function useVibeProject(projectId?: number) {
     
     setOperationState('intake', { loading: true, error: null });
     
-    // Add user message to history immediately for responsiveness
-    const updatedHistory = [
-      ...intakeHistory,
+    // Add user message to history IMMEDIATELY for responsiveness
+    const currentHistory = [...intakeHistory];
+    setIntakeHistory([
+      ...currentHistory,
       { role: 'user', content: message },
-    ];
+    ]);
     
     try {
       const response = await apiClient.request<IntakeData>(
@@ -649,7 +650,7 @@ export function useVibeProject(projectId?: number) {
         'POST',
         {
           message,
-          conversation_history: intakeHistory,
+          conversation_history: currentHistory, // Send old history, not including the just-added message
         },
         abortControllerRef.current.signal
       );
@@ -660,24 +661,27 @@ export function useVibeProject(projectId?: number) {
         setError(errMsg);
         return null;
       }
+      
+      const intakeData = response.data;
+      
       // Track API cost (once only)
       if (response.meta?.api_cost) {
         trackApiCost(response.meta.api_cost);
       }
       
-      // Update history with assistant response
-      setIntakeHistory([
-        ...updatedHistory,
-        { role: 'assistant', content: response.data.response },
+      // Update history with assistant response (user message was already added)
+      setIntakeHistory(prev => [
+        ...prev,
+        { role: 'assistant', content: intakeData.response },
       ]);
       
       // Refresh project if brief was extracted
-      if (response.data.brief_complete) {
+      if (intakeData.brief_complete) {
         await fetchProject(id);
       }
       
       setOperationState('intake', { loading: false, error: null });
-      return response.data;
+      return intakeData;
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Intake failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'intake');
