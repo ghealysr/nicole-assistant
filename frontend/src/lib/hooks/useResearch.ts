@@ -72,6 +72,7 @@ export interface InspirationImage {
   source_site?: string;
   color_palette?: string[];
   design_notes?: string;
+  relevance_notes?: string;
   design_elements?: {
     layout_pattern?: string;
     colors?: string[];

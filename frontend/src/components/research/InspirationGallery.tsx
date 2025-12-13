@@ -200,13 +200,15 @@ const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProp
             View original
           </a>
 
-          <p className="inspiration-detail-notes">{image.relevance_notes}</p>
+          {image.relevance_notes && (
+            <p className="inspiration-detail-notes">{image.relevance_notes}</p>
+          )}
 
           {/* Color palette */}
           <div className="inspiration-detail-section">
             <h4>Color Palette</h4>
             <div className="inspiration-detail-colors">
-              {image.design_elements.colors.map((color, i) => (
+              {(image.design_elements?.colors || []).map((color, i) => (
                 <div key={i} className="inspiration-color-chip">
                   <div
                     className="color-swatch"
