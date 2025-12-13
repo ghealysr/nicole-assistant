@@ -442,21 +442,28 @@ export function ResearchPanel({
                         <span className="mem-widget-badge mem-badge-info">{research.findings.length}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {research.findings.map((finding, i) => (
-                          <div key={i} style={{ padding: '12px', background: 'var(--alphawave-surface)', borderRadius: '8px' }}>
-                            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6 }}>{finding.content}</p>
-                            {finding.source_url && (
-                              <a 
-                                href={finding.source_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                style={{ fontSize: '12px', color: 'var(--alphawave-primary)', marginTop: '8px', display: 'inline-block' }}
-                              >
-                                {finding.source_title || 'Source'} ↗
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                        {research.findings.map((finding, i) => {
+                          // Handle both string and object findings
+                          const content = typeof finding === 'string' ? finding : (finding?.content || finding?.text || JSON.stringify(finding));
+                          const sourceUrl = typeof finding === 'object' ? finding?.source_url : null;
+                          const sourceTitle = typeof finding === 'object' ? finding?.source_title : null;
+                          
+                          return (
+                            <div key={i} style={{ padding: '12px', background: 'var(--alphawave-surface)', borderRadius: '8px' }}>
+                              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6 }}>{content}</p>
+                              {sourceUrl && (
+                                <a 
+                                  href={sourceUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ fontSize: '12px', color: 'var(--alphawave-primary)', marginTop: '8px', display: 'inline-block' }}
+                                >
+                                  {sourceTitle || 'Source'} ↗
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -496,28 +503,36 @@ export function ResearchPanel({
                         <span className="mem-widget-badge mem-badge-info">{research.sources.length}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {research.sources.map((source, i) => (
-                          <a
-                            key={i}
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              display: 'block',
-                              padding: '8px 12px',
-                              background: 'var(--alphawave-surface)',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              color: 'var(--alphawave-primary)',
-                              textDecoration: 'none',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {source.title || source.url} ↗
-                          </a>
-                        ))}
+                        {research.sources.map((source, i) => {
+                          // Handle both string URLs and {url, title} objects
+                          const url = typeof source === 'string' ? source : source?.url;
+                          const title = typeof source === 'object' ? source?.title : null;
+                          
+                          if (!url) return null;
+                          
+                          return (
+                            <a
+                              key={i}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'block',
+                                padding: '8px 12px',
+                                background: 'var(--alphawave-surface)',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: 'var(--alphawave-primary)',
+                                textDecoration: 'none',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {title || url} ↗
+                            </a>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -536,7 +551,7 @@ export function ResearchPanel({
                       </div>
                       <div className="mem-stat-grid mem-stat-grid-2">
                         <div className="mem-stat-box">
-                          <div className="mem-stat-value mem-small">{research.metadata.elapsed_seconds?.toFixed(1)}s</div>
+                          <div className="mem-stat-value mem-small">{(research.metadata?.elapsed_seconds ?? 0).toFixed(1)}s</div>
                           <div className="mem-stat-label">Duration</div>
                         </div>
                         <div className="mem-stat-box">

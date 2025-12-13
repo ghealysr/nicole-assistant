@@ -200,6 +200,10 @@ class ResearchOrchestrator:
             # 6. Update request status
             await self._update_request_status(request_id, ResearchStatus.COMPLETE)
             
+            # Build response matching frontend ResearchResponse interface
+            research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
+            gemini_metadata = gemini_result.get("metadata", {})
+            
             yield ResearchStatusUpdate(
                 status=ResearchStatus.COMPLETE,
                 message="Research complete!",
@@ -207,12 +211,21 @@ class ResearchOrchestrator:
                 data={
                     "request_id": request_id,
                     "query": query,
+                    "research_type": research_type_str,
                     "executive_summary": gemini_result.get("results", {}).get("executive_summary", ""),
                     "findings": gemini_result.get("results", {}).get("key_findings", []),
                     "sources": gemini_result.get("sources", []),
                     "recommendations": gemini_result.get("results", {}).get("recommendations", []),
                     "nicole_synthesis": synthesis,
-                    "metadata": gemini_result.get("metadata", {})
+                    "completed_at": datetime.now().isoformat(),
+                    "metadata": {
+                        "model": gemini_metadata.get("model", "gemini-3-pro-preview"),
+                        "input_tokens": gemini_metadata.get("input_tokens", 0),
+                        "output_tokens": gemini_metadata.get("output_tokens", 0),
+                        "cost_usd": gemini_metadata.get("cost_usd", 0.0),
+                        "elapsed_seconds": gemini_metadata.get("elapsed_seconds", 0.0),
+                        "timestamp": datetime.now().isoformat()
+                    }
                 }
             )
             
