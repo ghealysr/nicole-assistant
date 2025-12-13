@@ -398,21 +398,33 @@ async def run_intake(
     Nicole will gather requirements and extract a structured brief when ready.
     The brief is extracted automatically when sufficient information is gathered.
     """
-    user_id = get_user_id(user)
-    rate_limit(user_id, "POST:/vibe/projects/{id}/intake")
+    import traceback
     
-    result = await vibe_service.run_intake(
-        project_id=project_id,
-        user_id=user_id,
-        user_message=data.message,
-        conversation_history=data.conversation_history
-    )
-    
-    if not result.success:
-        status_code = 400 if "status" in str(result.error).lower() else 500
-        raise HTTPException(status_code=status_code, detail=result.error)
-    
-    return api_response_from_result(result)
+    try:
+        user_id = get_user_id(user)
+        logger.info(f"[INTAKE] Starting intake for project {project_id}, user {user_id}")
+        rate_limit(user_id, "POST:/vibe/projects/{id}/intake")
+        
+        result = await vibe_service.run_intake(
+            project_id=project_id,
+            user_id=user_id,
+            user_message=data.message,
+            conversation_history=data.conversation_history
+        )
+        
+        if not result.success:
+            logger.error(f"[INTAKE] Failed: {result.error}")
+            status_code = 400 if "status" in str(result.error).lower() else 500
+            raise HTTPException(status_code=status_code, detail=result.error)
+        
+        logger.info(f"[INTAKE] Success for project {project_id}")
+        return api_response_from_result(result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTAKE] Unexpected error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/projects/{project_id}/plan", response_model=APIResponse)

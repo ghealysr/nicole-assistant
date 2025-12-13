@@ -636,6 +636,7 @@ export function useVibeProject(projectId?: number) {
     setIntakeHistory([
       ...currentHistory,
       { role: 'user', content: message },
+      { role: 'assistant', content: '💭 Thinking...' },  // Show thinking indicator
     ]);
     
     try {
@@ -658,11 +659,11 @@ export function useVibeProject(projectId?: number) {
         console.error('[runIntake] API failed:', errMsg);
         setOperationState('intake', { loading: false, error: errMsg });
         setError(errMsg);
-        // Add error message to chat so user sees it
-        setIntakeHistory(prev => [
-          ...prev,
-          { role: 'assistant', content: `⚠️ Error: ${errMsg}` },
-        ]);
+        // Replace thinking indicator with error
+        setIntakeHistory(prev => {
+          const filtered = prev.filter(m => m.content !== '💭 Thinking...');
+          return [...filtered, { role: 'assistant', content: `⚠️ Error: ${errMsg}` }];
+        });
         return null;
       }
       
@@ -674,11 +675,11 @@ export function useVibeProject(projectId?: number) {
         trackApiCost(response.meta.api_cost);
       }
       
-      // Update history with assistant response (user message was already added)
-      setIntakeHistory(prev => [
-        ...prev,
-        { role: 'assistant', content: intakeData.response },
-      ]);
+      // Replace thinking indicator with actual response
+      setIntakeHistory(prev => {
+        const filtered = prev.filter(m => m.content !== '💭 Thinking...');
+        return [...filtered, { role: 'assistant', content: intakeData.response }];
+      });
       
       // Refresh project if brief was extracted
       if (intakeData.brief_complete) {
