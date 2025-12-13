@@ -221,12 +221,12 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
   };
 
   // Format date
-  const formatDate = (dateStr?: string) => {
-    const date = dateStr ? new Date(dateStr) : new Date();
+  const formattedDate = (() => {
+    const date = data.completed_at ? new Date(data.completed_at) : new Date();
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
     });
-  };
+  })();
 
   // Parse finding
   const parseFinding = (finding: ResearchFinding | string): { title: string; body: string } => {
@@ -289,7 +289,7 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
           </div>
           <div>
             <div style={styles.authorName}>Nicole</div>
-            <div style={styles.authorRole}>AI Research Assistant</div>
+            <div style={styles.authorRole}>AI Research Assistant • {formattedDate}</div>
           </div>
         </div>
       </header>
