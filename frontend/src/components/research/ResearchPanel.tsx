@@ -53,7 +53,7 @@ export function ResearchPanel({
   statusMessage,
   progress,
   error,
-  onFeedback: _onFeedback,  // Reserved for future use
+  // onFeedback - reserved for future inspiration feedback
   onRetry,
   onExecuteResearch,
 }: ResearchPanelProps) {
