@@ -934,12 +934,13 @@ body.resizing * {
 }
 
 /* Expanded mode - takes full width, hides main chat */
-.vibe-workspace.expanded {
+/* IMPORTANT: Must have BOTH .open AND .expanded to take full width */
+.vibe-workspace.open.expanded {
   width: calc(100vw - 160px); /* Full width minus sidebar */
   transition: width 0.3s ease;
 }
 
-.vibe-workspace.expanded .vibe-inner {
+.vibe-workspace.open.expanded .vibe-inner {
   width: 100%;
   min-width: 100%;
 }
