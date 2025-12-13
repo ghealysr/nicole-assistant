@@ -285,9 +285,29 @@ class VibeAPIClient {
     const data = await response.json();
     
     if (!response.ok) {
+      // Handle FastAPI validation errors (detail is array of {type, loc, msg, input})
+      let errorMessage: string;
+      if (Array.isArray(data.detail)) {
+        // Extract messages from validation errors
+        errorMessage = data.detail
+          .map((e: { msg?: string }) => e.msg || 'Validation error')
+          .join('; ');
+      } else if (typeof data.detail === 'object' && data.detail !== null) {
+        // Handle object-style errors
+        errorMessage = data.detail.msg || data.detail.message || JSON.stringify(data.detail);
+      } else if (typeof data.detail === 'string') {
+        errorMessage = data.detail;
+      } else if (typeof data.error === 'string') {
+        errorMessage = data.error;
+      } else if (typeof data.message === 'string') {
+        errorMessage = data.message;
+      } else {
+        errorMessage = `Request failed with status ${response.status}`;
+      }
+      
       return {
         success: false,
-        error: data.detail || data.error || `Request failed with status ${response.status}`,
+        error: errorMessage,
       };
     }
     

@@ -508,7 +508,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
         <div className="vibe-projects-view">
       {(projectsError || projectError) && (
         <div className="vibe-error" style={{ marginBottom: 16 }}>
-          {projectsError || projectError}
+          {typeof (projectsError || projectError) === 'string' 
+            ? (projectsError || projectError)
+            : 'An error occurred'}
         </div>
       )}
       <div className="vibe-projects-header">
@@ -693,7 +695,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
         <>
       {(projectsError || projectError) && (
         <div className="vibe-error" style={{ marginBottom: 12, marginLeft: 16, marginRight: 16 }}>
-          {projectsError || projectError}
+          {typeof (projectsError || projectError) === 'string' 
+            ? (projectsError || projectError)
+            : 'An error occurred'}
         </div>
       )}
       {/* Project Bar */}
@@ -847,7 +851,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
             ) : filesError ? (
               <div className="vibe-files-error">
                 <span className="vibe-error-icon">⚠️</span>
-                <span>{filesError}</span>
+                <span>{typeof filesError === 'string' ? filesError : 'Failed to load files'}</span>
                 <button
                   className="vibe-btn-secondary vibe-btn-small"
                   onClick={() => selectedProjectId && fetchFiles(selectedProjectId)}
