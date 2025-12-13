@@ -60,15 +60,26 @@ export interface ResearchResponse {
   competitor_url?: string;
 }
 
-// Vibe inspiration image
+// Vibe inspiration image - matches InspirationGallery component expectations
 export interface InspirationImage {
+  id?: string;
   url: string;
+  screenshot_url?: string;
   thumbnail_url?: string;
   title?: string;
   description?: string;
   source_url?: string;
+  source_site?: string;
   color_palette?: string[];
   design_notes?: string;
+  design_elements?: {
+    layout_pattern?: string;
+    colors?: string[];
+    typography?: string[];
+    typography_style?: string;
+    style_tags?: string[];
+    notable_features?: string[];
+  };
 }
 
 // Vibe inspiration response

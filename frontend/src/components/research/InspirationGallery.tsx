@@ -76,9 +76,10 @@ const InspirationCard = ({
     layout
   >
     <div className="inspiration-card-image">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={image.screenshot_url || image.url}
-        alt={`Inspiration from ${image.source_site}`}
+        alt={`Inspiration from ${image.source_site || 'website'}`}
         loading="lazy"
       />
       <div className="inspiration-card-overlay">
@@ -87,12 +88,12 @@ const InspirationCard = ({
     </div>
     
     <div className="inspiration-card-info">
-      <h4 className="inspiration-card-site">{image.source_site}</h4>
-      <p className="inspiration-card-pattern">{image.design_elements.layout_pattern}</p>
+      <h4 className="inspiration-card-site">{image.source_site || image.title || 'Design'}</h4>
+      <p className="inspiration-card-pattern">{image.design_elements?.layout_pattern || 'Website'}</p>
       
       {/* Color palette preview */}
       <div className="inspiration-card-colors">
-        {image.design_elements.colors.slice(0, 5).map((color, i) => (
+        {(image.design_elements?.colors || []).slice(0, 5).map((color, i) => (
           <div
             key={i}
             className="inspiration-color-dot"
@@ -108,17 +109,17 @@ const InspirationCard = ({
 // Detail Modal
 const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProps) => {
   const [feedback, setFeedback] = useState<Partial<ImageFeedback>>({
-    imageId: image.id,
+    imageId: image.id || image.url,
     likedElements: [],
     dislikedElements: [],
     comments: '',
   });
 
   const designElements = [
-    ...image.design_elements.notable_features,
-    image.design_elements.typography_style,
-    image.design_elements.layout_pattern,
-  ].filter(Boolean);
+    ...(image.design_elements?.notable_features || []),
+    image.design_elements?.typography_style,
+    image.design_elements?.layout_pattern,
+  ].filter(Boolean) as string[];
 
   const getElementStatus = (element: string): 'neutral' | 'liked' | 'disliked' => {
     if (feedback.likedElements?.includes(element)) return 'liked';
@@ -144,11 +145,9 @@ const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProp
 
   const handleSubmit = (liked: boolean) => {
     onFeedback({
-      imageId: image.id,
+      image_url: image.url,
       liked,
-      likedElements: feedback.likedElements || [],
-      dislikedElements: feedback.dislikedElements || [],
-      comments: feedback.comments || '',
+      notes: feedback.comments || '',
     });
     onClose();
   };
@@ -170,15 +169,16 @@ const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProp
       >
         {/* Image side */}
         <div className="inspiration-detail-image">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={image.screenshot_url || image.url}
-            alt={`Design from ${image.source_site}`}
+            alt={`Design from ${image.source_site || 'website'}`}
           />
         </div>
 
         {/* Feedback side */}
         <div className="inspiration-detail-content">
-          <h3 className="inspiration-detail-title">{image.source_site}</h3>
+          <h3 className="inspiration-detail-title">{image.source_site || image.title || 'Design'}</h3>
           
           <a
             href={image.url}

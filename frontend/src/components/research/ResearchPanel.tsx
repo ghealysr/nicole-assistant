@@ -576,6 +576,7 @@ export function ResearchPanel({
                       <div key={i} style={{ borderRadius: '8px', overflow: 'hidden', background: 'var(--alphawave-surface)' }}>
                         <div style={{ aspectRatio: '16/9', background: 'var(--alphawave-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {img.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={img.url} alt={img.title || 'Inspiration'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1} width="32" height="32" style={{ opacity: 0.3 }}>
