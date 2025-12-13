@@ -53,19 +53,24 @@ class VibeInspirationRequest(BaseModel):
     avoid_patterns: Optional[list] = Field(default=None, description="Patterns to avoid")
 
 
-class ResearchResponse(BaseModel):
-    """Research response."""
-    request_id: Optional[int] = None
-    status: str
-    message: str
+class APIResponse(BaseModel):
+    """Standard API response wrapper."""
+    success: bool
     data: Optional[dict] = None
+    error: Optional[str] = None
+
+
+class CompetitorRequest(BaseModel):
+    """Competitor analysis request body."""
+    competitor_url: str = Field(..., description="URL of competitor to analyze")
+    analysis_focus: Optional[list] = Field(default=None, description="Specific aspects to focus on")
 
 
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
 
-@router.post("/execute", response_model=ResearchResponse)
+@router.post("/execute", response_model=APIResponse)
 async def execute_research(
     request: ResearchRequest,
     background_tasks: BackgroundTasks,
@@ -74,8 +79,8 @@ async def execute_research(
     """
     Execute a research request.
     
-    Returns immediately with request acknowledgment.
-    Use /research/{request_id}/stream for real-time updates.
+    Returns wrapped response with {success, data, error}.
+    Use /research/{request_id} to poll for status updates.
     
     Research Types:
     - general: General web research
@@ -89,7 +94,7 @@ async def execute_research(
     except ValueError:
         research_type = ResearchType.GENERAL
     
-    # For sync response, execute and return
+    # Execute research synchronously
     final_result = None
     async for update in research_orchestrator.execute_research(
         query=request.query,
@@ -100,15 +105,19 @@ async def execute_research(
     ):
         final_result = update
     
-    if final_result:
-        return ResearchResponse(
-            request_id=final_result.data.get("request_id") if final_result.data else None,
-            status=final_result.status.value,
-            message=final_result.message,
+    if final_result and final_result.status == ResearchStatus.COMPLETE:
+        return APIResponse(
+            success=True,
+            data=final_result.data
+        )
+    elif final_result:
+        return APIResponse(
+            success=False,
+            error=final_result.message,
             data=final_result.data
         )
     
-    raise HTTPException(status_code=500, detail="Research execution failed")
+    return APIResponse(success=False, error="Research execution failed")
 
 
 @router.get("/{request_id}/stream")
@@ -146,7 +155,7 @@ async def stream_research(
     )
 
 
-@router.get("/{request_id}")
+@router.get("/{request_id}", response_model=APIResponse)
 async def get_research(
     request_id: int,
     user = Depends(get_current_user)
@@ -154,7 +163,7 @@ async def get_research(
     """
     Get research results by request ID.
     
-    Returns full research data including:
+    Returns wrapped response with full research data including:
     - Query and type
     - Executive summary
     - Key findings with citations
@@ -165,12 +174,12 @@ async def get_research(
     research = await research_orchestrator.get_research(request_id)
     
     if not research:
-        raise HTTPException(status_code=404, detail="Research not found")
+        return APIResponse(success=False, error="Research not found")
     
-    return research
+    return APIResponse(success=True, data=research)
 
 
-@router.post("/vibe/{project_id}/inspiration")
+@router.post("/vibe/{project_id}/inspiration", response_model=APIResponse)
 async def search_vibe_inspiration(
     project_id: int,
     request: VibeInspirationRequest,
@@ -196,27 +205,29 @@ async def search_vibe_inspiration(
     )
     
     if not result.get("success"):
-        raise HTTPException(
-            status_code=500,
-            detail=result.get("error", "Inspiration search failed")
+        return APIResponse(
+            success=False,
+            error=result.get("error", "Inspiration search failed")
         )
     
-    return {
-        "project_id": project_id,
-        "query": request.query,
-        "inspirations": result.get("results", {}).get("inspiration_images", []),
-        "design_patterns": result.get("results", {}).get("design_patterns", []),
-        "recommendations": result.get("results", {}).get("recommendations", []),
-        "sources": result.get("sources", []),
-        "metadata": result.get("metadata", {})
-    }
+    return APIResponse(
+        success=True,
+        data={
+            "project_id": project_id,
+            "query": request.query,
+            "inspirations": result.get("results", {}).get("inspiration_images", []),
+            "design_patterns": result.get("results", {}).get("design_patterns", []),
+            "recommendations": result.get("results", {}).get("recommendations", []),
+            "sources": result.get("sources", []),
+            "metadata": result.get("metadata", {})
+        }
+    )
 
 
-@router.post("/vibe/{project_id}/competitor")
+@router.post("/vibe/{project_id}/competitor", response_model=APIResponse)
 async def analyze_competitor(
     project_id: int,
-    competitor_url: str,
-    analysis_focus: Optional[list] = None,
+    request: CompetitorRequest,
     user = Depends(get_current_user)
 ):
     """
@@ -231,21 +242,32 @@ async def analyze_competitor(
     from app.integrations.alphawave_gemini import gemini_client
     
     result = await gemini_client.analyze_competitor(
-        competitor_url=competitor_url,
-        analysis_focus=analysis_focus
+        competitor_url=request.competitor_url,
+        analysis_focus=request.analysis_focus
     )
     
     if not result.get("success"):
-        raise HTTPException(
-            status_code=500,
-            detail=result.get("error", "Competitor analysis failed")
+        return APIResponse(
+            success=False,
+            error=result.get("error", "Competitor analysis failed")
         )
     
-    return {
-        "project_id": project_id,
-        "competitor_url": competitor_url,
-        "analysis": result.get("results", {}),
-        "sources": result.get("sources", []),
-        "metadata": result.get("metadata", {})
-    }
+    # Return full ResearchResponse-compatible structure
+    parsed = result.get("results", {})
+    return APIResponse(
+        success=True,
+        data={
+            "request_id": 0,  # Competitor analyses aren't stored with an ID
+            "query": f"Competitor: {request.competitor_url}",
+            "research_type": "competitor",
+            "executive_summary": parsed.get("executive_summary", ""),
+            "findings": parsed.get("key_findings", []),
+            "sources": result.get("sources", []),
+            "recommendations": parsed.get("recommendations", []),
+            "nicole_synthesis": parsed.get("nicole_synthesis", ""),
+            "metadata": result.get("metadata", {}),
+            "project_id": project_id,
+            "competitor_url": request.competitor_url
+        }
+    )
 

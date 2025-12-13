@@ -149,12 +149,21 @@ export function useResearch(): UseResearchReturn {
   }, []);
 
   /**
-   * Make authenticated API request
+   * API Response shape from backend
+   */
+  interface APIResponseWrapper<T = unknown> {
+    success: boolean;
+    data?: T;
+    error?: string;
+  }
+
+  /**
+   * Make authenticated API request with wrapped response handling
    */
   const apiRequest = useCallback(async <T>(
     endpoint: string,
     options: RequestInit = {}
-  ): Promise<T> => {
+  ): Promise<{ success: boolean; data?: T; error?: string }> => {
     const token = getAuthToken();
     
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -169,10 +178,11 @@ export function useResearch(): UseResearchReturn {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
-      throw new Error(errorData.detail || `HTTP ${response.status}`);
+      return { success: false, error: errorData.detail || errorData.error || `HTTP ${response.status}` };
     }
 
-    return response.json();
+    const result: APIResponseWrapper<T> = await response.json();
+    return result;
   }, [getAuthToken]);
 
   /**
@@ -219,7 +229,7 @@ export function useResearch(): UseResearchReturn {
         });
       }, 500);
 
-      const result = await apiRequest<{ data: ResearchResponse }>('/research/execute', {
+      const result = await apiRequest<ResearchResponse>('/research/execute', {
         method: 'POST',
         body: JSON.stringify({
           query,
@@ -229,12 +239,21 @@ export function useResearch(): UseResearchReturn {
       });
 
       clearInterval(progressInterval);
-      setProgress(100);
-      setStatus('complete');
-      setStatusMessage(STATUS_MESSAGES.complete);
-      setResearch(result.data);
-      
-      return result.data;
+
+      if (result.success && result.data) {
+        setProgress(100);
+        setStatus('complete');
+        setStatusMessage(STATUS_MESSAGES.complete);
+        setResearch(result.data as ResearchResponse);
+        return result.data as ResearchResponse;
+      } else {
+        const errorMsg = result.error || 'Research failed';
+        setError(errorMsg);
+        setStatus('failed');
+        setStatusMessage(errorMsg);
+        setProgress(0);
+        return null;
+      }
 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -291,12 +310,22 @@ export function useResearch(): UseResearchReturn {
       );
 
       clearInterval(progressInterval);
-      setProgress(100);
-      setStatus('complete');
-      setStatusMessage(`Found ${result.inspirations?.length || 0} design inspirations`);
-      setVibeInspirations(result);
-      
-      return result;
+
+      if (result.success && result.data) {
+        const data = result.data as VibeInspirationResponse;
+        setProgress(100);
+        setStatus('complete');
+        setStatusMessage(`Found ${data.inspirations?.length || 0} design inspirations`);
+        setVibeInspirations(data);
+        return data;
+      } else {
+        const errorMsg = result.error || 'Inspiration search failed';
+        setError(errorMsg);
+        setStatus('failed');
+        setStatusMessage(errorMsg);
+        setProgress(0);
+        return null;
+      }
 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -346,36 +375,35 @@ export function useResearch(): UseResearchReturn {
       setStatus('researching');
       setStatusMessage('Scanning website and features...');
 
-      const params = new URLSearchParams({ competitor_url: competitorUrl });
-      if (analysisFocus?.length) {
-        params.append('analysis_focus', JSON.stringify(analysisFocus));
-      }
-
-      const result = await apiRequest<{ analysis: ResearchResponse }>(
-        `/research/vibe/${projectId}/competitor?${params}`,
-        { method: 'POST' }
+      // Send as POST body (matches backend CompetitorRequest model)
+      const result = await apiRequest<ResearchResponse>(
+        `/research/vibe/${projectId}/competitor`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            competitor_url: competitorUrl,
+            analysis_focus: analysisFocus,
+          }),
+        }
       );
 
       clearInterval(progressInterval);
-      setProgress(100);
-      setStatus('complete');
-      setStatusMessage('Competitor analysis complete');
-      
-      // Transform to ResearchResponse format
-      const transformed: ResearchResponse = {
-        request_id: 0,
-        query: `Competitor: ${competitorUrl}`,
-        research_type: 'competitor',
-        executive_summary: result.analysis?.executive_summary || '',
-        findings: result.analysis?.findings || [],
-        sources: result.analysis?.sources || [],
-        recommendations: result.analysis?.recommendations || [],
-        nicole_synthesis: result.analysis?.nicole_synthesis || '',
-        metadata: result.analysis?.metadata || { cost_usd: 0, elapsed_seconds: 0, model: '' },
-      };
-      
-      setResearch(transformed);
-      return transformed;
+
+      if (result.success && result.data) {
+        const data = result.data as ResearchResponse;
+        setProgress(100);
+        setStatus('complete');
+        setStatusMessage('Competitor analysis complete');
+        setResearch(data);
+        return data;
+      } else {
+        const errorMsg = result.error || 'Competitor analysis failed';
+        setError(errorMsg);
+        setStatus('failed');
+        setStatusMessage(errorMsg);
+        setProgress(0);
+        return null;
+      }
 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {

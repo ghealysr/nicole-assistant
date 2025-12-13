@@ -240,6 +240,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         statusMessage={researchStatusMessage}
         progress={researchProgress}
         error={researchError}
+        onExecuteResearch={executeResearch}
         onRetry={() => {
           if (research?.query) {
             executeResearch(research.query, research.research_type);

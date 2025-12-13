@@ -7,15 +7,17 @@
  * - 50% width slide from right
  * - Backdrop with blur
  * - Loading, artifact, and inspiration views
+ * - Research input form with type selector
  * - Smooth spring animations
  */
 
-import { useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ResearchResponse, 
   VibeInspirationResponse,
   ResearchStatus,
+  ResearchType,
   ImageFeedback 
 } from '@/lib/hooks/useResearch';
 import { ResearchLoading } from './ResearchLoading';
@@ -33,7 +35,16 @@ interface ResearchPanelProps {
   error: string | null;
   onFeedback?: (feedback: ImageFeedback) => void;
   onRetry?: () => void;
+  onExecuteResearch?: (query: string, type: ResearchType) => void;
 }
+
+// Research type options
+const RESEARCH_TYPES: { value: ResearchType; label: string; icon: string }[] = [
+  { value: 'general', label: 'General', icon: '📚' },
+  { value: 'vibe_inspiration', label: 'Design Inspiration', icon: '🎨' },
+  { value: 'competitor', label: 'Competitor Analysis', icon: '🔍' },
+  { value: 'technical', label: 'Technical Docs', icon: '⚙️' },
+];
 
 // Panel animation config
 const panelVariants = {
@@ -75,7 +86,12 @@ export function ResearchPanel({
   error,
   onFeedback,
   onRetry,
+  onExecuteResearch,
 }: ResearchPanelProps) {
+  const [query, setQuery] = useState('');
+  const [researchType, setResearchType] = useState<ResearchType>('general');
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   // Handle escape key
   useEffect(() => {
@@ -93,6 +109,8 @@ export function ResearchPanel({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Focus input when panel opens
+      setTimeout(() => inputRef.current?.focus(), 300);
     } else {
       document.body.style.overflow = '';
     }
@@ -101,13 +119,38 @@ export function ResearchPanel({
     };
   }, [isOpen]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setShowTypeDropdown(false);
+    if (showTypeDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showTypeDropdown]);
+
   const handleFeedback = useCallback((feedback: ImageFeedback) => {
     onFeedback?.(feedback);
   }, [onFeedback]);
 
+  const handleSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (query.trim() && onExecuteResearch) {
+      onExecuteResearch(query.trim(), researchType);
+    }
+  }, [query, researchType, onExecuteResearch]);
+
+  const handleQuickSearch = useCallback((exampleQuery: string) => {
+    setQuery(exampleQuery);
+    if (onExecuteResearch) {
+      onExecuteResearch(exampleQuery, researchType);
+    }
+  }, [researchType, onExecuteResearch]);
+
+  const selectedType = RESEARCH_TYPES.find(t => t.value === researchType) || RESEARCH_TYPES[0];
   const isLoading = status === 'pending' || status === 'researching' || status === 'synthesizing';
   const hasResearch = research !== null && status === 'complete';
   const hasInspirations = vibeInspirations !== null && vibeInspirations.inspirations?.length > 0;
+  const showInput = status === 'idle' || status === 'complete' || status === 'failed';
 
   return (
     <AnimatePresence>
@@ -242,6 +285,81 @@ export function ResearchPanel({
                 <ResearchArtifact data={research} />
               )}
 
+              {/* Search Input - Always visible when not loading */}
+              {showInput && (
+                <form className="research-input-form" onSubmit={handleSubmit}>
+                  <div className="research-input-wrapper">
+                    {/* Type Selector */}
+                    <div className="research-type-selector">
+                      <button
+                        type="button"
+                        className="research-type-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowTypeDropdown(!showTypeDropdown);
+                        }}
+                      >
+                        <span className="type-icon">{selectedType.icon}</span>
+                        <span className="type-label">{selectedType.label}</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="type-chevron">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                      
+                      <AnimatePresence>
+                        {showTypeDropdown && (
+                          <motion.div
+                            className="research-type-dropdown"
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                          >
+                            {RESEARCH_TYPES.map((type) => (
+                              <button
+                                key={type.value}
+                                type="button"
+                                className={`type-option ${researchType === type.value ? 'active' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setResearchType(type.value);
+                                  setShowTypeDropdown(false);
+                                }}
+                              >
+                                <span>{type.icon}</span>
+                                <span>{type.label}</span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    
+                    {/* Search Input */}
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      className="research-input"
+                      placeholder="What would you like to research?"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      disabled={isLoading}
+                    />
+                    
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      className="research-submit-btn"
+                      disabled={!query.trim() || isLoading}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="M21 21l-4.35-4.35" />
+                      </svg>
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {/* Empty State */}
               {status === 'idle' && !hasResearch && !hasInspirations && (
                 <div className="research-panel-empty">
@@ -253,12 +371,27 @@ export function ResearchPanel({
                       <path d="M75 75L90 90" stroke="currentColor" strokeWidth={3} strokeLinecap="round" />
                     </svg>
                   </div>
-                  <h3>No Research Yet</h3>
-                  <p>Ask Nicole to research something or search for design inspiration in Vibe mode.</p>
+                  <h3>Start Your Research</h3>
+                  <p>Enter a query above or try one of these examples:</p>
                   <div className="research-examples">
-                    <span className="example">&quot;Research wellness website trends&quot;</span>
-                    <span className="example">&quot;Find me doula website designs&quot;</span>
-                    <span className="example">&quot;Analyze competitor example.com&quot;</span>
+                    <button 
+                      className="example" 
+                      onClick={() => handleQuickSearch('Modern wellness website design trends 2024')}
+                    >
+                      &quot;Modern wellness website design trends 2024&quot;
+                    </button>
+                    <button 
+                      className="example"
+                      onClick={() => handleQuickSearch('Best practices for doula service websites')}
+                    >
+                      &quot;Best practices for doula service websites&quot;
+                    </button>
+                    <button 
+                      className="example"
+                      onClick={() => handleQuickSearch('AI chatbot implementation patterns')}
+                    >
+                      &quot;AI chatbot implementation patterns&quot;
+                    </button>
                   </div>
                 </div>
               )}
