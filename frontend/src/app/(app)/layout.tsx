@@ -8,6 +8,8 @@ import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDas
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
 import { AlphawaveImageStudio } from '@/components/image/AlphawaveImageStudio';
+import { ResearchPanel } from '@/components/research/ResearchPanel';
+import { useResearch } from '@/lib/hooks/useResearch';
 import { ConversationProvider, useConversation } from '@/lib/context/ConversationContext';
 import { useGoogleAuth } from '@/lib/google_auth';
 
@@ -56,11 +58,24 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isChatsOpen, setIsChatsOpen] = useState(false);
   const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
+  const [isResearchOpen, setIsResearchOpen] = useState(false);
   const [imageStudioPrompt, setImageStudioPrompt] = useState('');
   const [imageStudioPreset, setImageStudioPreset] = useState<string | undefined>();
   
   const { currentConversationId, setCurrentConversationId, clearConversation } = useConversation();
   const { token } = useGoogleAuth();
+  
+  // Research hook for deep research capabilities
+  const {
+    research,
+    vibeInspirations,
+    status: researchStatus,
+    statusMessage: researchStatusMessage,
+    progress: researchProgress,
+    error: researchError,
+    executeResearch,
+    clearResearch,
+  } = useResearch();
 
   // Close all panels helper
   const closeAllPanels = useCallback(() => {
@@ -69,7 +84,33 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     setIsJournalOpen(false);
     setIsChatsOpen(false);
     setIsImageStudioOpen(false);
+    setIsResearchOpen(false);
   }, []);
+
+  // Toggle Research panel
+  const toggleResearch = useCallback(() => {
+    if (isResearchOpen) {
+      setIsResearchOpen(false);
+    } else {
+      closeAllPanels();
+      setIsResearchOpen(true);
+    }
+  }, [isResearchOpen, closeAllPanels]);
+
+  // Open research with query (used by chat integration)
+  const openResearchWithQuery = useCallback((query: string, type?: 'general' | 'vibe_inspiration' | 'competitor' | 'technical') => {
+    closeAllPanels();
+    setIsResearchOpen(true);
+    executeResearch(query, type || 'general');
+  }, [closeAllPanels, executeResearch]);
+
+  // Expose research function globally for chat integration
+  useEffect(() => {
+    (window as unknown as { openResearch?: typeof openResearchWithQuery }).openResearch = openResearchWithQuery;
+    return () => {
+      delete (window as unknown as { openResearch?: typeof openResearchWithQuery }).openResearch;
+    };
+  }, [openResearchWithQuery]);
 
   // Toggle Vibe - closes others if open
   const toggleVibe = useCallback(() => {
@@ -146,6 +187,8 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         isChatsOpen={isChatsOpen}
         onImageStudioClick={() => toggleImageStudio()}
         isImageStudioOpen={isImageStudioOpen}
+        onResearchClick={toggleResearch}
+        isResearchOpen={isResearchOpen}
         onNewChat={clearConversation}
       />
 
@@ -182,6 +225,26 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         onClose={() => setIsImageStudioOpen(false)}
         initialPrompt={imageStudioPrompt}
         initialPreset={imageStudioPreset}
+      />
+
+      {/* Research Panel - slides in from right */}
+      <ResearchPanel
+        isOpen={isResearchOpen}
+        onClose={() => {
+          setIsResearchOpen(false);
+          clearResearch();
+        }}
+        research={research}
+        vibeInspirations={vibeInspirations}
+        status={researchStatus}
+        statusMessage={researchStatusMessage}
+        progress={researchProgress}
+        error={researchError}
+        onRetry={() => {
+          if (research?.query) {
+            executeResearch(research.query, research.research_type);
+          }
+        }}
       />
     </div>
   );

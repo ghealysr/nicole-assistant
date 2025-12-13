@@ -14,6 +14,8 @@ interface AlphawaveSidebarProps {
   isChatsOpen?: boolean;
   onImageStudioClick?: () => void;
   isImageStudioOpen?: boolean;
+  onResearchClick?: () => void;
+  isResearchOpen?: boolean;
   onNewChat?: () => void;
 }
 
@@ -38,6 +40,8 @@ export function AlphawaveSidebar({
   isChatsOpen,
   onImageStudioClick,
   isImageStudioOpen,
+  onResearchClick,
+  isResearchOpen,
   onNewChat,
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
@@ -107,6 +111,18 @@ export function AlphawaveSidebar({
             <path d="M21 15l-5-5L5 21"/>
           </svg>
           Images
+        </button>
+
+        {/* Research Button - Opens Deep Research Panel */}
+        <button
+          onClick={onResearchClick}
+          className={`menu-item ${isResearchOpen ? 'active' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+          </svg>
+          Research
         </button>
 
         {/* Vibe Button - Special styling, opens workspace */}
