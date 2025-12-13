@@ -936,13 +936,21 @@ body.resizing * {
 /* Expanded mode - takes full width, hides main chat */
 /* IMPORTANT: Must have BOTH .open AND .expanded to take full width */
 .vibe-workspace.open.expanded {
-  width: calc(100vw - 160px); /* Full width minus sidebar */
+  width: calc(100vw - 80px); /* Full width minus collapsed sidebar */
   transition: width 0.3s ease;
+  overflow: visible; /* Allow content to show */
 }
 
 .vibe-workspace.open.expanded .vibe-inner {
   width: 100%;
   min-width: 100%;
+  overflow: hidden; /* Prevent inner overflow */
+}
+
+/* Ensure agents panel is always visible in expanded mode */
+.vibe-workspace.open.expanded .vibe-agents-panel {
+  flex-shrink: 0;
+  min-width: var(--vibe-agents-width);
 }
 
 /* Expand/Collapse toggle button */
@@ -1263,6 +1271,7 @@ body.resizing * {
   display: flex;
   overflow: hidden;
   position: relative;
+  min-width: 0; /* Allow flex child to shrink */
 }
 
 /* ═══ Files Panel ═══ */
@@ -2894,6 +2903,56 @@ body.resizing * {
   position: absolute;
   left: 0;
   color: var(--lavender, #B8A8D4);
+}
+
+/* ═══ Markdown Formatting in Vibe Chat ═══ */
+.vibe-message-content .vibe-md-para {
+  margin: 0 0 12px 0;
+  line-height: 1.6;
+}
+
+.vibe-message-content .vibe-md-para:last-child {
+  margin-bottom: 0;
+}
+
+.vibe-message-content .vibe-md-list {
+  margin: 8px 0 12px 0;
+  padding-left: 24px;
+}
+
+.vibe-message-content ol.vibe-md-list {
+  list-style: decimal;
+}
+
+.vibe-message-content ul.vibe-md-list {
+  list-style: disc;
+}
+
+.vibe-message-content .vibe-md-list li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.vibe-message-content .vibe-md-list li:last-child {
+  margin-bottom: 0;
+}
+
+.vibe-message-content strong {
+  font-weight: 600;
+  color: #fff;
+}
+
+.vibe-message-content em {
+  font-style: italic;
+  color: var(--lavender-light, #D4C8E8);
+}
+
+.vibe-message-content .vibe-md-code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
 }
 
 .vibe-intake-input-area {

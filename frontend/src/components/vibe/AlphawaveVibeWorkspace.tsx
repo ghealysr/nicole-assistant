@@ -4,6 +4,102 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, Component, Er
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 
 // ============================================================================
+// SIMPLE MARKDOWN RENDERER - For Nicole's formatted responses
+// ============================================================================
+
+function formatMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+  
+  // Split into paragraphs
+  const paragraphs = text.split(/\n\n+/);
+  
+  return paragraphs.map((para, pIdx) => {
+    // Check if this is a list
+    const lines = para.split('\n');
+    const isNumberedList = lines.every(l => /^\d+\.\s/.test(l.trim()) || l.trim() === '');
+    const isBulletList = lines.every(l => /^[-*•]\s/.test(l.trim()) || l.trim() === '');
+    
+    if (isNumberedList && lines.some(l => /^\d+\./.test(l.trim()))) {
+      return (
+        <ol key={pIdx} className="vibe-md-list">
+          {lines.filter(l => l.trim()).map((line, lIdx) => (
+            <li key={lIdx}>{formatInline(line.replace(/^\d+\.\s*/, ''))}</li>
+          ))}
+        </ol>
+      );
+    }
+    
+    if (isBulletList && lines.some(l => /^[-*•]/.test(l.trim()))) {
+      return (
+        <ul key={pIdx} className="vibe-md-list">
+          {lines.filter(l => l.trim()).map((line, lIdx) => (
+            <li key={lIdx}>{formatInline(line.replace(/^[-*•]\s*/, ''))}</li>
+          ))}
+        </ul>
+      );
+    }
+    
+    // Regular paragraph - handle single line breaks as <br>
+    const formattedLines = lines.map((line, lIdx) => (
+      <React.Fragment key={lIdx}>
+        {lIdx > 0 && <br />}
+        {formatInline(line)}
+      </React.Fragment>
+    ));
+    
+    return <p key={pIdx} className="vibe-md-para">{formattedLines}</p>;
+  });
+}
+
+function formatInline(text: string): React.ReactNode {
+  // Handle **bold** and *italic* and `code`
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+  
+  while (remaining.length > 0) {
+    // Bold: **text**
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    // Italic: *text*
+    const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/);
+    // Code: `text`
+    const codeMatch = remaining.match(/`(.+?)`/);
+    
+    // Find the first match
+    const matches = [
+      boldMatch && { type: 'bold', match: boldMatch, index: boldMatch.index! },
+      italicMatch && { type: 'italic', match: italicMatch, index: italicMatch.index! },
+      codeMatch && { type: 'code', match: codeMatch, index: codeMatch.index! },
+    ].filter(Boolean).sort((a, b) => a!.index - b!.index);
+    
+    if (matches.length === 0) {
+      parts.push(remaining);
+      break;
+    }
+    
+    const first = matches[0]!;
+    
+    // Add text before match
+    if (first.index > 0) {
+      parts.push(remaining.slice(0, first.index));
+    }
+    
+    // Add formatted element
+    if (first.type === 'bold') {
+      parts.push(<strong key={key++}>{first.match![1]}</strong>);
+    } else if (first.type === 'italic') {
+      parts.push(<em key={key++}>{first.match![1]}</em>);
+    } else if (first.type === 'code') {
+      parts.push(<code key={key++} className="vibe-md-code">{first.match![1]}</code>);
+    }
+    
+    remaining = remaining.slice(first.index + first.match![0].length);
+  }
+  
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
+// ============================================================================
 // ERROR BOUNDARY - Catches React render errors
 // ============================================================================
 interface ErrorBoundaryState {
@@ -919,7 +1015,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
               <div className="vibe-intake-messages">
                 {intakeHistory.map((msg, i) => (
                   <div key={i} className={`vibe-intake-message ${msg.role}`}>
-                    <div className="vibe-message-content">{msg.content}</div>
+                    <div className="vibe-message-content">
+                      {msg.role === 'assistant' ? formatMarkdown(msg.content) : msg.content}
+                    </div>
                   </div>
                 ))}
                 {intakeHistory.length === 0 && (
