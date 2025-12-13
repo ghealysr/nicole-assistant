@@ -847,19 +847,10 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
             </svg>
             <span>AlphaWave Vibe</span>
           </div>
-          <div className="vibe-project-info">
-            <div className="vibe-project-name">{project?.name || 'Loading...'}</div>
-            <div className="vibe-project-status">
-              <span className={`vibe-status-dot ${projectLoading ? 'working' : ''}`} />
-              <span>{project?.status || 'Loading'}</span>
-              {project?.client_name && <span className="vibe-client-name">• {project.client_name}</span>}
-            </div>
-            {(project?.preview_url || project?.production_url) && (
-              <div className="vibe-project-links">
-                {project.preview_url && <a href={project.preview_url} target="_blank" rel="noreferrer">Preview</a>}
-                {project.production_url && <a href={project.production_url} target="_blank" rel="noreferrer">Live</a>}
-              </div>
-            )}
+          {/* Stage indicator - inline with header */}
+          <div className="vibe-header-status">
+            <span className={`vibe-status-dot ${projectLoading ? 'working' : ''}`} />
+            <span className="vibe-status-label">{project?.status || 'Loading'}</span>
           </div>
         </div>
 

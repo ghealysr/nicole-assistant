@@ -1024,6 +1024,36 @@ body.resizing * {
   gap: 16px;
 }
 
+/* Header status indicator - aligned with title */
+.vibe-header-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vibe-header-status .vibe-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22C55E;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.vibe-header-status .vibe-status-dot.working {
+  animation: vibe-pulse 1.5s ease-in-out infinite;
+}
+
+.vibe-header-status .vibe-status-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #FAFAFA;
+  text-transform: capitalize;
+}
+
 .vibe-project-icon {
   width: 42px;
   height: 42px;
