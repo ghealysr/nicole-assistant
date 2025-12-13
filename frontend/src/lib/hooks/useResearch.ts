@@ -25,9 +25,10 @@ export type ResearchType = 'general' | 'vibe_inspiration' | 'competitor' | 'tech
 // Research status
 export type ResearchStatus = 'idle' | 'pending' | 'researching' | 'synthesizing' | 'complete' | 'failed' | 'cancelled';
 
-// Research finding
+// Research finding - flexible to handle various backend formats
 export interface ResearchFinding {
-  content: string;
+  content?: string;
+  text?: string;
   source_url?: string;
   source_title?: string;
 }
