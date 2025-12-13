@@ -244,27 +244,73 @@ class ParsedFile:
 # SYSTEM PROMPTS
 # ============================================================================
 
-INTAKE_SYSTEM_PROMPT = """You are Nicole, conducting an intake interview for a new AlphaWave project.
+INTAKE_SYSTEM_PROMPT = """You are Nicole, conducting a collaborative intake session for a new AlphaWave project.
 
-Your goal: Extract all information needed to build the project through natural conversation.
+## Your Role
+
+You are a design-savvy AI assistant helping Glen (the business owner) plan and build professional websites, chatbots, and AI integrations. You have access to powerful tools that help you research, understand, and plan the project collaboratively.
+
+## Your Tools
+
+You have the following tools at your disposal. USE THEM PROACTIVELY to provide better recommendations:
+
+### 1. web_search
+**When to use:** 
+- When the user mentions competitor websites or businesses they admire
+- To research industry trends and best practices
+- To find examples of good design in their industry
+- To look up local competitors
+
+**Example:** If user says "I want something like what XYZ Doulas has", search for their website to understand what elements they like.
+
+### 2. screenshot_website
+**When to use:**
+- After finding a competitor or inspiration website, capture it to discuss with the user
+- To show examples of layouts, color schemes, or features
+- To create a visual reference for the design phase
+
+**Example:** After searching, take a screenshot of a good example to share: "I found this doula website - let me show you what I like about it..."
+
+### 3. memory_search
+**When to use:**
+- To recall past projects for similar businesses
+- To find design lessons learned from previous builds
+- To check if you've worked with this client before
+
+**Example:** Search "doula website" to find lessons from similar past projects.
+
+### 4. save_inspiration
+**When to use:**
+- When you find a website/design the user likes
+- To bookmark competitor sites for the design phase
+- To save color palettes, fonts, or layout ideas
+
+## Intake Process
 
 For WEBSITE projects, gather:
 - Business name, type, location
-- Services/products offered
+- Services/products offered  
+- Target audience (who are their ideal customers?)
 - Contact info (phone, email, address)
 - Business hours
-- Brand colors (if any)
-- Competitor websites they like
-- Main goals for the site
+- Brand colors (if any - offer to suggest some if they don't have them)
+- Competitor websites they like (PROACTIVELY search for and show examples!)
+- Main goals for the site (bookings, information, leads?)
 
-For CHATBOT projects, gather:
-- Business name and type
-- What questions the chatbot should answer
-- Tone/personality (professional, friendly, etc.)
-- Key information to include (hours, services, FAQs)
-- Lead capture requirements
+For CHATBOT/ASSISTANT projects, gather:
+- Business context
+- What questions it should answer
+- Tone/personality
+- Integration requirements
 
-Be conversational and natural. Ask follow-up questions when needed.
+## Collaborative Style
+
+- Be proactive: Don't just ask questions - offer insights and suggestions
+- Use your tools: Research their industry, show examples, learn from past projects
+- Be visual: When you screenshot a site, describe what works well about it
+- Be an expert: Share design and marketing insights as you go
+
+## Output
 
 When you have gathered ALL necessary information, output a complete JSON brief:
 
@@ -274,16 +320,100 @@ When you have gathered ALL necessary information, output a complete JSON brief:
   "business_name": "...",
   "business_type": "...",
   "location": {"city": "...", "state": "...", "address": "..."},
+  "target_audience": "...",
   "services": ["...", "..."],
   "contact": {"phone": "...", "email": "...", "hours": "..."},
-  "branding": {"colors": ["primary_hex", "secondary_hex"], "style": "modern|classic|minimal"},
+  "branding": {"colors": ["#hex1", "#hex2"], "style": "modern|classic|minimal|warm|professional"},
   "goals": ["primary_goal", "secondary_goal"],
   "competitors": ["url1", "url2"],
+  "inspiration_sites": ["url1", "url2"],
   "notes": "additional context"
 }
 ```
 
-IMPORTANT: Only output the JSON when you have gathered sufficient information. If missing critical details, ask clarifying questions instead."""
+IMPORTANT: Only output JSON when you have sufficient info. Use your tools to make the process collaborative and insightful!"""
+
+
+# ============================================================================
+# VIBE INTAKE TOOLS
+# ============================================================================
+
+VIBE_INTAKE_TOOLS = [
+    {
+        "name": "web_search",
+        "description": "Search the web for competitor websites, industry examples, design inspiration, and business information. Use this proactively when the user mentions businesses they like or to research their industry.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query. Be specific: 'doula website central NJ' or 'modern salon website design examples'"
+                },
+                "intent": {
+                    "type": "string",
+                    "enum": ["competitor_research", "design_inspiration", "industry_info", "local_business"],
+                    "description": "Why you're searching - helps contextualize results"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "screenshot_website",
+        "description": "Capture a screenshot of a website to show the user. Use this to share design examples, competitor sites, or inspiration. The screenshot URL will be included in your response so the user can see it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Full URL of the website to screenshot (e.g., https://example.com)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Brief note about why this site is relevant (e.g., 'Clean doula website with good booking flow')"
+                }
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "memory_search",
+        "description": "Search your memory for past projects, lessons learned, and design patterns. Use this to recall what worked well in similar projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to search for: 'doula website', 'booking integration', 'color palette for wellness'"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "save_inspiration",
+        "description": "Save a website or design element as inspiration for this project. These will be referenced during the design phase.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL of the inspiration source"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["layout", "colors", "typography", "features", "overall_style"],
+                    "description": "What aspect of this site is inspiring"
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "What specifically you like about this (e.g., 'Warm color palette with peach accents')"
+                }
+            },
+            "required": ["url", "category", "notes"]
+        }
+    }
+]
 
 
 ARCHITECTURE_SYSTEM_PROMPT = """You are an expert web architect planning an AlphaWave website project.
@@ -623,7 +753,254 @@ class VibeService:
     
     def __init__(self):
         """Initialize the Vibe service."""
-        logger.info("[VIBE] Service initialized (v2.0)")
+        self._inspiration_cache: Dict[int, List[Dict[str, Any]]] = {}  # project_id -> inspirations
+        logger.info("[VIBE] Service initialized (v2.0 with tools)")
+    
+    # ========================================================================
+    # VIBE TOOL EXECUTOR
+    # ========================================================================
+    
+    async def _execute_vibe_tool(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        project_id: int
+    ) -> Dict[str, Any]:
+        """
+        Execute a Vibe intake tool and return the result.
+        
+        Tools available:
+        - web_search: Search the web for competitors/inspiration
+        - screenshot_website: Capture a website screenshot
+        - memory_search: Search past project lessons
+        - save_inspiration: Save a site for later reference
+        
+        Returns:
+            Dict with 'success', 'result', and optionally 'image_url'
+        """
+        try:
+            if tool_name == "web_search":
+                return await self._tool_web_search(
+                    query=tool_input.get("query", ""),
+                    intent=tool_input.get("intent", "general")
+                )
+            
+            elif tool_name == "screenshot_website":
+                return await self._tool_screenshot(
+                    url=tool_input.get("url", ""),
+                    description=tool_input.get("description", ""),
+                    project_id=project_id
+                )
+            
+            elif tool_name == "memory_search":
+                return await self._tool_memory_search(
+                    query=tool_input.get("query", ""),
+                    project_id=project_id
+                )
+            
+            elif tool_name == "save_inspiration":
+                return await self._tool_save_inspiration(
+                    url=tool_input.get("url", ""),
+                    category=tool_input.get("category", "overall_style"),
+                    notes=tool_input.get("notes", ""),
+                    project_id=project_id
+                )
+            
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unknown tool: {tool_name}"
+                }
+                
+        except Exception as e:
+            logger.error(f"[VIBE] Tool {tool_name} failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _tool_web_search(self, query: str, intent: str) -> Dict[str, Any]:
+        """Execute web search using Brave Search or fallback."""
+        from app.mcp import call_mcp_tool, mcp_manager
+        
+        try:
+            # Try Brave Search via MCP
+            if hasattr(mcp_manager, 'servers') and 'brave-search' in mcp_manager.servers:
+                result = await call_mcp_tool(
+                    "brave-search",
+                    "brave_web_search",
+                    {"query": query, "count": 5}
+                )
+                
+                if result:
+                    # Format results nicely
+                    formatted = []
+                    web_results = result.get("web", {}).get("results", [])
+                    for r in web_results[:5]:
+                        formatted.append({
+                            "title": r.get("title", ""),
+                            "url": r.get("url", ""),
+                            "description": r.get("description", "")[:200]
+                        })
+                    
+                    return {
+                        "success": True,
+                        "result": {
+                            "query": query,
+                            "intent": intent,
+                            "results": formatted,
+                            "result_count": len(formatted)
+                        }
+                    }
+            
+            # Fallback: Return a message suggesting the search
+            return {
+                "success": True,
+                "result": {
+                    "query": query,
+                    "intent": intent,
+                    "results": [],
+                    "message": f"Web search for '{query}' - suggest user share specific URLs they like"
+                }
+            }
+            
+        except Exception as e:
+            logger.warning(f"[VIBE] Web search failed: {e}")
+            return {
+                "success": False,
+                "error": f"Search failed: {e}"
+            }
+    
+    async def _tool_screenshot(
+        self, 
+        url: str, 
+        description: str,
+        project_id: int
+    ) -> Dict[str, Any]:
+        """
+        Capture a website screenshot.
+        
+        Note: For now, returns a placeholder. Full implementation would use
+        Playwright MCP or a screenshot service.
+        """
+        # TODO: Integrate with Playwright MCP when available
+        # For now, save the URL reference and suggest the user can view it
+        
+        if project_id not in self._inspiration_cache:
+            self._inspiration_cache[project_id] = []
+        
+        self._inspiration_cache[project_id].append({
+            "url": url,
+            "description": description,
+            "type": "screenshot_reference",
+            "captured_at": datetime.now().isoformat()
+        })
+        
+        return {
+            "success": True,
+            "result": {
+                "url": url,
+                "description": description,
+                "message": f"Referenced {url} - you can view this site for design inspiration",
+                # When Playwright is available:
+                # "image_url": captured_screenshot_url
+            }
+        }
+    
+    async def _tool_memory_search(
+        self, 
+        query: str,
+        project_id: int
+    ) -> Dict[str, Any]:
+        """Search past lessons and project patterns."""
+        try:
+            # Search lessons
+            lessons, _ = await self.get_relevant_lessons(
+                project_type="website",
+                category=None,
+                query=query,
+                limit=3
+            )
+            
+            if lessons:
+                return {
+                    "success": True,
+                    "result": {
+                        "query": query,
+                        "lessons": [
+                            {
+                                "issue": l.get("issue", ""),
+                                "solution": l.get("solution", ""),
+                                "impact": l.get("impact", ""),
+                                "category": l.get("lesson_category", "")
+                            }
+                            for l in lessons
+                        ],
+                        "message": f"Found {len(lessons)} relevant lessons from past projects"
+                    }
+                }
+            
+            return {
+                "success": True,
+                "result": {
+                    "query": query,
+                    "lessons": [],
+                    "message": "No previous lessons found for this query"
+                }
+            }
+            
+        except Exception as e:
+            logger.warning(f"[VIBE] Memory search failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _tool_save_inspiration(
+        self,
+        url: str,
+        category: str,
+        notes: str,
+        project_id: int
+    ) -> Dict[str, Any]:
+        """Save a URL as inspiration for the project."""
+        if project_id not in self._inspiration_cache:
+            self._inspiration_cache[project_id] = []
+        
+        inspiration = {
+            "url": url,
+            "category": category,
+            "notes": notes,
+            "saved_at": datetime.now().isoformat()
+        }
+        
+        self._inspiration_cache[project_id].append(inspiration)
+        
+        # Also save to database if we want persistence
+        try:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.INTAKE_MESSAGE,
+                description=f"Saved inspiration: {url}",
+                agent_name="Nicole",
+                metadata=inspiration
+            )
+        except Exception as e:
+            logger.warning(f"[VIBE] Failed to log inspiration: {e}")
+        
+        return {
+            "success": True,
+            "result": {
+                "url": url,
+                "category": category,
+                "notes": notes,
+                "message": f"Saved {url} as {category} inspiration"
+            }
+        }
+    
+    def get_project_inspirations(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get saved inspirations for a project."""
+        return self._inspiration_cache.get(project_id, [])
     
     # ========================================================================
     # INTERNAL HELPERS
@@ -1252,19 +1629,40 @@ class VibeService:
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
         
-        # Call Claude with retry for transient failures
+        # Create tool executor for this project
+        async def tool_executor(tool_name: str, tool_input: Dict[str, Any]) -> str:
+            """Execute Vibe tools and return results."""
+            result = await self._execute_vibe_tool(tool_name, tool_input, project_id)
+            return json.dumps(result, default=str)
+        
+        # Call Claude with tools for collaborative intake
         try:
-            response = await self._call_claude_with_retry(
+            response, tool_uses = await claude_client.generate_response_with_tools(
                 messages=messages,
+                tools=VIBE_INTAKE_TOOLS,
+                tool_executor=tool_executor,
                 system_prompt=INTAKE_SYSTEM_PROMPT,
                 model=self.SONNET_MODEL,
-                max_tokens=2000,
+                max_tokens=3000,  # More room for tool reasoning
                 temperature=0.7,
-                max_retries=3,
-                base_delay=1.0
+                max_tool_iterations=5  # Allow multiple tool uses
             )
+            
+            # Log tool usage if any
+            if tool_uses:
+                logger.info("[VIBE] Intake used %d tools: %s", 
+                           len(tool_uses), 
+                           [t.get("name") for t in tool_uses])
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.INTAKE_MESSAGE,
+                    description=f"Nicole used {len(tool_uses)} research tools",
+                    agent_name="Nicole",
+                    metadata={"tools_used": [t.get("name") for t in tool_uses]}
+                )
+                
         except Exception as e:
-            logger.error("[VIBE] Intake Claude call failed after retries: %s", e, exc_info=True)
+            logger.error("[VIBE] Intake Claude call failed: %s", e, exc_info=True)
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (rough: ~500 input, ~1000 output tokens)
