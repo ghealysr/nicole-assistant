@@ -615,8 +615,9 @@ class ConcurrencyError(VibeServiceError):
 def estimate_api_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal:
     """Estimate API cost for a Claude call."""
     costs = MODEL_COSTS.get(model, MODEL_COSTS["claude-sonnet-4-20250514"])
-    input_cost = Decimal(str(costs["input"])) * (input_tokens / 1000)
-    output_cost = Decimal(str(costs["output"])) * (output_tokens / 1000)
+    # Use Decimal throughout to avoid Decimal * float error
+    input_cost = Decimal(str(costs["input"])) * Decimal(str(input_tokens)) / Decimal("1000")
+    output_cost = Decimal(str(costs["output"])) * Decimal(str(output_tokens)) / Decimal("1000")
     return input_cost + output_cost
 
 
