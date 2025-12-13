@@ -33,7 +33,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field, field_validator
 
-from app.middleware.alphawave_auth import verify_jwt
+from app.middleware.alphawave_auth import get_current_user
 from app.services.vibe_service import (
     vibe_service,
     ProjectStatus,
@@ -181,9 +181,9 @@ class APIResponse(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================================
 
-def get_user_id(user: dict) -> int:
-    """Extract user_id from JWT payload with validation."""
-    user_id = user.get("user_id")
+def get_user_id(user) -> int:
+    """Extract user_id from authenticated user context."""
+    user_id = getattr(user, 'user_id', None)
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
     return user_id
@@ -227,7 +227,7 @@ def handle_service_error(e: Exception, context: str) -> HTTPException:
 @router.post("/projects", response_model=APIResponse, status_code=201)
 async def create_project(
     data: ProjectCreate,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Create a new Vibe project.
@@ -256,7 +256,7 @@ async def list_projects(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Results offset"),
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     List user's Vibe projects with pagination.
@@ -297,7 +297,7 @@ async def list_projects(
 @router.get("/projects/{project_id}", response_model=APIResponse)
 async def get_project(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Get project details including agents and workflow status.
@@ -331,7 +331,7 @@ async def get_project(
 async def update_project(
     project_id: int,
     data: ProjectUpdate,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Update project fields.
@@ -364,7 +364,7 @@ async def update_project(
 @router.delete("/projects/{project_id}", response_model=APIResponse)
 async def delete_project(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Archive (soft delete) a project.
@@ -390,7 +390,7 @@ async def delete_project(
 async def run_intake(
     project_id: int,
     data: IntakeMessage,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Send a message in the intake conversation.
@@ -418,7 +418,7 @@ async def run_intake(
 @router.post("/projects/{project_id}/plan", response_model=APIResponse)
 async def run_architecture(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Generate architecture specification using Opus.
@@ -444,7 +444,7 @@ async def run_architecture(
 @router.post("/projects/{project_id}/build", response_model=APIResponse)
 async def run_build(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Run the build phase - generate all code files.
@@ -470,7 +470,7 @@ async def run_build(
 @router.post("/projects/{project_id}/qa", response_model=APIResponse)
 async def run_qa(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Run QA checks on generated files.
@@ -496,7 +496,7 @@ async def run_qa(
 @router.post("/projects/{project_id}/review", response_model=APIResponse)
 async def run_review(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Run final review using Opus.
@@ -522,7 +522,7 @@ async def run_review(
 @router.post("/projects/{project_id}/approve", response_model=APIResponse)
 async def approve_project(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Manually approve the project for deployment.
@@ -548,7 +548,7 @@ async def approve_project(
 @router.post("/projects/{project_id}/deploy", response_model=APIResponse)
 async def deploy_project(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Deploy the project.
@@ -578,7 +578,7 @@ async def deploy_project(
 @router.get("/projects/{project_id}/files", response_model=APIResponse)
 async def get_project_files(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Get all files for a project with file tree structure.
@@ -612,7 +612,7 @@ async def get_project_files(
 async def get_file_content(
     project_id: int,
     file_path: str,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Get content of a specific file.
@@ -652,7 +652,7 @@ async def get_file_content(
 async def get_project_activities(
     project_id: int,
     limit: int = Query(default=50, ge=1, le=200, description="Max activities to return"),
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Get activity timeline for a project.
@@ -681,7 +681,7 @@ async def get_project_activities(
 @router.get("/projects/{project_id}/progress/stream")
 async def stream_project_progress(
     project_id: int,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ):
     """
     Minimal SSE-like progress stream for a project.
@@ -721,7 +721,7 @@ async def stream_project_progress(
 @router.post("/lessons", response_model=APIResponse, status_code=201)
 async def create_lesson(
     data: LessonCreate,
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Capture a lesson learned from a project.
@@ -752,7 +752,7 @@ async def get_lessons(
     category: Optional[str] = Query(None, description="Filter by category"),
     query: Optional[str] = Query(None, description="Semantic search query (uses embeddings)"),
     limit: int = Query(10, ge=1, le=50),
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Get lessons relevant to a project type.
@@ -797,7 +797,7 @@ async def get_lessons(
 @router.post("/lessons/backfill_embeddings", response_model=APIResponse)
 async def backfill_lesson_embeddings(
     limit: int = Query(100, ge=1, le=500),
-    user: dict = Depends(verify_jwt)
+    user = Depends(get_current_user)
 ) -> APIResponse:
     """
     Backfill embeddings for lessons missing vectors.
