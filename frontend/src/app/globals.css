@@ -936,15 +936,16 @@ body.resizing * {
 /* Expanded mode - takes full width, hides main chat */
 /* IMPORTANT: Must have BOTH .open AND .expanded to take full width */
 .vibe-workspace.open.expanded {
-  width: calc(100vw - 80px); /* Full width minus collapsed sidebar */
+  /* Sidebar is 240px, leave room for it so we don't overflow viewport */
+  width: calc(100vw - 240px);
   transition: width 0.3s ease;
-  overflow: visible; /* Allow content to show */
+  overflow: visible; /* Allow right-side panels to show fully */
 }
 
 .vibe-workspace.open.expanded .vibe-inner {
   width: 100%;
   min-width: 100%;
-  overflow: hidden; /* Prevent inner overflow */
+  overflow: visible; /* Let inner panels render without clipping */
 }
 
 /* Ensure agents panel is always visible in expanded mode */
