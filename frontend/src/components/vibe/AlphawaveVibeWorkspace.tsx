@@ -839,6 +839,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
           >
             <svg viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
+            <div className="vibe-brand">AlphaWave Vibe</div>
           <div className="vibe-project-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
