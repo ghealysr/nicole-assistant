@@ -65,7 +65,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
   const { currentConversationId, setCurrentConversationId, clearConversation } = useConversation();
   const { token } = useGoogleAuth();
   
-  // Research hook for deep research capabilities
+  // Research hook for deep research capabilities - pass auth token
   const {
     research,
     vibeInspirations,
@@ -75,7 +75,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     error: researchError,
     executeResearch,
     clearResearch,
-  } = useResearch();
+  } = useResearch({ authToken: token || undefined });
 
   // Close all panels helper
   const closeAllPanels = useCallback(() => {
@@ -227,13 +227,14 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         initialPreset={imageStudioPreset}
       />
 
-      {/* Research Panel - slides in from right */}
+      {/* Research Panel - Memory Dashboard style */}
       <ResearchPanel
         isOpen={isResearchOpen}
         onClose={() => {
           setIsResearchOpen(false);
           clearResearch();
         }}
+        authToken={token || undefined}
         research={research}
         vibeInspirations={vibeInspirations}
         status={researchStatus}

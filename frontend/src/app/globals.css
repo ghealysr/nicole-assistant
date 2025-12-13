@@ -3709,6 +3709,34 @@ body.resizing * {
   color: white;
 }
 
+/* Research Panel - Example Buttons */
+.research-example-btn {
+  width: 100%;
+  padding: 12px 16px;
+  text-align: left;
+  background: var(--alphawave-surface, rgba(184, 168, 212, 0.08));
+  border: 1px solid var(--dash-border, #E8E6DC);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--alphawave-text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.research-example-btn:hover:not(:disabled) {
+  background: var(--alphawave-surface-hover, rgba(184, 168, 212, 0.15));
+  border-color: var(--lavender, #B8A8D4);
+  color: var(--lavender, #B8A8D4);
+}
+.research-example-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Research Panel - Icon color */
+.research-icon {
+  background: linear-gradient(135deg, #4285f4, #34a853) !important;
+}
+
 /* Document List */
 .mem-document-list { display: flex; flex-direction: column; gap: 8px; }
 

@@ -1,46 +1,44 @@
+'use client';
+
 /**
- * useResearch Hook - Gemini 3 Pro Deep Research Integration
+ * useResearch - Hook for Gemini Deep Research Integration
  * 
- * Manages research state, API calls, and streaming updates for:
- * - General research queries
- * - Vibe project inspiration search
- * - Competitor analysis
+ * Provides:
+ * - Deep research execution with Google Search grounding
+ * - Vibe inspiration search for design research
+ * - Competitor website analysis
+ * - Real-time progress tracking
+ * - Research history
  * 
- * @author Nicole V7 Architecture
+ * Uses Gemini 3 Pro with search grounding (FREE until Jan 2026)
  */
 
-import { useState, useCallback, useRef } from 'react';
-import { API_URL } from '@/lib/alphawave_config';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { API_CONFIG } from '@/lib/alphawave_config';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// API base URL
+const API_URL = API_CONFIG?.apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Research types
 export type ResearchType = 'general' | 'vibe_inspiration' | 'competitor' | 'technical';
 
-export type ResearchStatus = 'idle' | 'pending' | 'researching' | 'synthesizing' | 'complete' | 'failed';
+// Research status
+export type ResearchStatus = 'idle' | 'pending' | 'researching' | 'synthesizing' | 'complete' | 'failed' | 'cancelled';
 
+// Research finding
 export interface ResearchFinding {
   content: string;
   source_url?: string;
   source_title?: string;
-  relevance_score?: number;
 }
 
+// Research source
 export interface ResearchSource {
   url: string;
   title: string;
-  relevance_score?: number;
 }
 
-export interface ResearchMetadata {
-  cost_usd: number;
-  elapsed_seconds: number;
-  model: string;
-  input_tokens?: number;
-  output_tokens?: number;
-}
-
+// Full research response
 export interface ResearchResponse {
   request_id: number;
   query: string;
@@ -50,33 +48,30 @@ export interface ResearchResponse {
   sources: ResearchSource[];
   recommendations: string[];
   nicole_synthesis: string;
-  metadata: ResearchMetadata;
-  created_at?: string;
-  completed_at?: string;
-}
-
-export interface InspirationImage {
-  id: string;
-  url: string;
-  screenshot_url: string;
-  source_site: string;
-  design_elements: {
-    colors: string[];
-    typography_style: string;
-    layout_pattern: string;
-    notable_features: string[];
+  metadata: {
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+    elapsed_seconds: number;
+    timestamp: string;
   };
-  relevance_notes: string;
+  project_id?: number;
+  competitor_url?: string;
 }
 
-export interface ImageFeedback {
-  imageId: string;
-  liked: boolean;
-  likedElements: string[];
-  dislikedElements: string[];
-  comments: string;
+// Vibe inspiration image
+export interface InspirationImage {
+  url: string;
+  thumbnail_url?: string;
+  title?: string;
+  description?: string;
+  source_url?: string;
+  color_palette?: string[];
+  design_notes?: string;
 }
 
+// Vibe inspiration response
 export interface VibeInspirationResponse {
   project_id: number;
   query: string;
@@ -84,69 +79,63 @@ export interface VibeInspirationResponse {
   design_patterns: string[];
   recommendations: string[];
   sources: ResearchSource[];
-  metadata: ResearchMetadata;
+  metadata: {
+    model: string;
+    cost_usd: number;
+    elapsed_seconds: number;
+  };
 }
 
-export interface UseResearchReturn {
+// Image feedback
+export interface ImageFeedback {
+  image_url: string;
+  liked: boolean;
+  notes?: string;
+}
+
+// Hook configuration
+interface UseResearchConfig {
+  authToken?: string;
+  onError?: (error: string) => void;
+}
+
+// Hook return type
+interface UseResearchReturn {
   // State
   research: ResearchResponse | null;
   vibeInspirations: VibeInspirationResponse | null;
   status: ResearchStatus;
   statusMessage: string;
-  error: string | null;
   progress: number;
+  error: string | null;
+  history: { request_id: number; query: string; type: ResearchType; created_at: string }[];
   
   // Actions
   executeResearch: (query: string, type?: ResearchType, context?: object) => Promise<ResearchResponse | null>;
-  executeVibeInspiration: (
-    query: string,
-    projectId: number,
-    brief?: object,
-    previousFeedback?: ImageFeedback[]
-  ) => Promise<VibeInspirationResponse | null>;
-  analyzeCompetitor: (
-    competitorUrl: string,
-    projectId: number,
-    analysisFocus?: string[]
-  ) => Promise<ResearchResponse | null>;
+  executeVibeInspiration: (projectId: number, query: string, brief?: object, feedback?: ImageFeedback[]) => Promise<VibeInspirationResponse | null>;
+  analyzeCompetitor: (projectId: number, url: string, focus?: string[]) => Promise<ResearchResponse | null>;
+  getResearch: (requestId: number) => Promise<ResearchResponse | null>;
+  loadHistory: () => Promise<void>;
   clearResearch: () => void;
   cancelResearch: () => void;
 }
 
-// ============================================================================
-// STATUS MESSAGES
-// ============================================================================
-
-const STATUS_MESSAGES: Record<ResearchStatus, string> = {
-  idle: '',
-  pending: 'Starting research...',
-  researching: 'Searching across multiple sources...',
-  synthesizing: 'Analyzing findings and preparing report...',
-  complete: 'Research complete!',
-  failed: 'Research failed. Please try again.',
-};
-
-// ============================================================================
-// HOOK IMPLEMENTATION
-// ============================================================================
-
-export function useResearch(): UseResearchReturn {
+/**
+ * Hook for Gemini Deep Research
+ */
+export function useResearch(config: UseResearchConfig = {}): UseResearchReturn {
+  const { authToken, onError } = config;
+  
+  // State
   const [research, setResearch] = useState<ResearchResponse | null>(null);
   const [vibeInspirations, setVibeInspirations] = useState<VibeInspirationResponse | null>(null);
   const [status, setStatus] = useState<ResearchStatus>('idle');
-  const [statusMessage, setStatusMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [history, setHistory] = useState<{ request_id: number; query: string; type: ResearchType; created_at: string }[]>([]);
   
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  /**
-   * Get auth token from localStorage
-   */
-  const getAuthToken = useCallback((): string | null => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('token');
-  }, []);
 
   /**
    * API Response shape from backend
@@ -164,13 +153,15 @@ export function useResearch(): UseResearchReturn {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<{ success: boolean; data?: T; error?: string }> => {
-    const token = getAuthToken();
+    if (!authToken) {
+      return { success: false, error: 'Authorization header required' };
+    }
     
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        'Authorization': `Bearer ${authToken}`,
         ...options.headers,
       },
       signal: abortControllerRef.current?.signal,
@@ -183,7 +174,7 @@ export function useResearch(): UseResearchReturn {
 
     const result: APIResponseWrapper<T> = await response.json();
     return result;
-  }, [getAuthToken]);
+  }, [authToken]);
 
   /**
    * Execute general research
@@ -200,36 +191,19 @@ export function useResearch(): UseResearchReturn {
     abortControllerRef.current = new AbortController();
 
     setStatus('pending');
-    setStatusMessage(STATUS_MESSAGES.pending);
+    setStatusMessage('Preparing research request...');
     setProgress(10);
     setError(null);
     setResearch(null);
+    setVibeInspirations(null);
 
     try {
-      // Simulate progress during request
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 80) {
-            clearInterval(progressInterval);
-            return 80;
-          }
-          const increment = prev < 30 ? 5 : prev < 60 ? 3 : 1;
-          const newProgress = prev + increment;
-          
-          // Update status based on progress
-          if (newProgress > 20 && newProgress <= 60) {
-            setStatus('researching');
-            setStatusMessage(STATUS_MESSAGES.researching);
-          } else if (newProgress > 60) {
-            setStatus('synthesizing');
-            setStatusMessage(STATUS_MESSAGES.synthesizing);
-          }
-          
-          return newProgress;
-        });
-      }, 500);
+      // Update status
+      setStatus('researching');
+      setStatusMessage('Searching with Gemini + Google...');
+      setProgress(30);
 
-      const result = await apiRequest<ResearchResponse>('/research/execute', {
+      const result = await apiRequest<{ data: ResearchResponse }>('/research/execute', {
         method: 'POST',
         body: JSON.stringify({
           query,
@@ -238,45 +212,50 @@ export function useResearch(): UseResearchReturn {
         }),
       });
 
-      clearInterval(progressInterval);
-
-      if (result.success && result.data) {
-        setProgress(100);
-        setStatus('complete');
-        setStatusMessage(STATUS_MESSAGES.complete);
-        setResearch(result.data as ResearchResponse);
-        return result.data as ResearchResponse;
-      } else {
-        const errorMsg = result.error || 'Research failed';
-        setError(errorMsg);
-        setStatus('failed');
-        setStatusMessage(errorMsg);
-        setProgress(0);
-        return null;
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Research failed');
       }
 
+      // Handle nested data structure from backend
+      const researchData = result.data.data || result.data as unknown as ResearchResponse;
+
+      setStatus('synthesizing');
+      setStatusMessage('Nicole is analyzing findings...');
+      setProgress(80);
+
+      // Simulate small delay for UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setResearch(researchData);
+      setStatus('complete');
+      setStatusMessage('Research complete!');
+      setProgress(100);
+
+      return researchData;
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      if ((err as Error).name === 'AbortError') {
+        setStatus('cancelled');
+        setStatusMessage('Research cancelled');
         return null;
       }
-      
-      const message = err instanceof Error ? err.message : 'Research failed';
-      setError(message);
+
+      const errorMessage = (err as Error).message || 'Unknown error';
+      setError(errorMessage);
       setStatus('failed');
-      setStatusMessage(message);
-      setProgress(0);
+      setStatusMessage('Research failed');
+      onError?.(errorMessage);
       return null;
     }
-  }, [apiRequest]);
+  }, [apiRequest, onError]);
 
   /**
    * Execute Vibe inspiration search
    */
   const executeVibeInspiration = useCallback(async (
-    query: string,
     projectId: number,
+    query: string,
     brief?: object,
-    previousFeedback?: ImageFeedback[]
+    feedback?: ImageFeedback[]
   ): Promise<VibeInspirationResponse | null> => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -287,67 +266,57 @@ export function useResearch(): UseResearchReturn {
     setStatusMessage('Searching for design inspiration...');
     setProgress(10);
     setError(null);
+    setResearch(null);
     setVibeInspirations(null);
 
     try {
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 3, 80));
-      }, 400);
-
       setStatus('researching');
-      setStatusMessage('Analyzing design patterns...');
+      setStatusMessage('Finding visual references...');
+      setProgress(40);
 
-      const result = await apiRequest<VibeInspirationResponse>(
-        `/research/vibe/${projectId}/inspiration`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            query,
-            project_brief: brief,
-            previous_feedback: previousFeedback,
-          }),
-        }
-      );
+      const result = await apiRequest<{ data: VibeInspirationResponse }>(`/research/vibe/${projectId}/inspiration`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query,
+          project_brief: brief,
+          previous_feedback: feedback,
+        }),
+      });
 
-      clearInterval(progressInterval);
-
-      if (result.success && result.data) {
-        const data = result.data as VibeInspirationResponse;
-        setProgress(100);
-        setStatus('complete');
-        setStatusMessage(`Found ${data.inspirations?.length || 0} design inspirations`);
-        setVibeInspirations(data);
-        return data;
-      } else {
-        const errorMsg = result.error || 'Inspiration search failed';
-        setError(errorMsg);
-        setStatus('failed');
-        setStatusMessage(errorMsg);
-        setProgress(0);
-        return null;
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Inspiration search failed');
       }
 
+      const inspirationData = result.data.data || result.data as unknown as VibeInspirationResponse;
+
+      setVibeInspirations(inspirationData);
+      setStatus('complete');
+      setStatusMessage('Inspiration found!');
+      setProgress(100);
+
+      return inspirationData;
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      if ((err as Error).name === 'AbortError') {
+        setStatus('cancelled');
         return null;
       }
-      
-      const message = err instanceof Error ? err.message : 'Inspiration search failed';
-      setError(message);
+
+      const errorMessage = (err as Error).message || 'Inspiration search failed';
+      setError(errorMessage);
       setStatus('failed');
-      setStatusMessage(message);
-      setProgress(0);
+      setStatusMessage('Failed');
+      onError?.(errorMessage);
       return null;
     }
-  }, [apiRequest]);
+  }, [apiRequest, onError]);
 
   /**
-   * Analyze competitor
+   * Analyze competitor website
    */
   const analyzeCompetitor = useCallback(async (
-    competitorUrl: string,
     projectId: number,
-    analysisFocus?: string[]
+    url: string,
+    focus?: string[]
   ): Promise<ResearchResponse | null> => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -359,76 +328,99 @@ export function useResearch(): UseResearchReturn {
     setProgress(10);
     setError(null);
     setResearch(null);
+    setVibeInspirations(null);
 
     try {
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 80) return 80;
-          if (prev > 40) {
-            setStatus('synthesizing');
-            setStatusMessage('Evaluating strengths and weaknesses...');
-          }
-          return prev + 4;
-        });
-      }, 500);
-
       setStatus('researching');
-      setStatusMessage('Scanning website and features...');
+      setStatusMessage(`Analyzing ${new URL(url).hostname}...`);
+      setProgress(30);
 
-      // Send as POST body (matches backend CompetitorRequest model)
-      const result = await apiRequest<ResearchResponse>(
-        `/research/vibe/${projectId}/competitor`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            competitor_url: competitorUrl,
-            analysis_focus: analysisFocus,
-          }),
-        }
-      );
+      const result = await apiRequest<{ data: ResearchResponse }>(`/research/vibe/${projectId}/competitor`, {
+        method: 'POST',
+        body: JSON.stringify({
+          competitor_url: url,
+          analysis_focus: focus,
+        }),
+      });
 
-      clearInterval(progressInterval);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Competitor analysis failed');
+      }
+
+      const competitorData = result.data.data || result.data as unknown as ResearchResponse;
+
+      setResearch(competitorData);
+      setStatus('complete');
+      setStatusMessage('Analysis complete!');
+      setProgress(100);
+
+      return competitorData;
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        setStatus('cancelled');
+        return null;
+      }
+
+      const errorMessage = (err as Error).message || 'Analysis failed';
+      setError(errorMessage);
+      setStatus('failed');
+      setStatusMessage('Failed');
+      onError?.(errorMessage);
+      return null;
+    }
+  }, [apiRequest, onError]);
+
+  /**
+   * Get research by ID
+   */
+  const getResearch = useCallback(async (requestId: number): Promise<ResearchResponse | null> => {
+    try {
+      const result = await apiRequest<ResearchResponse>(`/research/${requestId}`, {
+        method: 'GET',
+      });
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Failed to fetch research');
+      }
+
+      return result.data;
+    } catch (err) {
+      const errorMessage = (err as Error).message || 'Failed to fetch research';
+      onError?.(errorMessage);
+      return null;
+    }
+  }, [apiRequest, onError]);
+
+  /**
+   * Load research history
+   */
+  const loadHistory = useCallback(async (): Promise<void> => {
+    try {
+      const result = await apiRequest<{ request_id: number; query: string; research_type: ResearchType; created_at: string }[]>('/research/history', {
+        method: 'GET',
+      });
 
       if (result.success && result.data) {
-        const data = result.data as ResearchResponse;
-        setProgress(100);
-        setStatus('complete');
-        setStatusMessage('Competitor analysis complete');
-        setResearch(data);
-        return data;
-      } else {
-        const errorMsg = result.error || 'Competitor analysis failed';
-        setError(errorMsg);
-        setStatus('failed');
-        setStatusMessage(errorMsg);
-        setProgress(0);
-        return null;
+        setHistory(result.data.map(h => ({
+          ...h,
+          type: h.research_type,
+        })));
       }
-
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        return null;
-      }
-      
-      const message = err instanceof Error ? err.message : 'Competitor analysis failed';
-      setError(message);
-      setStatus('failed');
-      setStatusMessage(message);
-      setProgress(0);
-      return null;
+      console.error('Failed to load research history:', err);
     }
   }, [apiRequest]);
 
   /**
-   * Clear research state
+   * Clear current research
    */
   const clearResearch = useCallback(() => {
     setResearch(null);
     setVibeInspirations(null);
     setStatus('idle');
     setStatusMessage('');
-    setError(null);
     setProgress(0);
+    setError(null);
   }, []);
 
   /**
@@ -437,25 +429,37 @@ export function useResearch(): UseResearchReturn {
   const cancelResearch = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      abortControllerRef.current = null;
     }
-    setStatus('idle');
+    setStatus('cancelled');
     setStatusMessage('Research cancelled');
-    setProgress(0);
   }, []);
 
+  // Load history when token changes
+  useEffect(() => {
+    if (authToken) {
+      loadHistory();
+    }
+  }, [authToken, loadHistory]);
+
   return {
+    // State
     research,
     vibeInspirations,
     status,
     statusMessage,
-    error,
     progress,
+    error,
+    history,
+    
+    // Actions
     executeResearch,
     executeVibeInspiration,
     analyzeCompetitor,
+    getResearch,
+    loadHistory,
     clearResearch,
     cancelResearch,
   };
 }
 
+export default useResearch;
