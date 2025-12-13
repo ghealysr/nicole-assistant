@@ -1718,8 +1718,8 @@ class VibeService:
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
         
-        # Feature flag for tool-enabled intake (can disable if causing issues)
-        USE_INTAKE_TOOLS = False  # Temporarily disabled until fully tested
+        # Feature flag for tool-enabled intake
+        USE_INTAKE_TOOLS = True  # Enabled - Cloudinary + Brave Search configured
         
         response = None
         tool_uses = []
