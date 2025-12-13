@@ -108,6 +108,21 @@ openai==1.54.3
 # Features: Async client, streaming, function calling, vision
 # Critical for: Content safety (Moderation API), semantic search (embeddings)
 
+google-genai>=0.3.0
+# Google Gemini SDK for Deep Research and Image Generation
+# Used for: Research with Google Search grounding, Gemini 3 Pro Image generation
+# Models: gemini-3-pro-preview, gemini-3-pro-image-preview
+# Features: Search grounding (FREE until Jan 2026), thinking mode, image gen
+
+# ─────────────────────────────────────────────────────────────────────────
+# IMAGE & MEDIA SERVICES
+# ─────────────────────────────────────────────────────────────────────────
+
+cloudinary>=1.36.0
+# Cloud-based image and video management
+# Used for: Image storage, transformations, CDN delivery
+# Features: Upload, resize, format conversion, AI tagging
+
 # ─────────────────────────────────────────────────────────────────────────
 # DATABASE & CACHING
 # ─────────────────────────────────────────────────────────────────────────
