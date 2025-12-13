@@ -86,6 +86,13 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   const [viewMode, setViewMode] = useState<ViewMode>('projects');
   const [isExpanded, setIsExpanded] = useState(true);  // Default to full width
   
+  // Notify parent of expanded state when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      onExpandChange?.(isExpanded);
+    }
+  }, [isOpen, isExpanded, onExpandChange]);
+  
   // Handle expand toggle
   const handleExpandToggle = useCallback(() => {
     const newExpanded = !isExpanded;
