@@ -399,6 +399,16 @@ Rules:
                 batch_count=batch_count,
                 model_key=model_key,
             )
+        elif model_cfg["mode"] == "gemini":
+            return await self._generate_via_gemini(
+                user_id=user_id,
+                job_id=job_id,
+                prompt=enhanced_prompt,
+                original_prompt=prompt,
+                parameters=validated_params,
+                batch_count=batch_count,
+                model_key=model_key,
+            )
         else:
             if not self.replicate_client:
                 raise RuntimeError(
@@ -516,6 +526,108 @@ Rules:
         
         logger.info(f"[IMAGE] Recraft generated {len(variants)} variants in {elapsed_ms}ms")
 
+        return {
+            "job_id": job_id,
+            "variants": variants,
+            "count": len(variants),
+            "model_key": model_key,
+            "elapsed_ms": elapsed_ms,
+            "total_cost_usd": cost_per_image * len(variants),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Gemini-based generation (Gemini 3 Pro Image)
+    # ------------------------------------------------------------------ #
+    async def _generate_via_gemini(
+        self,
+        user_id: int,
+        job_id: int,
+        prompt: str,
+        original_prompt: str,
+        parameters: Dict,
+        batch_count: int,
+        model_key: str,
+    ) -> Dict:
+        """Generate images using Gemini 3 Pro Image."""
+        from app.integrations.alphawave_gemini import gemini_client
+        from app.services.alphawave_cloudinary_service import cloudinary_service
+        import base64
+        
+        start_time = time.time()
+        model_cfg = self.MODEL_CONFIGS[model_key]
+        cost_per_image = model_cfg.get("cost_per_image", {}).get(
+            parameters.get("size", "1024x1024"), 0.134
+        )
+        
+        variants = []
+        
+        for i in range(batch_count):
+            try:
+                # Generate image via Gemini
+                result = await gemini_client.generate_image(
+                    prompt=prompt,
+                    size=parameters.get("size", "1024x1024"),
+                    style=parameters.get("style"),
+                    enable_thinking=False
+                )
+                
+                if not result.get("success"):
+                    logger.warning(f"[IMAGE] Gemini generation {i+1} failed: {result.get('error')}")
+                    continue
+                
+                # Upload to Cloudinary
+                image_data = result.get("image_data")
+                if image_data:
+                    upload_result = cloudinary_service.upload_from_base64(
+                        image_data,
+                        folder=f"image_gen/{user_id}",
+                        public_id=f"gemini_{job_id}_{i+1}"
+                    )
+                    url = upload_result.get("secure_url") or upload_result.get("url", "")
+                else:
+                    url = ""
+                
+                # Parse size
+                size = parameters.get("size", "1024x1024")
+                width, height = map(int, size.split("x"))
+                
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                
+                # Store variant
+                variant = await db.fetchrow(
+                    """
+                    INSERT INTO image_variants 
+                    (job_id, variant_number, model_key, model_name, original_prompt,
+                     revised_prompt, parameters_json, url, thumbnail_url, width, height,
+                     seed, elapsed_ms, cost_usd, hash)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    RETURNING *
+                    """,
+                    job_id,
+                    i + 1,
+                    model_key,
+                    "gemini-3-pro-image-preview",
+                    original_prompt,
+                    parameters.get("enhanced_prompt", prompt),
+                    json.dumps(parameters),
+                    url,
+                    url,
+                    width,
+                    height,
+                    None,  # No seed for Gemini
+                    elapsed_ms,
+                    cost_per_image,
+                    None,  # No hash computed
+                )
+                variants.append(dict(variant))
+                
+            except Exception as e:
+                logger.error(f"[IMAGE] Gemini generation {i+1} error: {e}", exc_info=True)
+                continue
+        
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"[IMAGE] Gemini generated {len(variants)} variants in {elapsed_ms}ms")
+        
         return {
             "job_id": job_id,
             "variants": variants,

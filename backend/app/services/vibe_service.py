@@ -1253,15 +1253,17 @@ class VibeService:
         except ValueError:
             rt = ResearchType.GENERAL
         
-        # Get project context if available
+        # Get project context using internal method (no user validation needed for tools)
         context = None
         if project_id:
-            project = await self.get_project(user_id=0, project_id=project_id)
-            if project.success and project.data:
+            project = await self._get_project_internal(project_id)
+            if project:
                 context = {
-                    "project_brief": project.data.get("brief"),
-                    "project_name": project.data.get("name"),
-                    "project_type": project.data.get("project_type")
+                    "project_brief": project.get("brief"),
+                    "project_name": project.get("name"),
+                    "project_type": project.get("project_type"),
+                    "status": project.get("status"),
+                    "intake_summary": project.get("intake_summary")
                 }
         
         # Execute research
