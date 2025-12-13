@@ -933,6 +933,51 @@ body.resizing * {
   border-left: 1px solid var(--vibe-border);
 }
 
+/* Expanded mode - takes full width, hides main chat */
+.vibe-workspace.expanded {
+  width: calc(100vw - 160px); /* Full width minus sidebar */
+  transition: width 0.3s ease;
+}
+
+.vibe-workspace.expanded .vibe-inner {
+  width: 100%;
+  min-width: 100%;
+}
+
+/* Expand/Collapse toggle button */
+.vibe-expand-toggle {
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 48px;
+  background: var(--vibe-surface);
+  border: 1px solid var(--vibe-border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.vibe-expand-toggle:hover {
+  background: var(--vibe-accent);
+}
+
+.vibe-expand-toggle svg {
+  width: 14px;
+  height: 14px;
+  color: #A0A0A0;
+}
+
+.vibe-expand-toggle:hover svg {
+  color: #fff;
+}
+
 .vibe-inner {
   width: var(--vibe-width);
   min-width: var(--vibe-width);

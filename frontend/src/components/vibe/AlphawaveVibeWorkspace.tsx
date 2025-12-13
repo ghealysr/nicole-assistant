@@ -70,6 +70,7 @@ interface FileItem {
 interface AlphawaveVibeWorkspaceProps {
   isOpen: boolean;
   onClose: () => void;
+  onExpandChange?: (expanded: boolean) => void;
 }
 
 type ViewMode = 'projects' | 'workspace';
@@ -78,11 +79,19 @@ type ViewMode = 'projects' | 'workspace';
  * AlphaWave Vibe Dashboard
  * Full-featured coding workspace with project management, agents, and build pipeline
  */
-export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspaceProps) {
+export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: AlphawaveVibeWorkspaceProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('projects');
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Handle expand toggle
+  const handleExpandToggle = useCallback(() => {
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
+    onExpandChange?.(newExpanded);
+  }, [isExpanded, onExpandChange]);
   const [currentDevice, setCurrentDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const [currentView, setCurrentView] = useState<'preview' | 'code' | 'split'>('split');
   const [activityCollapsed, setActivityCollapsed] = useState(false);
@@ -1153,7 +1162,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
   // Show loading state while fetching initial data
   if (projectsLoading && (!projects || projects.length === 0)) {
     return (
-      <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
+      <aside className={`vibe-workspace ${isOpen ? 'open' : ''} ${isExpanded ? 'expanded' : ''}`}>
         <div className="vibe-loading-screen">
           <div className="vibe-loading-spinner" />
           <p>Loading Vibe Dashboard...</p>
@@ -1164,8 +1173,23 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose }: AlphawaveVibeWorkspa
 
   return (
     <VibeErrorBoundary onReset={() => fetchProjects()}>
-      <aside className={`vibe-workspace ${isOpen ? 'open' : ''}`}>
+      <aside className={`vibe-workspace ${isOpen ? 'open' : ''} ${isExpanded ? 'expanded' : ''}`}>
         <canvas ref={canvasRef} className="vibe-particle-canvas" />
+        
+        {/* Expand/Collapse toggle */}
+        <button 
+          className="vibe-expand-toggle"
+          onClick={handleExpandToggle}
+          title={isExpanded ? 'Show main chat' : 'Hide main chat'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {isExpanded ? (
+              <path d="M9 18l6-6-6-6" /> 
+            ) : (
+              <path d="M15 18l-6-6 6-6" />
+            )}
+          </svg>
+        </button>
 
         <div className="vibe-inner">
           {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}

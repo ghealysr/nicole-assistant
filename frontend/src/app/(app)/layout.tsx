@@ -51,6 +51,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
  */
 function AppLayoutInner({ children }: { children: React.ReactNode }) {
   const [isVibeOpen, setIsVibeOpen] = useState(false);
+  const [isVibeExpanded, setIsVibeExpanded] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isChatsOpen, setIsChatsOpen] = useState(false);
@@ -148,13 +149,17 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         onNewChat={clearConversation}
       />
 
-      {/* Main content area */}
-      <main className="flex-1 min-w-0 overflow-hidden">
+      {/* Main content area - hidden when Vibe is expanded */}
+      <main className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${isVibeExpanded ? 'w-0 opacity-0 pointer-events-none' : ''}`}>
         {children}
       </main>
 
-      {/* Vibe Workspace - slides in from right */}
-      <AlphawaveVibeWorkspace isOpen={isVibeOpen} onClose={() => setIsVibeOpen(false)} />
+      {/* Vibe Workspace - slides in from right, can expand to full width */}
+      <AlphawaveVibeWorkspace 
+        isOpen={isVibeOpen} 
+        onClose={() => setIsVibeOpen(false)}
+        onExpandChange={setIsVibeExpanded}
+      />
 
       {/* Memory Dashboard - slides in from right */}
       <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} authToken={token || undefined} />
