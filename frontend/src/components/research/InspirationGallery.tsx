@@ -106,10 +106,16 @@ const InspirationCard = ({
   </motion.div>
 );
 
+// Internal feedback state (more detailed than exported ImageFeedback)
+interface InternalFeedback {
+  likedElements: string[];
+  dislikedElements: string[];
+  comments: string;
+}
+
 // Detail Modal
 const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProps) => {
-  const [feedback, setFeedback] = useState<Partial<ImageFeedback>>({
-    imageId: image.id || image.url,
+  const [feedback, setFeedback] = useState<InternalFeedback>({
     likedElements: [],
     dislikedElements: [],
     comments: '',
@@ -122,15 +128,15 @@ const InspirationDetail = ({ image, onClose, onFeedback }: InspirationDetailProp
   ].filter(Boolean) as string[];
 
   const getElementStatus = (element: string): 'neutral' | 'liked' | 'disliked' => {
-    if (feedback.likedElements?.includes(element)) return 'liked';
-    if (feedback.dislikedElements?.includes(element)) return 'disliked';
+    if (feedback.likedElements.includes(element)) return 'liked';
+    if (feedback.dislikedElements.includes(element)) return 'disliked';
     return 'neutral';
   };
 
   const handleElementStatus = (element: string, status: 'neutral' | 'liked' | 'disliked') => {
     setFeedback(prev => {
-      const newLiked = (prev.likedElements || []).filter(e => e !== element);
-      const newDisliked = (prev.dislikedElements || []).filter(e => e !== element);
+      const newLiked = prev.likedElements.filter(e => e !== element);
+      const newDisliked = prev.dislikedElements.filter(e => e !== element);
       
       if (status === 'liked') newLiked.push(element);
       if (status === 'disliked') newDisliked.push(element);
