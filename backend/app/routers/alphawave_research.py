@@ -100,7 +100,7 @@ async def execute_research(
     async for update in research_orchestrator.execute_research(
         query=request.query,
         research_type=research_type,
-        user_id=user.get("user_id", 0),
+        user_id=getattr(user, 'user_id', 0) or 0,
         project_id=request.project_id,
         context=request.context
     ):
