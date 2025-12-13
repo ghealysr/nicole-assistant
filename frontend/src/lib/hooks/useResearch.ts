@@ -58,6 +58,8 @@ export interface ResearchResponse {
   };
   project_id?: number;
   competitor_url?: string;
+  completed_at?: string;
+  created_at?: string;
 }
 
 // Vibe inspiration image - matches InspirationGallery component expectations
