@@ -416,6 +416,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
     approveProject,
     deployProject,
     runPipeline,
+    retryPhase,
     clearIntakeHistory,
   } = useVibeProject(selectedProjectId || undefined);
 
@@ -1073,6 +1074,29 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                 <svg viewBox="0 0 24 24" fill="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               )}
               <span>{isAnyOperationLoading ? 'Working...' : 'Run Pipeline'}</span>
+            </button>
+          )}
+          
+          {/* Retry Button - for stuck projects */}
+          {project?.status && ['planning', 'building', 'qa', 'review'].includes(project.status) && !isAnyOperationLoading && (
+            <button 
+              className="vibe-retry-btn"
+              onClick={async () => {
+                if (selectedProjectId) {
+                  const success = await retryPhase(selectedProjectId);
+                  if (success) {
+                    // Trigger the pipeline again after retry
+                    handleRunPipeline();
+                  }
+                }
+              }}
+              title="Retry current phase if stuck"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 4v6h6M23 20v-6h-6"/>
+                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+              </svg>
+              <span>Retry</span>
             </button>
           )}
           

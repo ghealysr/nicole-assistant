@@ -1176,6 +1176,35 @@ export function useVibeProject(projectId?: number) {
     }
   }, [fetchProject, runPlanning, runBuild, runQA, runReview]);
 
+  // Retry a stuck phase
+  const retryPhase = useCallback(async (id: number, targetStatus?: string): Promise<boolean> => {
+    try {
+      const url = targetStatus 
+        ? `/projects/${id}/retry?target_status=${targetStatus}`
+        : `/projects/${id}/retry`;
+      
+      const response = await apiClient.request<{ status: string; message: string }>(
+        url,
+        'POST'
+      );
+      
+      if (!response.success) {
+        setError(response.error || 'Retry failed');
+        return false;
+      }
+      
+      // Refresh project after retry
+      await fetchProject(id);
+      setError(null);
+      return true;
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Retry failed';
+      setError(getFriendlyErrorMessage(rawMessage));
+      console.error('[useVibeProject] Retry error:', err);
+      return false;
+    }
+  }, [fetchProject]);
+
   // Auto-fetch when projectId changes
   useEffect(() => {
     if (projectId) {
@@ -1298,6 +1327,7 @@ export function useVibeProject(projectId?: number) {
     approveProject,
     deployProject,
     runPipeline,
+    retryPhase,
     
     // Helpers
     clearIntakeHistory: useCallback(() => setIntakeHistory([]), []),

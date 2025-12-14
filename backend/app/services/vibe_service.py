@@ -2280,8 +2280,28 @@ class VibeService:
                 error="Project has no brief. Complete intake first."
             )
         
+        # Log planning start for progress tracking
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description="🏗️ Starting architecture design...",
+            user_id=user_id,
+            agent_name="Opus",
+            metadata={"phase": "planning", "step": "started"}
+        )
+        
         # Call Opus for architecture with retry for transient failures
         try:
+            # Log that we're calling Claude
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.INTAKE_MESSAGE,
+                description="🧠 Opus is designing the site structure...",
+                user_id=user_id,
+                agent_name="Opus",
+                metadata={"phase": "planning", "step": "claude_call"}
+            )
+            
             response = await self._call_claude_with_retry(
                 messages=[{
                     "role": "user",
@@ -2393,14 +2413,15 @@ class VibeService:
                 error="Project has no architecture. Run planning first."
             )
         
-        # Log build start
+        # Log build start with progress tracking
+        page_count = len(architecture.get("pages", []))
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.BUILD_STARTED,
-            description="Code generation started",
+            description=f"🔨 Starting code generation ({page_count} pages)...",
             user_id=user_id,
             agent_name="Sonnet",
-            metadata={"page_count": len(architecture.get("pages", []))}
+            metadata={"page_count": page_count, "phase": "build", "step": "started"}
         )
         
         # Build comprehensive prompt
@@ -2433,6 +2454,16 @@ class VibeService:
 Generate complete, working code for each file."""
 
         try:
+            # Log that we're generating code
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.BUILD_STARTED,
+                description="⚙️ Sonnet is generating code files...",
+                user_id=user_id,
+                agent_name="Sonnet",
+                metadata={"phase": "build", "step": "claude_call"}
+            )
+            
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": build_prompt}],
                 system_prompt=BUILD_SYSTEM_PROMPT,
@@ -2441,6 +2472,16 @@ Generate complete, working code for each file."""
                 temperature=0.3,   # Lower temperature for code
                 max_retries=3,
                 base_delay=2.0     # Longer delay for large generations
+            )
+            
+            # Log completion
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.BUILD_STARTED,
+                description="📝 Parsing generated files...",
+                user_id=user_id,
+                agent_name="Sonnet",
+                metadata={"phase": "build", "step": "parsing"}
             )
         except Exception as e:
             logger.error("[VIBE] Build Claude call failed after retries: %s", e, exc_info=True)
@@ -2801,6 +2842,84 @@ Output your comprehensive review as JSON."""
             },
             api_cost=cost
         )
+    
+    async def retry_phase(
+        self,
+        project_id: int,
+        user_id: int,
+        target_status: Optional[str] = None
+    ) -> OperationResult:
+        """
+        Retry a stuck phase by keeping current status or optionally resetting.
+        
+        This allows re-running planning/build/qa for projects that got stuck.
+        If target_status is provided, resets project to that status first.
+        """
+        try:
+            project = await self._get_project_or_raise(project_id, user_id)
+        except ProjectNotFoundError as e:
+            return OperationResult(success=False, error=str(e))
+        
+        current_status = project.get("status", "intake")
+        
+        # Determine what to do
+        if target_status:
+            # Validate target_status is valid
+            valid_statuses = ["planning", "building", "qa", "review"]
+            if target_status not in valid_statuses:
+                return OperationResult(
+                    success=False,
+                    error=f"Invalid target status. Must be one of: {valid_statuses}"
+                )
+            
+            # Reset to target status
+            try:
+                await db.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET status = $1, updated_at = NOW()
+                    WHERE project_id = $2 AND user_id = $3
+                    """,
+                    target_status, project_id, user_id
+                )
+                
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.INTAKE_MESSAGE,
+                    description=f"🔄 Reset project to {target_status} phase for retry",
+                    user_id=user_id,
+                    agent_name="System",
+                    metadata={"from_status": current_status, "to_status": target_status}
+                )
+                
+                return OperationResult(
+                    success=True,
+                    data={
+                        "status": target_status,
+                        "message": f"Project reset to {target_status}. Ready to run pipeline."
+                    }
+                )
+            except Exception as e:
+                logger.error("[VIBE] Failed to reset project status: %s", e, exc_info=True)
+                return OperationResult(success=False, error=f"Failed to reset: {e}")
+        else:
+            # Just log that we're retrying (frontend will call the appropriate run_* method)
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.INTAKE_MESSAGE,
+                description=f"🔄 Retrying {current_status} phase...",
+                user_id=user_id,
+                agent_name="System",
+                metadata={"status": current_status}
+            )
+            
+            return OperationResult(
+                success=True,
+                data={
+                    "status": current_status,
+                    "message": f"Ready to retry {current_status} phase"
+                }
+            )
     
     async def approve_project(
         self,

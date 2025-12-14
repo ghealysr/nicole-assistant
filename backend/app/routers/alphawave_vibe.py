@@ -591,6 +591,38 @@ async def deploy_project(
     return api_response_from_result(result)
 
 
+@router.post("/projects/{project_id}/retry", response_model=APIResponse)
+async def retry_project_phase(
+    project_id: int,
+    target_status: Optional[str] = Query(None, description="Optional status to reset to: planning, building, qa, review"),
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Retry a stuck project phase.
+    
+    Use this when a project is stuck in planning/building/qa/review.
+    Optionally reset to a specific status before retrying.
+    
+    Examples:
+    - POST /projects/123/retry - retry current phase
+    - POST /projects/123/retry?target_status=planning - reset to planning and retry
+    """
+    user_id = get_user_id(user)
+    rate_limit(user_id, "POST:/vibe/projects/{id}/retry")
+    
+    result = await vibe_service.retry_phase(
+        project_id=project_id,
+        user_id=user_id,
+        target_status=target_status
+    )
+    
+    if not result.success:
+        status_code = 400 if "invalid" in str(result.error).lower() else 500
+        raise HTTPException(status_code=status_code, detail=result.error)
+    
+    return api_response_from_result(result)
+
+
 # ============================================================================
 # FILE ENDPOINTS
 # ============================================================================
