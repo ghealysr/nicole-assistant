@@ -121,6 +121,55 @@ async def execute_research(
     return APIResponse(success=False, error="Research execution failed")
 
 
+@router.get("/history", response_model=APIResponse)
+async def get_research_history(
+    user = Depends(get_current_user),
+    limit: int = 20
+):
+    """
+    Get user's research history.
+    
+    Returns list of recent research requests with basic metadata.
+    """
+    try:
+        from app.database import db_manager
+        
+        query = """
+            SELECT 
+                id as request_id,
+                query,
+                research_type,
+                status,
+                created_at,
+                completed_at
+            FROM research_requests
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+        """
+        
+        async with db_manager.pool.acquire() as conn:
+            rows = await conn.fetch(query, user.user_id, limit)
+        
+        history = [
+            {
+                "request_id": row["request_id"],
+                "query": row["query"],
+                "research_type": row["research_type"],
+                "status": row["status"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+            }
+            for row in rows
+        ]
+        
+        return APIResponse(success=True, data=history)
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch research history: {e}")
+        return APIResponse(success=False, error="Failed to fetch history")
+
+
 @router.get("/{request_id}/stream")
 async def stream_research(
     request_id: int,
