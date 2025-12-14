@@ -418,19 +418,21 @@ Respond ONLY with valid JSON, no markdown code blocks."""
         
         try:
             parsed = results.get("results", {})
+            # Handle synthesis as dict or string
+            synthesis_text = synthesis.get("body", "") if isinstance(synthesis, dict) else str(synthesis)
+            
             await db.execute(
                 """
                 INSERT INTO research_reports (
-                    request_id, title, executive_summary, findings, 
-                    recommendations, artifact_html, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                    request_id, executive_summary, findings, 
+                    recommendations, nicole_synthesis, created_at
+                ) VALUES ($1, $2, $3, $4, $5, NOW())
                 """,
                 request_id,
-                f"Research: {results.get('query', '')[:100]}",
                 parsed.get("executive_summary", ""),
                 json.dumps(parsed.get("key_findings", [])),
                 json.dumps(parsed.get("recommendations", [])),
-                synthesis  # Nicole's synthesis as the artifact
+                synthesis_text
             )
         except Exception as e:
             logger.error(f"[RESEARCH] Failed to store report: {e}")
@@ -441,13 +443,14 @@ Respond ONLY with valid JSON, no markdown code blocks."""
             return
         
         try:
+            status_str = status.value if hasattr(status, 'value') else str(status)
             await db.execute(
                 """
                 UPDATE research_requests 
-                SET status = $1, completed_at = CASE WHEN $1 IN ('complete', 'failed') THEN NOW() ELSE NULL END
+                SET status = $1::VARCHAR, completed_at = CASE WHEN $1 IN ('complete', 'failed') THEN NOW() ELSE completed_at END
                 WHERE id = $2
                 """,
-                status.value,
+                status_str,
                 request_id
             )
         except Exception as e:
@@ -460,7 +463,7 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                 """
                 SELECT 
                     rr.id, rr.type, rr.query, rr.status, rr.created_at, rr.completed_at,
-                    rep.executive_summary, rep.findings, rep.recommendations, rep.artifact_html,
+                    rep.executive_summary, rep.findings, rep.recommendations, rep.nicole_synthesis,
                     res.raw_gemini_output, res.sources
                 FROM research_requests rr
                 LEFT JOIN research_reports rep ON rep.request_id = rr.id
@@ -481,7 +484,7 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                 "executive_summary": row["executive_summary"],
                 "findings": json.loads(row["findings"]) if row["findings"] else [],
                 "recommendations": json.loads(row["recommendations"]) if row["recommendations"] else [],
-                "nicole_synthesis": row["artifact_html"],
+                "nicole_synthesis": row["nicole_synthesis"],
                 "sources": json.loads(row["sources"]) if row["sources"] else [],
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None
