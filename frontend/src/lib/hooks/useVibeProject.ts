@@ -636,8 +636,27 @@ export function useVibeProject(projectId?: number) {
     setIntakeHistory([
       ...currentHistory,
       { role: 'user', content: message },
-      { role: 'assistant', content: '💭 Thinking...' },  // Show thinking indicator
+      { role: 'assistant', content: '✨ Analyzing your message...' },
     ]);
+    
+    // Animated thinking phases
+    const thinkingPhases = [
+      '✨ Analyzing your message...',
+      '🔍 Researching relevant information...',
+      '💭 Thinking about the best approach...',
+      '📝 Preparing response...',
+    ];
+    let phaseIndex = 0;
+    const thinkingInterval = setInterval(() => {
+      phaseIndex = (phaseIndex + 1) % thinkingPhases.length;
+      setIntakeHistory(prev => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg?.role === 'assistant' && thinkingPhases.some(p => lastMsg.content.includes(p.slice(2)))) {
+          return [...prev.slice(0, -1), { role: 'assistant', content: thinkingPhases[phaseIndex] }];
+        }
+        return prev;
+      });
+    }, 3000);
     
     try {
       console.log('[runIntake] Sending to API:', { id, message: message.slice(0, 50) + '...' });
@@ -655,18 +674,20 @@ export function useVibeProject(projectId?: number) {
       console.log('[runIntake] API Response:', response);
       
       if (!response.success || !response.data) {
+        clearInterval(thinkingInterval);
         const errMsg = response.error || 'Intake failed';
         console.error('[runIntake] API failed:', errMsg);
         setOperationState('intake', { loading: false, error: errMsg });
         setError(errMsg);
         // Replace thinking indicator with error
         setIntakeHistory(prev => {
-          const filtered = prev.filter(m => m.content !== '💭 Thinking...');
+          const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
           return [...filtered, { role: 'assistant', content: `⚠️ Error: ${errMsg}` }];
         });
         return null;
       }
       
+      clearInterval(thinkingInterval);
       const intakeData = response.data;
       console.log('[runIntake] Success, response:', intakeData.response?.slice(0, 100) + '...');
       
@@ -677,7 +698,7 @@ export function useVibeProject(projectId?: number) {
       
       // Replace thinking indicator with actual response
       setIntakeHistory(prev => {
-        const filtered = prev.filter(m => m.content !== '💭 Thinking...');
+        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
         return [...filtered, { role: 'assistant', content: intakeData.response }];
       });
       
@@ -689,10 +710,16 @@ export function useVibeProject(projectId?: number) {
       setOperationState('intake', { loading: false, error: null });
       return intakeData;
     } catch (err) {
+      clearInterval(thinkingInterval);
       const rawMessage = err instanceof Error ? err.message : 'Intake failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'intake');
       setOperationState('intake', { loading: false, error: friendlyMessage });
       setError(friendlyMessage);
+      // Replace thinking indicator with error
+      setIntakeHistory(prev => {
+        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
+        return [...filtered, { role: 'assistant', content: `⚠️ ${friendlyMessage}` }];
+      });
       console.error('[useVibeProject] Intake error:', err);
       return null;
     }
