@@ -201,6 +201,11 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
     lifespan=lifespan,
 )
+
+# GZip compression for responses > 1KB
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # CORS middleware (custom implementation as per Agent 1 spec)
 configure_cors(app)
 

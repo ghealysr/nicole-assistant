@@ -1,5 +1,6 @@
 from typing import Callable
-from fastapi import Request, Response
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from app.database import get_redis
 
 
@@ -10,6 +11,28 @@ ENDPOINT_LIMITS = {
 }
 
 PUBLIC_PATHS = {"/healthz", "/health/check"}
+
+# CORS origins for rate limit responses
+CORS_ORIGINS = [
+    "https://nicole.alphawavetech.com",
+    "http://localhost:3000",
+]
+
+
+def _get_cors_headers(request: Request) -> dict:
+    """Get CORS headers for rate limit responses."""
+    origin = request.headers.get("origin", "")
+    
+    # Check if origin is allowed
+    if origin in CORS_ORIGINS or ".vercel.app" in origin:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        }
+    
+    return {}
 
 
 async def rate_limit_middleware(request: Request, call_next: Callable):
@@ -34,7 +57,13 @@ async def rate_limit_middleware(request: Request, call_next: Callable):
     else:
         remaining = int(current)
         if remaining <= 0:
-            return Response(status_code=429, content="Rate limit exceeded")
+            # Return 429 with CORS headers
+            cors_headers = _get_cors_headers(request)
+            return JSONResponse(
+                status_code=429,
+                content={"error": "Rate limit exceeded. Please try again later."},
+                headers=cors_headers
+            )
         redis_client.decr(key)
 
     return await call_next(request)
