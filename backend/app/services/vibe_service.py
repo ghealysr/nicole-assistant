@@ -386,8 +386,8 @@ Let Glen know you have everything, then output the brief as JSON:
 ## Remember
 You're not just gathering requirements - you're LEADING this project. Glen trusts you to drive the process forward. Once you have the brief, the Plan phase begins automatically!"""
 
-# Default to simple prompt
-INTAKE_SYSTEM_PROMPT = INTAKE_SYSTEM_PROMPT_SIMPLE
+# Use tools-enabled prompt for full research capabilities
+INTAKE_SYSTEM_PROMPT = INTAKE_SYSTEM_PROMPT_WITH_TOOLS
 
 
 # ============================================================================
