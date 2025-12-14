@@ -275,10 +275,25 @@ class AlphawaveClaudeClient:
         # Max iterations reached - make final call WITHOUT tools to get proper response
         logger.warning(f"Reached max tool iterations ({max_tool_iterations}), making final call without tools")
         try:
-            # Add context about the research that was done
-            tool_summary = ""
-            if tool_calls_made:
-                tool_summary = "\n\n[Note: I've gathered the information above. Let me now provide my response based on what I found.]\n"
+            # Build a clean conversation without tool_use/tool_result blocks
+            # Extract just the text content for a clean final call
+            clean_messages = []
+            for msg in messages:  # Use original messages, not the tool-augmented conversation
+                clean_messages.append(msg)
+            
+            # Summarize tool results for context
+            tool_context_parts = []
+            for tc in tool_calls_made:
+                if not tc.get("is_error"):
+                    result_preview = str(tc.get("result", ""))[:500]
+                    tool_context_parts.append(f"- {tc['name']}: {result_preview}")
+            
+            if tool_context_parts:
+                tool_context = "Based on my research:\n" + "\n".join(tool_context_parts[:5])  # Max 5 tools
+                clean_messages.append({
+                    "role": "user", 
+                    "content": f"{tool_context}\n\nNow please provide your response incorporating this information."
+                })
             
             # Make final call without tools
             final_response = await self.async_client.messages.create(
@@ -286,7 +301,7 @@ class AlphawaveClaudeClient:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt if system_prompt else "",
-                messages=conversation  # Use the full conversation with tool results
+                messages=clean_messages
             )
             
             if final_response.content:
@@ -294,11 +309,26 @@ class AlphawaveClaudeClient:
                 for block in final_response.content:
                     if hasattr(block, 'text'):
                         text_parts.append(block.text)
-                return "".join(text_parts), tool_calls_made
+                final_text = "".join(text_parts)
+                if final_text.strip():
+                    return final_text, tool_calls_made
+                    
         except Exception as e:
-            logger.error(f"Final response generation failed: {e}")
+            logger.error(f"Final response generation failed: {e}", exc_info=True)
         
-        return "I gathered some research but encountered an issue formatting my response. Let me try again with a simpler approach.", tool_calls_made
+        # Last resort: return a summary of what was found
+        if tool_calls_made:
+            successful_tools = [tc for tc in tool_calls_made if not tc.get("is_error")]
+            if successful_tools:
+                summary = f"I found {len(successful_tools)} pieces of information while researching. "
+                summary += "Let me share what I discovered:\n\n"
+                for tc in successful_tools[:3]:
+                    result = tc.get("result", {})
+                    if isinstance(result, dict):
+                        summary += f"• {result.get('message', result.get('result', str(result)[:200]))}\n"
+                return summary, tool_calls_made
+        
+        return "I gathered some research but encountered an issue formatting my response. Could you ask me again?", tool_calls_made
     
     async def generate_streaming_response(
         self,
