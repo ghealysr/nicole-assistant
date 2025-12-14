@@ -266,29 +266,43 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
     } catch { return { domain: url, name: 'Source' }; }
   };
 
-  // Get content
-  const executiveSummary = stripMarkdown(data.executive_summary || '');
-  const synthesis = stripMarkdown(data.nicole_synthesis || '');
-  const findings = (data.findings || []).map(parseFinding).filter(f => f.body.length > 0);
-  const recommendations = (data.recommendations || [])
+  // Parse nicole_synthesis JSON if it's a string
+  const parsedSynthesis = (() => {
+    try {
+      const raw = data.nicole_synthesis || '';
+      if (typeof raw === 'string' && raw.startsWith('{')) {
+        return JSON.parse(raw);
+      }
+      return typeof raw === 'object' ? raw : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  // Extract structured content from synthesis or top-level data
+  const articleTitle = data.article_title || parsedSynthesis.article_title || parsedSynthesis.articletitle || toHeadlineCase(data.query);
+  const articleSubtitle = data.subtitle || parsedSynthesis.subtitle || '';
+  const leadParagraph = parsedSynthesis.lead_paragraph || parsedSynthesis.leadparagraph || data.executive_summary || '';
+  const bodyText = stripMarkdown(parsedSynthesis.body || '');
+  const bottomLine = data.bottom_line || parsedSynthesis.bottom_line || parsedSynthesis.bottomline || '';
+  
+  // Get findings - prefer synthesis key_findings over data.findings
+  const rawFindings = parsedSynthesis.key_findings || parsedSynthesis.keyfindings || data.findings || [];
+  const findings = (Array.isArray(rawFindings) ? rawFindings : [])
+    .map(parseFinding)
+    .filter(f => f.body.length > 0);
+  
+  // Get recommendations - prefer synthesis
+  const rawRecommendations = parsedSynthesis.recommendations || data.recommendations || [];
+  const recommendations = (Array.isArray(rawRecommendations) ? rawRecommendations : [])
     .map(r => {
       let text = stripMarkdown(typeof r === 'string' ? r : JSON.stringify(r));
-      // Remove leading arrow if present (we add our own)
       text = text.replace(/^[→➜➔►▶]\s*/, '').trim();
       return text;
     })
     .filter(r => r.length > 0);
+  
   const sources = data.sources || [];
-
-  // If no structured content, split synthesis into paragraphs
-  const hasSummary = executiveSummary.length > 0;
-  const displaySummary = hasSummary ? executiveSummary : synthesis.slice(0, 300);
-  const displayBody = hasSummary ? synthesis : synthesis.slice(300);
-
-  // Use custom article_title from backend if available, else generate
-  const articleTitle = data.article_title || toHeadlineCase(data.query);
-  const articleSubtitle = data.subtitle || '';
-  const bottomLine = data.bottom_line || '';
   
   return (
     <article style={styles.article}>
@@ -315,14 +329,20 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
         </div>
       </header>
 
-      {/* Body - Lead paragraph */}
+      {/* Body - Lead paragraph and content */}
       <div style={styles.body}>
-        {displaySummary && articleSubtitle && (
-          <p style={{ ...styles.text, fontSize: '18px', lineHeight: 1.7 }}>{displaySummary}</p>
+        {leadParagraph && (
+          <p style={{ ...styles.text, fontSize: '18px', lineHeight: 1.7, fontStyle: 'italic' }}>
+            {stripMarkdown(leadParagraph)}
+          </p>
         )}
         
-        {displayBody && (
-          <p style={styles.text}>{displayBody}</p>
+        {bodyText && (
+          <div style={styles.text}>
+            {bodyText.split('\n\n').map((para, i) => (
+              <p key={i} style={{ marginBottom: '16px' }}>{para}</p>
+            ))}
+          </div>
         )}
 
         {/* Findings */}
