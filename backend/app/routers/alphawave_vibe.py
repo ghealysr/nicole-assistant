@@ -620,6 +620,35 @@ async def get_project_files(
     )
 
 
+@router.get("/projects/{project_id}/inspirations", response_model=APIResponse)
+async def get_project_inspirations(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get all saved inspirations (screenshots, references) for a project.
+    
+    Returns inspiration items with URLs, descriptions, and image URLs.
+    """
+    user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/inspirations")
+    
+    # Verify project access
+    project = await vibe_service.get_project(project_id, user_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    inspirations = vibe_service.get_project_inspirations(project_id)
+    
+    return APIResponse(
+        success=True,
+        data={
+            "inspirations": inspirations
+        },
+        meta={"count": len(inspirations)}
+    )
+
+
 @router.get("/projects/{project_id}/files/{file_path:path}", response_model=APIResponse)
 async def get_file_content(
     project_id: int,

@@ -4,16 +4,138 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, Component, Er
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 
 // ============================================================================
+// IMAGE LIGHTBOX - For viewing screenshots full-size
+// ============================================================================
+
+interface LightboxState {
+  isOpen: boolean;
+  imageUrl: string;
+  description: string;
+}
+
+function ImageLightbox({ 
+  isOpen, 
+  imageUrl, 
+  description, 
+  onClose 
+}: LightboxState & { onClose: () => void }) {
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="vibe-lightbox-overlay" onClick={onClose}>
+      <div className="vibe-lightbox-content" onClick={e => e.stopPropagation()}>
+        <button className="vibe-lightbox-close" onClick={onClose}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <img src={imageUrl} alt={description || 'Screenshot'} className="vibe-lightbox-image" />
+        {description && <p className="vibe-lightbox-caption">{description}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SCREENSHOT THUMBNAIL - Clickable thumbnail that opens lightbox
+// ============================================================================
+
+function ScreenshotThumbnail({ 
+  url, 
+  description,
+  onOpen 
+}: { 
+  url: string; 
+  description?: string;
+  onOpen: (url: string, desc: string) => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <div className="vibe-screenshot-error">
+        <span>📷</span>
+        <span>Screenshot unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={`vibe-screenshot-thumb ${loaded ? 'loaded' : 'loading'}`}
+      onClick={() => onOpen(url, description || '')}
+      title={description || 'Click to view full size'}
+    >
+      {!loaded && <div className="vibe-screenshot-loader">📷</div>}
+      <img 
+        src={url} 
+        alt={description || 'Screenshot'} 
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+      <div className="vibe-screenshot-overlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// EXTRACT IMAGES - Find image URLs in text
+// ============================================================================
+
+function extractImagesFromText(text: string): string[] {
+  // Match Cloudinary URLs and other image URLs
+  const cloudinaryPattern = /https:\/\/res\.cloudinary\.com\/[^\s\)\"\']+/gi;
+  const genericImagePattern = /https?:\/\/[^\s\)\"\']+\.(?:png|jpg|jpeg|gif|webp)(?:\?[^\s\)\"\']*)?/gi;
+  
+  const cloudinaryMatches = text.match(cloudinaryPattern) || [];
+  const imageMatches = text.match(genericImagePattern) || [];
+  
+  // Dedupe and return
+  return [...new Set([...cloudinaryMatches, ...imageMatches])];
+}
+
+// ============================================================================
 // SIMPLE MARKDOWN RENDERER - For Nicole's formatted responses
 // ============================================================================
 
-function formatMarkdown(text: string): React.ReactNode {
+function formatMarkdown(text: string, onImageClick?: (url: string, desc: string) => void): React.ReactNode {
   if (!text) return null;
   
-  // Split into paragraphs
-  const paragraphs = text.split(/\n\n+/);
+  // Extract any images from the text
+  const images = extractImagesFromText(text);
   
-  return paragraphs.map((para, pIdx) => {
+  // Remove image URLs from the text for cleaner display
+  let cleanedText = text;
+  images.forEach(url => {
+    cleanedText = cleanedText.replace(url, '').trim();
+  });
+  // Clean up any leftover markdown image syntax like ![...]()
+  cleanedText = cleanedText.replace(/!\[[^\]]*\]\(\s*\)/g, '').trim();
+  
+  // Split into paragraphs
+  const paragraphs = cleanedText.split(/\n\n+/).filter(p => p.trim());
+  
+  const textContent = paragraphs.map((para, pIdx) => {
     // Check if this is a list
     const lines = para.split('\n');
     const isNumberedList = lines.every(l => /^\d+\.\s/.test(l.trim()) || l.trim() === '');
@@ -49,6 +171,27 @@ function formatMarkdown(text: string): React.ReactNode {
     
     return <p key={pIdx} className="vibe-md-para">{formattedLines}</p>;
   });
+
+  // If there are images, render them in a gallery
+  if (images.length > 0 && onImageClick) {
+    return (
+      <>
+        {textContent}
+        <div className="vibe-message-images">
+          {images.map((url, idx) => (
+            <ScreenshotThumbnail 
+              key={idx} 
+              url={url} 
+              description={`Screenshot ${idx + 1}`}
+              onOpen={onImageClick}
+            />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return textContent;
 }
 
 function formatInline(text: string): React.ReactNode {
@@ -205,6 +348,17 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
+  
+  // Lightbox state for screenshot viewing
+  const [lightbox, setLightbox] = useState<LightboxState>({ isOpen: false, imageUrl: '', description: '' });
+  
+  const openLightbox = useCallback((url: string, description: string) => {
+    setLightbox({ isOpen: true, imageUrl: url, description });
+  }, []);
+  
+  const closeLightbox = useCallback(() => {
+    setLightbox({ isOpen: false, imageUrl: '', description: '' });
+  }, []);
   
   // Project creation form
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
@@ -1008,7 +1162,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                 {intakeHistory.map((msg, i) => (
                   <div key={i} className={`vibe-intake-message ${msg.role}`}>
                     <div className="vibe-message-content">
-                      {msg.role === 'assistant' ? formatMarkdown(msg.content) : msg.content}
+                      {msg.role === 'assistant' ? formatMarkdown(msg.content, openLightbox) : msg.content}
                     </div>
                   </div>
                 ))}
@@ -1297,6 +1451,14 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
           {viewMode === 'projects' ? renderProjectsView() : renderWorkspaceView()}
         </div>
       </aside>
+      
+      {/* Screenshot Lightbox */}
+      <ImageLightbox 
+        isOpen={lightbox.isOpen}
+        imageUrl={lightbox.imageUrl}
+        description={lightbox.description}
+        onClose={closeLightbox}
+      />
     </VibeErrorBoundary>
   );
 }
