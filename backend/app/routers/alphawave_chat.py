@@ -411,7 +411,7 @@ async def send_message(
         await db.execute(
             """
             INSERT INTO messages (
-                conversation_id, user_id, message_role, content, created_at
+                conversation_id, user_id, role, content, created_at
             ) VALUES ($1, $2, 'user', $3, NOW())
             """,
             conversation_id,
@@ -552,7 +552,7 @@ async def send_message(
             
             history_rows = await db.fetch(
                 """
-                SELECT message_role, content, created_at
+                SELECT role, content, created_at
                 FROM messages
                 WHERE conversation_id = $1
                 ORDER BY created_at DESC
@@ -567,7 +567,7 @@ async def send_message(
             history_rows = list(reversed(history_rows))
             
             messages = [
-                {"role": row["message_role"], "content": row["content"]}
+                {"role": row["role"], "content": row["content"]}
                 for row in history_rows
             ]
             
@@ -769,7 +769,7 @@ async def send_message(
             await db.execute(
                 """
                 INSERT INTO messages (
-                    conversation_id, user_id, message_role, content, created_at
+                    conversation_id, user_id, role, content, created_at
                 ) VALUES ($1, $2, 'assistant', $3, NOW())
                 """,
                 conversation_id,
@@ -868,7 +868,7 @@ async def get_chat_history(
     # Fetch messages
     message_rows = await db.fetch(
         """
-        SELECT message_id, message_role, content, created_at
+        SELECT message_id, role, content, created_at
         FROM messages
         WHERE conversation_id = $1
         ORDER BY created_at ASC
@@ -879,7 +879,7 @@ async def get_chat_history(
     messages = [
         {
             "id": row["message_id"],
-            "role": row["message_role"],
+            "role": row["role"],
             "content": row["content"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
