@@ -2615,6 +2615,15 @@ Generate complete, working code for each file."""
         except InvalidStatusTransitionError as e:
             return OperationResult(success=False, error=str(e))
         
+        # Log QA start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description="🔬 Starting QA review...",
+            user_id=user_id,
+            agent_name="QA Agent"
+        )
+        
         # Get files for review
         files = await self.get_project_files(project_id)
         
@@ -2623,6 +2632,15 @@ Generate complete, working code for each file."""
                 success=False,
                 error="No files to review. Run build first."
             )
+        
+        # Log file analysis start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description=f"📂 Analyzing {len(files)} files for quality issues...",
+            user_id=user_id,
+            agent_name="QA Agent"
+        )
         
         # Build file summary for QA
         file_summaries = []
@@ -2640,6 +2658,15 @@ Total files: {len(files)}
 
 Perform a comprehensive QA review and output your findings as JSON."""
 
+        # Log AI review start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description="🧠 Running AI code review...",
+            user_id=user_id,
+            agent_name="QA Agent"
+        )
+        
         try:
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": qa_prompt}],
@@ -2751,6 +2778,15 @@ Perform a comprehensive QA review and output your findings as JSON."""
         except InvalidStatusTransitionError as e:
             return OperationResult(success=False, error=str(e))
         
+        # Log review start
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description="✨ Starting final review with Opus...",
+            user_id=user_id,
+            agent_name="Review Agent"
+        )
+        
         brief = project.get("brief", {})
         if isinstance(brief, str):
             try:
@@ -2767,6 +2803,15 @@ Perform a comprehensive QA review and output your findings as JSON."""
         
         files = await self.get_project_files(project_id)
         
+        # Log file gathering
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description=f"📋 Reviewing {len(files)} files against requirements...",
+            user_id=user_id,
+            agent_name="Review Agent"
+        )
+        
         # Get sample file contents
         sample_files = []
         priority_files = ['layout.tsx', 'page.tsx', 'globals.css']
@@ -2775,6 +2820,15 @@ Perform a comprehensive QA review and output your findings as JSON."""
             if any(p in f['file_path'] for p in priority_files):
                 content = f['content'][:2000] if len(f['content']) > 2000 else f['content']
                 sample_files.append(f"=== {f['file_path']} ===\n{content}")
+        
+        # Log AI review
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.INTAKE_MESSAGE,
+            description="🧠 Opus is evaluating delivery readiness...",
+            user_id=user_id,
+            agent_name="Review Agent"
+        )
         
         review_prompt = f"""Conduct a final comprehensive review of this AlphaWave project.
 

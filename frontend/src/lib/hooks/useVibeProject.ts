@@ -784,6 +784,48 @@ export function useVibeProject(projectId?: number) {
     }
   }, [intakeHistory, fetchProject, fetchActivities, setOperationState, trackApiCost]);
 
+  // Helper to poll activities and update agent task
+  const startActivityPolling = useCallback((id: number, agentId: string): (() => void) => {
+    let stopPolling = false;
+    let pollInterval = 2000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastDesc = '';
+    
+    const poll = async () => {
+      if (stopPolling) return;
+      try {
+        const response = await apiClient.request<{ activities: VibeActivity[] }>(
+          `/projects/${id}/activities?limit=3`
+        );
+        if (response.success && response.data?.activities?.length) {
+          const latest = response.data.activities[0];
+          if (latest?.description && latest.description !== lastDesc) {
+            lastDesc = latest.description;
+            // Update agent task with real activity
+            setAgents(prev => prev.map(a => 
+              a.id === agentId && a.status === 'working' 
+                ? { ...a, task: latest.description.replace(/^[🔍📸💾🔬🧠✨📂📋⚠️✅🔧📝💭]\s*/, '') }
+                : a
+            ));
+          }
+          pollInterval = 2000; // Reset on success
+        }
+      } catch {
+        pollInterval = Math.min(pollInterval * 1.5, 10000);
+      }
+      if (!stopPolling) {
+        timeoutId = setTimeout(poll, pollInterval);
+      }
+    };
+    
+    timeoutId = setTimeout(poll, 500); // Start quickly
+    
+    return () => {
+      stopPolling = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
   // Run planning (architecture generation)
   const runPlanning = useCallback(async (id: number): Promise<BuildData | null> => {
     // Cancel any previous in-flight request
@@ -794,8 +836,11 @@ export function useVibeProject(projectId?: number) {
     
     setOperationState('planning', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
-      a.id === 'planning' ? { ...a, status: 'working' as const, progress: 25, task: 'Generating architecture...' } : a
+      a.id === 'planning' ? { ...a, status: 'working' as const, progress: 25, task: 'Starting...' } : a
     ));
+    
+    // Start real-time activity polling
+    const stopPolling = startActivityPolling(id, 'planning');
     
     try {
       const response = await apiClient.request<BuildData>(
@@ -806,6 +851,7 @@ export function useVibeProject(projectId?: number) {
       );
       
       if (!response.success || !response.data) {
+        stopPolling();
         const errMsg = response.error || 'Planning failed';
         setOperationState('planning', { loading: false, error: errMsg });
         setAgents(prev => prev.map(a => 
@@ -815,6 +861,7 @@ export function useVibeProject(projectId?: number) {
         return null;
       }
       
+      stopPolling();
       trackApiCost(response.meta?.api_cost);
       
       setAgents(prev => prev.map(a => 
@@ -826,6 +873,7 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
+      stopPolling();
       const rawMessage = err instanceof Error ? err.message : 'Planning failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'planning');
       setOperationState('planning', { loading: false, error: friendlyMessage });
@@ -833,7 +881,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Planning error:', err);
       return null;
     }
-  }, [fetchProject, setOperationState, trackApiCost]);
+  }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run build (code generation)
   const runBuild = useCallback(async (id: number): Promise<BuildData | null> => {
@@ -845,8 +893,11 @@ export function useVibeProject(projectId?: number) {
     
     setOperationState('build', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
-      a.id === 'build' ? { ...a, status: 'working' as const, progress: 25, task: 'Generating code...' } : a
+      a.id === 'build' ? { ...a, status: 'working' as const, progress: 25, task: 'Starting...' } : a
     ));
+    
+    // Start real-time activity polling
+    const stopPolling = startActivityPolling(id, 'build');
     
     try {
       const response = await apiClient.request<BuildData>(
@@ -857,6 +908,7 @@ export function useVibeProject(projectId?: number) {
       );
       
       if (!response.success || !response.data) {
+        stopPolling();
         const errMsg = response.error || 'Build failed';
         setOperationState('build', { loading: false, error: errMsg });
         setAgents(prev => prev.map(a => 
@@ -866,6 +918,7 @@ export function useVibeProject(projectId?: number) {
         return null;
       }
       
+      stopPolling();
       trackApiCost(response.meta?.api_cost);
       
       const fileCount = response.data.file_count || 0;
@@ -879,6 +932,7 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
+      stopPolling();
       const rawMessage = err instanceof Error ? err.message : 'Build failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'build');
       setOperationState('build', { loading: false, error: friendlyMessage });
@@ -886,7 +940,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Build error:', err);
       return null;
     }
-  }, [fetchProject, fetchFiles, setOperationState, trackApiCost]);
+  }, [fetchProject, fetchFiles, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run QA
   const runQA = useCallback(async (id: number): Promise<BuildData | null> => {
@@ -898,8 +952,11 @@ export function useVibeProject(projectId?: number) {
     
     setOperationState('qa', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
-      a.id === 'qa' ? { ...a, status: 'working' as const, progress: 25, task: 'Running QA checks...' } : a
+      a.id === 'qa' ? { ...a, status: 'working' as const, progress: 25, task: 'Starting...' } : a
     ));
+    
+    // Start real-time activity polling
+    const stopPolling = startActivityPolling(id, 'qa');
     
     try {
       const response = await apiClient.request<BuildData>(
@@ -910,6 +967,7 @@ export function useVibeProject(projectId?: number) {
       );
       
       if (!response.success || !response.data) {
+        stopPolling();
         const errMsg = response.error || 'QA failed';
         setOperationState('qa', { loading: false, error: errMsg });
         setAgents(prev => prev.map(a => 
@@ -919,6 +977,7 @@ export function useVibeProject(projectId?: number) {
         return null;
       }
       
+      stopPolling();
       trackApiCost(response.meta?.api_cost);
       
       const passed = response.data.passed;
@@ -940,6 +999,7 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
+      stopPolling();
       const rawMessage = err instanceof Error ? err.message : 'QA failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'qa');
       setOperationState('qa', { loading: false, error: friendlyMessage });
@@ -947,7 +1007,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] QA error:', err);
       return null;
     }
-  }, [fetchProject, setOperationState, trackApiCost]);
+  }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run review
   const runReview = useCallback(async (id: number): Promise<BuildData | null> => {
@@ -959,8 +1019,11 @@ export function useVibeProject(projectId?: number) {
     
     setOperationState('review', { loading: true, error: null });
     setAgents(prev => prev.map(a => 
-      a.id === 'review' ? { ...a, status: 'working' as const, progress: 25, task: 'Final review...' } : a
+      a.id === 'review' ? { ...a, status: 'working' as const, progress: 25, task: 'Starting...' } : a
     ));
+    
+    // Start real-time activity polling
+    const stopPolling = startActivityPolling(id, 'review');
     
     try {
       const response = await apiClient.request<BuildData>(
@@ -971,6 +1034,7 @@ export function useVibeProject(projectId?: number) {
       );
       
       if (!response.success || !response.data) {
+        stopPolling();
         const errMsg = response.error || 'Review failed';
         setOperationState('review', { loading: false, error: errMsg });
         setAgents(prev => prev.map(a => 
@@ -980,6 +1044,7 @@ export function useVibeProject(projectId?: number) {
         return null;
       }
       
+      stopPolling();
       trackApiCost(response.meta?.api_cost);
       
       const approved = response.data.approved;
@@ -1002,6 +1067,7 @@ export function useVibeProject(projectId?: number) {
       
       return response.data;
     } catch (err) {
+      stopPolling();
       const rawMessage = err instanceof Error ? err.message : 'Review failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'review');
       setOperationState('review', { loading: false, error: friendlyMessage });
@@ -1009,7 +1075,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Review error:', err);
       return null;
     }
-  }, [fetchProject, setOperationState, trackApiCost]);
+  }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Manual approval
   const approveProject = useCallback(async (id: number): Promise<boolean> => {
