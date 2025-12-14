@@ -392,11 +392,16 @@ TECHNICAL RESEARCH MODE:
                 if hasattr(grounding, 'search_entry_point'):
                     parsed["search_queries"] = grounding.search_entry_point
                 if hasattr(grounding, 'grounding_chunks'):
-                    parsed["grounding_sources"] = [
+                    grounding_sources = [
                         {"url": chunk.web.uri, "title": chunk.web.title}
                         for chunk in grounding.grounding_chunks
                         if hasattr(chunk, 'web')
                     ]
+                    # Add to sources list
+                    if "sources" not in parsed or not parsed["sources"]:
+                        parsed["sources"] = grounding_sources
+                    else:
+                        parsed["sources"].extend(grounding_sources)
             
             return parsed
             

@@ -228,13 +228,21 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
     });
   })();
 
-  // Parse finding
+  // Parse finding - handle both strings and objects
   const parseFinding = (finding: ResearchFinding | string): { title: string; body: string } => {
     if (typeof finding === 'string') {
-      const cleaned = stripMarkdown(finding);
+      let cleaned = stripMarkdown(finding);
+      // Remove leading bullet if present
+      cleaned = cleaned.replace(/^[•·\-]\s*/, '').trim();
+      // Skip empty findings
+      if (!cleaned) return { title: '', body: '' };
+      // Split on first colon for title:body format
       const colonIdx = cleaned.indexOf(':');
-      if (colonIdx > 0 && colonIdx < 60) {
-        return { title: cleaned.slice(0, colonIdx).trim(), body: cleaned.slice(colonIdx + 1).trim() };
+      if (colonIdx > 0 && colonIdx < 80) {
+        return { 
+          title: cleaned.slice(0, colonIdx).trim(), 
+          body: cleaned.slice(colonIdx + 1).trim() 
+        };
       }
       return { title: '', body: cleaned };
     }
@@ -263,7 +271,12 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
   const synthesis = stripMarkdown(data.nicole_synthesis || '');
   const findings = (data.findings || []).map(parseFinding).filter(f => f.body.length > 0);
   const recommendations = (data.recommendations || [])
-    .map(r => stripMarkdown(typeof r === 'string' ? r : JSON.stringify(r)))
+    .map(r => {
+      let text = stripMarkdown(typeof r === 'string' ? r : JSON.stringify(r));
+      // Remove leading arrow if present (we add our own)
+      text = text.replace(/^[→➜➔►▶]\s*/, '').trim();
+      return text;
+    })
     .filter(r => r.length > 0);
   const sources = data.sources || [];
 
@@ -318,9 +331,14 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
             <h2 style={styles.sectionTitle}>Key Findings</h2>
             {findings.map((f, i) => (
               <div key={i} style={styles.findingCard}>
-                {f.title && <h3 style={styles.findingTitle}>• {f.title}</h3>}
-                {!f.title && <span style={{ ...styles.findingTitle, color: '#8B5CF6' }}>•</span>}
-                <p style={styles.findingText}>{f.body}</p>
+                {f.title ? (
+                  <>
+                    <h3 style={styles.findingTitle}>{f.title}</h3>
+                    <p style={styles.findingText}>{f.body}</p>
+                  </>
+                ) : (
+                  <p style={styles.findingText}>{f.body}</p>
+                )}
               </div>
             ))}
           </section>
