@@ -1005,55 +1005,102 @@ class VibeService:
             }
     
     async def _tool_web_search(self, query: str, intent: str) -> Dict[str, Any]:
-        """Execute web search using Brave Search or fallback."""
-        from app.mcp import call_mcp_tool, mcp_manager
+        """Execute web search using Brave Search MCP or Gemini fallback."""
+        from app.mcp import call_mcp_tool, mcp_manager, AlphawaveMCPManager
         
         try:
-            # Try Brave Search via MCP
-            if hasattr(mcp_manager, 'servers') and 'brave-search' in mcp_manager.servers:
-                result = await call_mcp_tool(
-                    "brave-search",
-                    "brave_web_search",
-                    {"query": query, "count": 5}
-                )
-                
-                if result:
-                    # Format results nicely
-                    formatted = []
-                    web_results = result.get("web", {}).get("results", [])
-                    for r in web_results[:5]:
-                        formatted.append({
-                            "title": r.get("title", ""),
-                            "url": r.get("url", ""),
-                            "description": r.get("description", "")[:200]
-                        })
+            # Try Brave Search via MCP first
+            if isinstance(mcp_manager, AlphawaveMCPManager):
+                server_status = mcp_manager.get_server_status("brave-search")
+                from app.mcp.alphawave_mcp_manager import MCPServerStatus
+                if server_status == MCPServerStatus.CONNECTED:
+                    result = await call_mcp_tool(
+                        "brave-search",
+                        "brave_web_search",
+                        {"query": query, "count": 5}
+                    )
                     
-                    return {
-                        "success": True,
-                        "result": {
-                            "query": query,
-                            "intent": intent,
-                            "results": formatted,
-                            "result_count": len(formatted)
+                    if result and not result.get("error"):
+                        formatted = []
+                        web_results = result.get("web", {}).get("results", [])
+                        for r in web_results[:5]:
+                            formatted.append({
+                                "title": r.get("title", ""),
+                                "url": r.get("url", ""),
+                                "description": r.get("description", "")[:200]
+                            })
+                        
+                        return {
+                            "success": True,
+                            "result": {
+                                "query": query,
+                                "intent": intent,
+                                "results": formatted,
+                                "result_count": len(formatted),
+                                "source": "brave_search"
+                            }
                         }
-                    }
             
-            # Fallback: Return a message suggesting the search
+            # Fallback: Use Gemini deep_research for web search
+            logger.info(f"[VIBE] Using Gemini fallback for web search: {query}")
+            from app.integrations.alphawave_gemini import gemini_client, ResearchType
+            
+            # Map intent to research type
+            rt_map = {
+                "competitor_research": ResearchType.COMPETITOR,
+                "design_inspiration": ResearchType.VIBE_INSPIRATION,
+                "industry_info": ResearchType.GENERAL,
+                "local_business": ResearchType.GENERAL
+            }
+            rt = rt_map.get(intent, ResearchType.GENERAL)
+            
+            result = await gemini_client.deep_research(
+                query=query,
+                research_type=rt,
+                max_sources=5,
+                enable_thinking=False  # Faster for simple searches
+            )
+            
+            if result.get("success"):
+                sources = result.get("sources", [])
+                parsed = result.get("results", {})
+                
+                return {
+                    "success": True,
+                    "result": {
+                        "query": query,
+                        "intent": intent,
+                        "results": [
+                            {"title": s.get("title", ""), "url": s.get("url", ""), "description": s.get("snippet", "")[:200]}
+                            for s in sources[:5]
+                        ],
+                        "summary": parsed.get("executive_summary", ""),
+                        "result_count": len(sources),
+                        "source": "gemini_research"
+                    }
+                }
+            
+            # If Gemini also fails, return helpful message
             return {
                 "success": True,
                 "result": {
                     "query": query,
                     "intent": intent,
                     "results": [],
-                    "message": f"Web search for '{query}' - suggest user share specific URLs they like"
+                    "message": f"Research for '{query}' is processing. I'll proceed with available information and you can share specific URLs you like."
                 }
             }
             
         except Exception as e:
             logger.warning(f"[VIBE] Web search failed: {e}")
             return {
-                "success": False,
-                "error": f"Search failed: {e}"
+                "success": True,  # Return success with empty results rather than failing
+                "result": {
+                    "query": query,
+                    "intent": intent,
+                    "results": [],
+                    "message": f"Search temporarily unavailable. Please share any specific websites you'd like me to reference."
+                }
             }
     
     async def _tool_screenshot(

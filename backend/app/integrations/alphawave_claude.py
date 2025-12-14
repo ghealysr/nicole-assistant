@@ -272,8 +272,33 @@ class AlphawaveClaudeClient:
                 logger.error(f"Tool loop error: {e}", exc_info=True)
                 raise
         
-        logger.warning(f"Reached max tool iterations ({max_tool_iterations})")
-        return "I apologize, but I encountered an issue processing your request. Please try again.", tool_calls_made
+        # Max iterations reached - make final call WITHOUT tools to get proper response
+        logger.warning(f"Reached max tool iterations ({max_tool_iterations}), making final call without tools")
+        try:
+            # Add context about the research that was done
+            tool_summary = ""
+            if tool_calls_made:
+                tool_summary = "\n\n[Note: I've gathered the information above. Let me now provide my response based on what I found.]\n"
+            
+            # Make final call without tools
+            final_response = await self.async_client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt if system_prompt else "",
+                messages=conversation  # Use the full conversation with tool results
+            )
+            
+            if final_response.content:
+                text_parts = []
+                for block in final_response.content:
+                    if hasattr(block, 'text'):
+                        text_parts.append(block.text)
+                return "".join(text_parts), tool_calls_made
+        except Exception as e:
+            logger.error(f"Final response generation failed: {e}")
+        
+        return "I gathered some research but encountered an issue formatting my response. Let me try again with a simpler approach.", tool_calls_made
     
     async def generate_streaming_response(
         self,
