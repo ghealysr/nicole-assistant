@@ -725,6 +725,75 @@ async def get_file_content(
     )
 
 
+@router.get("/projects/{project_id}/stackblitz", response_model=APIResponse)
+async def get_stackblitz_data(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get project data formatted for StackBlitz SDK.
+    
+    Returns files and design tokens for creating an interactive
+    StackBlitz preview with full Next.js runtime.
+    """
+    user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/stackblitz")
+    
+    # Verify project access
+    project = await vibe_service.get_project(project_id, user_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    files = await vibe_service.get_project_files(project_id)
+    
+    if not files:
+        return APIResponse(
+            success=True,
+            data={
+                "files": {},
+                "design": {},
+                "project_name": project.get("name", "Project"),
+                "ready": False
+            }
+        )
+    
+    # Extract design from architecture
+    architecture = project.get("architecture", {})
+    if isinstance(architecture, str):
+        try:
+            architecture = json.loads(architecture)
+        except:
+            architecture = {}
+    
+    design = architecture.get("design_system", architecture.get("design", {}))
+    colors = design.get("colors", {})
+    typography = design.get("typography", {})
+    
+    # Convert files to dict format
+    files_dict = {}
+    for f in files:
+        path = f.get("file_path", "")
+        if path.startswith("/"):
+            path = path[1:]
+        files_dict[path] = f.get("content", "")
+    
+    return APIResponse(
+        success=True,
+        data={
+            "files": files_dict,
+            "design": {
+                "primary_color": colors.get("primary", "#8B9D83"),
+                "secondary_color": colors.get("secondary", "#F4E4BC"),
+                "accent_color": colors.get("accent", "#D4A574"),
+                "heading_font": typography.get("heading_font", "Playfair Display"),
+                "body_font": typography.get("body_font", "Source Sans Pro"),
+            },
+            "project_name": project.get("name", "AlphaWave Project"),
+            "ready": True
+        }
+    )
+
+
 @router.get("/projects/{project_id}/preview", response_model=APIResponse)
 async def get_project_preview(
     project_id: int,

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
+import { openInStackBlitz, embedInStackBlitz } from '@/lib/stackblitz';
 
 // ============================================================================
 // IMAGE LIGHTBOX - For viewing screenshots full-size
@@ -1081,6 +1082,67 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
           <span className={`vibe-api-budget ${remainingApiBudget <= 0 ? 'over' : ''}`} title="Budget remaining">
             Budget left: ${remainingApiBudget.toFixed(2)} / ${apiBudget.toFixed(2)}
           </span>
+          
+          {/* StackBlitz Button - Open in full IDE */}
+          {files.length > 0 && (
+            <button 
+              className="vibe-stackblitz-btn"
+              onClick={async () => {
+                if (project && files.length > 0) {
+                  try {
+                    // Fetch design tokens from backend
+                    const response = await fetch(
+                      `${process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com'}/vibe/projects/${project.project_id}/stackblitz`,
+                      {
+                        headers: {
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                          'Content-Type': 'application/json',
+                        },
+                      }
+                    );
+                    
+                    let design = {
+                      primaryColor: '#8B9D83',
+                      secondaryColor: '#F4E4BC',
+                      accentColor: '#D4A574',
+                    };
+                    
+                    if (response.ok) {
+                      const data = await response.json();
+                      if (data.success && data.data?.design) {
+                        design = {
+                          primaryColor: data.data.design.primary_color,
+                          secondaryColor: data.data.design.secondary_color,
+                          accentColor: data.data.design.accent_color,
+                          headingFont: data.data.design.heading_font,
+                          bodyFont: data.data.design.body_font,
+                        };
+                      }
+                    }
+                    
+                    await openInStackBlitz(
+                      project.name || 'AlphaWave Project',
+                      files,
+                      design
+                    );
+                  } catch (err) {
+                    console.error('[StackBlitz] Failed to open:', err);
+                    // Fallback with default design
+                    await openInStackBlitz(
+                      project.name || 'AlphaWave Project',
+                      files
+                    );
+                  }
+                }
+              }}
+              title="Open in StackBlitz IDE"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+              <span>StackBlitz</span>
+            </button>
+          )}
           
           {/* Deploy Button */}
           {canDeploy && (

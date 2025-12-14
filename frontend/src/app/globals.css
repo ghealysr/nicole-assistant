@@ -3375,6 +3375,37 @@ body.resizing * {
   fill: none;
 }
 
+/* StackBlitz Button */
+.vibe-stackblitz-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #1389FD, #0969DA);
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(19, 137, 253, 0.3);
+}
+
+.vibe-stackblitz-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(19, 137, 253, 0.4);
+  background: linear-gradient(135deg, #2196F3, #1389FD);
+}
+
+.vibe-stackblitz-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: white;
+  stroke-width: 2;
+  fill: none;
+}
+
 /* Files Empty */
 .vibe-files-empty {
   padding: 24px 16px;
