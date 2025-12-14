@@ -414,7 +414,7 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
         {sources.length > 0 && (
           <section style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
             <h3 style={{ ...styles.sectionTitle, color: '#999', borderColor: '#999' }}>Sources</h3>
-            {sources.map((source, i) => {
+            {sources.map((source: string | { url?: string; title?: string }, i: number) => {
               const url = typeof source === 'string' ? source : source?.url;
               const title = typeof source === 'object' ? source?.title : null;
               if (!url) return null;
