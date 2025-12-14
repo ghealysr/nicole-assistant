@@ -302,7 +302,10 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
     })
     .filter(r => r.length > 0);
   
-  const sources = data.sources || [];
+  // Sources from data or synthesis
+  const sources = data.sources && data.sources.length > 0 
+    ? data.sources 
+    : (parsedSynthesis.sources || []);
   
   return (
     <article style={styles.article}>
