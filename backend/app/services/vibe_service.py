@@ -2414,9 +2414,20 @@ class VibeService:
         except InvalidStatusTransitionError as e:
             return OperationResult(success=False, error=str(e))
         
-        # Validate architecture exists
+        # Validate architecture exists - handle JSON string from database
         architecture = project.get("architecture", {})
+        if isinstance(architecture, str):
+            try:
+                architecture = json.loads(architecture)
+            except (json.JSONDecodeError, TypeError):
+                architecture = {}
+        
         brief = project.get("brief", {})
+        if isinstance(brief, str):
+            try:
+                brief = json.loads(brief)
+            except (json.JSONDecodeError, TypeError):
+                brief = {}
         
         if not architecture or not architecture.get("pages"):
             return OperationResult(
@@ -2741,7 +2752,19 @@ Perform a comprehensive QA review and output your findings as JSON."""
             return OperationResult(success=False, error=str(e))
         
         brief = project.get("brief", {})
+        if isinstance(brief, str):
+            try:
+                brief = json.loads(brief)
+            except (json.JSONDecodeError, TypeError):
+                brief = {}
+        
         architecture = project.get("architecture", {})
+        if isinstance(architecture, str):
+            try:
+                architecture = json.loads(architecture)
+            except (json.JSONDecodeError, TypeError):
+                architecture = {}
+        
         files = await self.get_project_files(project_id)
         
         # Get sample file contents
