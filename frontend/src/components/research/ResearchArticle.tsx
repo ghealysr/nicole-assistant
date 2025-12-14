@@ -272,13 +272,21 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
   const displaySummary = hasSummary ? executiveSummary : synthesis.slice(0, 300);
   const displayBody = hasSummary ? synthesis : synthesis.slice(300);
 
+  // Use custom article_title from backend if available, else generate
+  const articleTitle = (data as Record<string, unknown>).article_title as string || toHeadlineCase(data.query);
+  const articleSubtitle = (data as Record<string, unknown>).subtitle as string || '';
+  const bottomLine = (data as Record<string, unknown>).bottom_line as string || '';
+  
   return (
     <article style={styles.article}>
       {/* Header */}
       <header style={styles.header}>
         <div style={styles.category}>Research Report</div>
-        <h1 style={styles.title}>{toHeadlineCase(data.query)}</h1>
-        {displaySummary && (
+        <h1 style={styles.title}>{articleTitle}</h1>
+        {articleSubtitle && (
+          <p style={{ ...styles.subtitle, fontStyle: 'italic', color: '#555' }}>{articleSubtitle}</p>
+        )}
+        {displaySummary && !articleSubtitle && (
           <p style={styles.subtitle}>{displaySummary}</p>
         )}
         <div style={styles.meta}>
@@ -289,13 +297,17 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
           </div>
           <div>
             <div style={styles.authorName}>Nicole</div>
-            <div style={styles.authorRole}>AI Research Assistant • {formattedDate}</div>
+            <div style={styles.authorRole}>AI Research Journalist • {formattedDate}</div>
           </div>
         </div>
       </header>
 
-      {/* Body */}
+      {/* Body - Lead paragraph */}
       <div style={styles.body}>
+        {displaySummary && articleSubtitle && (
+          <p style={{ ...styles.text, fontSize: '18px', lineHeight: 1.7 }}>{displaySummary}</p>
+        )}
+        
         {displayBody && (
           <p style={styles.text}>{displayBody}</p>
         )}
@@ -306,7 +318,8 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
             <h2 style={styles.sectionTitle}>Key Findings</h2>
             {findings.map((f, i) => (
               <div key={i} style={styles.findingCard}>
-                {f.title && <h3 style={styles.findingTitle}>{f.title}</h3>}
+                {f.title && <h3 style={styles.findingTitle}>• {f.title}</h3>}
+                {!f.title && <span style={{ ...styles.findingTitle, color: '#8B5CF6' }}>•</span>}
                 <p style={styles.findingText}>{f.body}</p>
               </div>
             ))}
@@ -318,9 +331,45 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
           <section>
             <h2 style={styles.sectionTitle}>Recommendations</h2>
             {recommendations.map((r, i) => (
-              <p key={i} style={styles.recommendation}>→ {r}</p>
+              <p key={i} style={styles.recommendation}>
+                <span style={{ position: 'absolute', left: 0, color: '#8B5CF6' }}>→</span>
+                {r.replace(/^→\s*/, '')}
+              </p>
             ))}
           </section>
+        )}
+        
+        {/* Bottom Line */}
+        {bottomLine && (
+          <div style={{ 
+            marginTop: '32px', 
+            padding: '20px 24px', 
+            background: 'linear-gradient(135deg, #f8f4ff 0%, #f0e8ff 100%)',
+            borderRadius: '8px',
+            borderLeft: '4px solid #8B5CF6'
+          }}>
+            <div style={{ 
+              fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+              fontSize: '11px',
+              fontWeight: 600,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: '#8B5CF6',
+              marginBottom: '8px'
+            }}>
+              The Bottom Line
+            </div>
+            <p style={{ 
+              fontFamily: 'Georgia, serif',
+              fontSize: '16px',
+              fontWeight: 500,
+              lineHeight: 1.6,
+              color: '#1a1a1a',
+              margin: 0
+            }}>
+              {bottomLine}
+            </p>
+          </div>
         )}
 
         {/* Sources */}

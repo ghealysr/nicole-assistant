@@ -20,6 +20,13 @@ import {
 } from '@/lib/hooks/useResearch';
 import { ResearchArticle } from './ResearchArticle';
 
+interface ResearchHistoryItem {
+  request_id: number;
+  query: string;
+  type: ResearchType;
+  created_at: string;
+}
+
 interface ResearchPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,9 +37,11 @@ interface ResearchPanelProps {
   statusMessage: string;
   progress: number;
   error: string | null;
+  history?: ResearchHistoryItem[];
   onFeedback?: (feedback: ImageFeedback) => void;  // Reserved for future inspiration feedback
   onRetry?: () => void;
   onExecuteResearch?: (query: string, type: ResearchType) => void;
+  onLoadResearch?: (requestId: number) => void;
 }
 
 // Research type options
@@ -53,9 +62,11 @@ export function ResearchPanel({
   statusMessage,
   progress,
   error,
+  history = [],
   // onFeedback - reserved for future inspiration feedback
   onRetry,
   onExecuteResearch,
+  onLoadResearch,
 }: ResearchPanelProps) {
   const [activeTab, setActiveTab] = useState<'search' | 'results' | 'history'>('search');
   const [dashboardWidth, setDashboardWidth] = useState(520);
@@ -231,22 +242,113 @@ export function ResearchPanel({
           {/* Search Tab */}
           {activeTab === 'search' && (
             <div className="mem-tab-panel">
-              {/* Loading State */}
+              {/* Loading State - Purple Mystical Circle */}
               {isLoading && (
-                <div className="mem-widget" style={{ textAlign: 'center', padding: '32px' }}>
-                  <div className="research-loading-spinner" style={{ margin: '0 auto 16px' }}>
-                    <svg viewBox="0 0 50 50" width="48" height="48">
-                      <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="90 60" strokeLinecap="round">
-                        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                <div className="mem-widget" style={{ textAlign: 'center', padding: '48px 32px' }}>
+                  {/* Mystical Purple Ring */}
+                  <div style={{ 
+                    position: 'relative', 
+                    width: '80px', 
+                    height: '80px', 
+                    margin: '0 auto 24px'
+                  }}>
+                    {/* Outer glow ring */}
+                    <svg viewBox="0 0 80 80" width="80" height="80" style={{ position: 'absolute', top: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="mysticalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#8B5CF6" stopOpacity="1" />
+                          <stop offset="50%" stopColor="#A78BFA" stopOpacity="0.8" />
+                          <stop offset="100%" stopColor="#C4B5FD" stopOpacity="0.6" />
+                        </linearGradient>
+                        <filter id="glow">
+                          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                      </defs>
+                      <circle 
+                        cx="40" cy="40" r="35" 
+                        fill="none" 
+                        stroke="url(#mysticalGradient)" 
+                        strokeWidth="3" 
+                        strokeDasharray="120 80" 
+                        strokeLinecap="round"
+                        filter="url(#glow)"
+                      >
+                        <animateTransform 
+                          attributeName="transform" 
+                          type="rotate" 
+                          from="0 40 40" 
+                          to="360 40 40" 
+                          dur="1.5s" 
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                      {/* Inner sparkle ring */}
+                      <circle 
+                        cx="40" cy="40" r="28" 
+                        fill="none" 
+                        stroke="#C4B5FD" 
+                        strokeWidth="1.5" 
+                        strokeDasharray="20 40" 
+                        strokeLinecap="round"
+                        opacity="0.6"
+                      >
+                        <animateTransform 
+                          attributeName="transform" 
+                          type="rotate" 
+                          from="360 40 40" 
+                          to="0 40 40" 
+                          dur="2s" 
+                          repeatCount="indefinite"
+                        />
                       </circle>
                     </svg>
+                    {/* Center icon */}
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: '50%', 
+                      left: '50%', 
+                      transform: 'translate(-50%, -50%)',
+                      color: '#8B5CF6'
+                    }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} width="28" height="28">
+                        <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+                      </svg>
+                    </div>
                   </div>
-                  <div style={{ color: 'var(--alphawave-primary)', fontWeight: 500 }}>{statusMessage}</div>
-                  <div style={{ marginTop: '12px', background: 'var(--alphawave-surface)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
-                    <div style={{ background: 'var(--alphawave-primary)', height: '100%', width: `${progress}%`, transition: 'width 0.3s ease' }} />
+                  
+                  <div style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 600, 
+                    color: '#8B5CF6',
+                    marginBottom: '8px'
+                  }}>
+                    BRB... Researching
                   </div>
-                  <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--alphawave-text-secondary)' }}>
-                    AlphaWave Research
+                  <div style={{ 
+                    fontSize: '13px', 
+                    color: 'var(--alphawave-text-secondary)',
+                    marginBottom: '16px'
+                  }}>
+                    {statusMessage}
+                  </div>
+                  
+                  {/* Progress bar */}
+                  <div style={{ 
+                    background: 'var(--alphawave-surface)', 
+                    borderRadius: '8px', 
+                    height: '6px', 
+                    overflow: 'hidden',
+                    maxWidth: '200px',
+                    margin: '0 auto'
+                  }}>
+                    <div style={{ 
+                      background: 'linear-gradient(90deg, #8B5CF6, #A78BFA)', 
+                      height: '100%', 
+                      width: `${progress}%`, 
+                      transition: 'width 0.3s ease',
+                      borderRadius: '8px'
+                    }} />
                   </div>
                 </div>
               )}
@@ -263,7 +365,6 @@ export function ResearchPanel({
                         </svg>
                         Research Query
                       </span>
-                      <span className="mem-widget-badge mem-badge-success">FREE</span>
                     </div>
 
                     <form onSubmit={handleSubmit}>
@@ -447,13 +548,90 @@ export function ResearchPanel({
           {/* History Tab */}
           {activeTab === 'history' && (
             <div className="mem-tab-panel">
-              <div className="skills-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                <p>Research history coming soon.</p>
-              </div>
+              {history.length === 0 ? (
+                <div className="skills-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <p>No research history yet. Start researching!</p>
+                </div>
+              ) : (
+                <div className="mem-widget">
+                  <div className="mem-widget-header">
+                    <span className="mem-widget-title">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                      </svg>
+                      Recent Research
+                    </span>
+                    <span className="mem-widget-badge">{history.length}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {history.map((item) => {
+                      const typeInfo = RESEARCH_TYPES.find(t => t.value === item.type);
+                      const date = new Date(item.created_at);
+                      const formattedDate = date.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      });
+                      
+                      return (
+                        <button
+                          key={item.request_id}
+                          onClick={() => onLoadResearch?.(item.request_id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '12px',
+                            padding: '12px',
+                            background: 'var(--alphawave-surface)',
+                            border: '1px solid transparent',
+                            borderRadius: '8px',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--alphawave-surface-hover, #f0f0f0)';
+                            e.currentTarget.style.borderColor = 'var(--alphawave-primary)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'var(--alphawave-surface)';
+                            e.currentTarget.style.borderColor = 'transparent';
+                          }}
+                        >
+                          <span style={{ fontSize: '20px' }}>{typeInfo?.icon || '📚'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ 
+                              fontWeight: 500, 
+                              color: 'var(--alphawave-text)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {item.query.length > 60 ? item.query.slice(0, 60) + '...' : item.query}
+                            </div>
+                            <div style={{ 
+                              fontSize: '12px', 
+                              color: 'var(--alphawave-text-secondary)',
+                              marginTop: '4px'
+                            }}>
+                              {typeInfo?.label || 'Research'} • {formattedDate}
+                            </div>
+                          </div>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16} style={{ color: 'var(--alphawave-text-secondary)', flexShrink: 0 }}>
+                            <path d="M9 18l6-6-6-6"/>
+                          </svg>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

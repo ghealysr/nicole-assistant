@@ -73,7 +73,9 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     statusMessage: researchStatusMessage,
     progress: researchProgress,
     error: researchError,
+    history: researchHistory,
     executeResearch,
+    getResearch,
     clearResearch,
   } = useResearch({ authToken: token || undefined });
 
@@ -241,7 +243,9 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         statusMessage={researchStatusMessage}
         progress={researchProgress}
         error={researchError}
+        history={researchHistory}
         onExecuteResearch={executeResearch}
+        onLoadResearch={getResearch}
         onRetry={() => {
           if (research?.query) {
             executeResearch(research.query, research.research_type);

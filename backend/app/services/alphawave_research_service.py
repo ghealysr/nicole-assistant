@@ -204,6 +204,9 @@ class ResearchOrchestrator:
             research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
             gemini_metadata = gemini_result.get("metadata", {})
             
+            # Extract structured synthesis data (now returns dict)
+            synthesis_data = synthesis if isinstance(synthesis, dict) else {}
+            
             yield ResearchStatusUpdate(
                 status=ResearchStatus.COMPLETE,
                 message="Research complete!",
@@ -212,11 +215,19 @@ class ResearchOrchestrator:
                     "request_id": request_id,
                     "query": query,
                     "research_type": research_type_str,
-                    "executive_summary": gemini_result.get("results", {}).get("executive_summary", ""),
-                    "findings": gemini_result.get("results", {}).get("key_findings", []),
+                    # Use Nicole's custom title, fallback to generated one
+                    "article_title": synthesis_data.get("article_title", "Research Findings"),
+                    "subtitle": synthesis_data.get("subtitle", ""),
+                    # Lead paragraph as executive summary
+                    "executive_summary": synthesis_data.get("lead_paragraph", gemini_result.get("results", {}).get("executive_summary", "")),
+                    # Use synthesis findings if available, else raw
+                    "findings": synthesis_data.get("key_findings", gemini_result.get("results", {}).get("key_findings", [])),
                     "sources": gemini_result.get("sources", []),
-                    "recommendations": gemini_result.get("results", {}).get("recommendations", []),
-                    "nicole_synthesis": synthesis,
+                    # Use synthesis recommendations if available
+                    "recommendations": synthesis_data.get("recommendations", gemini_result.get("results", {}).get("recommendations", [])),
+                    # Full article body
+                    "nicole_synthesis": synthesis_data.get("body", str(synthesis) if not isinstance(synthesis, dict) else ""),
+                    "bottom_line": synthesis_data.get("bottom_line", ""),
                     "completed_at": datetime.now().isoformat(),
                     "metadata": {
                         "model": gemini_metadata.get("model", "gemini-3-pro-preview"),
@@ -246,40 +257,98 @@ class ResearchOrchestrator:
         research_type: ResearchType
     ) -> str:
         """
-        Use Claude to synthesize results in Nicole's voice.
+        Use Claude to synthesize results as a professional journalist.
+        
+        Nicole transforms raw research into magazine-quality articles.
         """
-        synthesis_prompt = f"""You are Nicole, Glen's AI companion. You've just completed research on his behalf.
-Present these findings in your natural voice - warm, direct, insightful.
+        research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
+        
+        synthesis_prompt = f"""You are Nicole, a world-class research journalist and analyst working for Glen at AlphaWave. 
+You combine the investigative rigor of The New Yorker, the clarity of The Economist, and the actionable insights of Harvard Business Review.
 
-RAW RESEARCH DATA:
+Your task: Transform this raw research data into a professional magazine-quality article.
+
+## RAW RESEARCH DATA:
 {json.dumps(raw_results.get('results', {}), indent=2, default=str)}
 
-ORIGINAL QUERY:
+## ORIGINAL QUERY:
 {query}
 
-RESEARCH TYPE:
-{research_type.value if hasattr(research_type, 'value') else str(research_type)}
+## RESEARCH TYPE:
+{research_type_str}
 
-GUIDELINES:
-- Speak as Nicole, not as a generic AI
-- Highlight what Glen would care about most
-- Be concise but thorough
-- If this is for a Vibe project, focus on actionable design insights
-- Include your own analysis and recommendations
-- Reference specific sources naturally
+## YOUR DELIVERABLE - RESPOND IN THIS EXACT JSON FORMAT:
+{{
+    "article_title": "A compelling, journalist-crafted headline (NOT the user's query - create something engaging)",
+    "subtitle": "A brief subheading that captures the key insight",
+    "lead_paragraph": "The opening paragraph that hooks the reader and summarizes the key finding",
+    "body": "2-4 paragraphs of well-structured prose. Use clear topic sentences. Include specific examples and data points. Write like a senior journalist at The New Yorker.",
+    "key_findings": [
+        "• Finding 1: Specific, actionable insight with evidence",
+        "• Finding 2: Another key discovery with supporting detail",
+        "• Finding 3: Third major finding (3-5 total)"
+    ],
+    "recommendations": [
+        "→ Recommendation 1: Specific action Glen should take",
+        "→ Recommendation 2: Next step with rationale"
+    ],
+    "bottom_line": "One powerful concluding sentence that answers Glen's original question directly"
+}}
 
-Provide a 2-3 paragraph synthesis that Nicole would present to Glen."""
+## WRITING GUIDELINES:
+- Create a CUSTOM TITLE - do NOT use the user's query as the headline
+- Write in Nicole's voice: warm but professional, direct but thorough
+- Focus on answering Glen's actual questions - what did he really want to know?
+- Include specific names, numbers, and facts from the research
+- Use bullet points (•) for findings and arrows (→) for recommendations
+- Be concise - quality over quantity
+- If for Vibe project: focus on actionable design/business insights
+- Reference sources naturally within the text
+
+Respond ONLY with valid JSON, no markdown code blocks."""
 
         try:
             response = await self.claude.generate_response(
                 messages=[{"role": "user", "content": synthesis_prompt}],
-                max_tokens=1000
+                max_tokens=2000
             )
-            return response
+            
+            # Parse JSON response
+            try:
+                # Clean potential markdown code blocks
+                clean_response = response.strip()
+                if clean_response.startswith("```"):
+                    clean_response = clean_response.split("```")[1]
+                    if clean_response.startswith("json"):
+                        clean_response = clean_response[4:]
+                
+                synthesis_data = json.loads(clean_response)
+                return synthesis_data
+            except json.JSONDecodeError:
+                logger.warning("[RESEARCH] Could not parse synthesis as JSON, using raw response")
+                # Return structured fallback
+                return {
+                    "article_title": "Research Findings",
+                    "subtitle": query[:100],
+                    "lead_paragraph": response[:500] if len(response) > 500 else response,
+                    "body": response,
+                    "key_findings": [],
+                    "recommendations": [],
+                    "bottom_line": ""
+                }
+                
         except Exception as e:
             logger.warning(f"[RESEARCH] Claude synthesis failed: {e}")
-            # Fallback to executive summary
-            return raw_results.get("results", {}).get("executive_summary", "Research complete. See findings below.")
+            # Fallback with structured data
+            return {
+                "article_title": "Research Complete",
+                "subtitle": query[:100],
+                "lead_paragraph": raw_results.get("results", {}).get("executive_summary", "Research complete."),
+                "body": raw_results.get("results", {}).get("executive_summary", ""),
+                "key_findings": raw_results.get("results", {}).get("key_findings", []),
+                "recommendations": raw_results.get("results", {}).get("recommendations", []),
+                "bottom_line": "See findings above for details."
+            }
     
     # =========================================================================
     # DATABASE OPERATIONS
