@@ -503,7 +503,12 @@ class AlphawaveUsageService:
             
             # Check for stale activity
             if stale_check["last_message"]:
-                hours_since_message = (datetime.utcnow() - stale_check["last_message"]).total_seconds() / 3600
+                # Handle timezone-aware datetimes from database
+                last_msg = stale_check["last_message"]
+                now = datetime.utcnow()
+                if hasattr(last_msg, 'tzinfo') and last_msg.tzinfo is not None:
+                    now = now.replace(tzinfo=last_msg.tzinfo)
+                hours_since_message = (now - last_msg).total_seconds() / 3600
                 if hours_since_message > 168:  # 7 days
                     warnings.append({
                         "type": "activity",
