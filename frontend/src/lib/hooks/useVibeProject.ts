@@ -640,8 +640,15 @@ export function useVibeProject(projectId?: number) {
     ]);
     
     // Real-time activity polling for live tool status
+    // Uses longer interval to stay within rate limits (30 req/60s)
     let lastActivityDesc = '✨ Analyzing your message...';
-    const activityInterval = setInterval(async () => {
+    let pollInterval = 3000; // Start at 3 seconds
+    let activityIntervalId: ReturnType<typeof setTimeout> | null = null;
+    let stopPolling = false;
+    
+    const pollActivities = async () => {
+      if (stopPolling) return;
+      
       try {
         // Fetch latest activities to show real tool usage
         const response = await apiClient.request<{
@@ -665,11 +672,24 @@ export function useVibeProject(projectId?: number) {
               });
             }
           }
+          // Reset interval on success
+          pollInterval = 3000;
         }
-      } catch {
-        // Ignore polling errors
+      } catch (err) {
+        // On rate limit, back off exponentially
+        if (err instanceof Error && err.message.includes('429')) {
+          pollInterval = Math.min(pollInterval * 2, 15000); // Max 15s backoff
+        }
       }
-    }, 1500); // Poll every 1.5 seconds for real-time feel
+      
+      // Schedule next poll if not stopped
+      if (!stopPolling) {
+        activityIntervalId = setTimeout(pollActivities, pollInterval);
+      }
+    };
+    
+    // Start polling
+    activityIntervalId = setTimeout(pollActivities, pollInterval);
     
     // Fallback phases if no activities found
     const fallbackPhases = [
@@ -692,7 +712,8 @@ export function useVibeProject(projectId?: number) {
     
     // Combined cleanup function
     const clearAllIntervals = () => {
-      clearInterval(activityInterval);
+      stopPolling = true;
+      if (activityIntervalId) clearTimeout(activityIntervalId);
       clearInterval(fallbackInterval);
     };
     

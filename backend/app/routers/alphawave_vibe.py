@@ -53,6 +53,11 @@ logger = logging.getLogger(__name__)
 RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 30
 RATE_LIMIT_CLEANUP_INTERVAL = 300  # Clean stale buckets every 5 minutes
+# Higher limits for polling endpoints
+RATE_LIMIT_POLLING_ENDPOINTS = {
+    "GET:/vibe/projects/{id}/activities": 60,  # Allow more frequent activity polling
+    "GET:/vibe/projects/{id}/files": 60,  # Files can be polled frequently too
+}
 _rate_limit_buckets: Dict[str, deque] = defaultdict(deque)
 _rate_limit_last_cleanup: float = 0.0
 
@@ -96,7 +101,10 @@ def enforce_rate_limit(user_id: int, path: str):
     while bucket and now - bucket[0] > RATE_LIMIT_WINDOW_SECONDS:
         bucket.popleft()
 
-    if len(bucket) >= RATE_LIMIT_MAX_REQUESTS:
+    # Use higher limit for polling endpoints
+    max_requests = RATE_LIMIT_POLLING_ENDPOINTS.get(path, RATE_LIMIT_MAX_REQUESTS)
+    
+    if len(bucket) >= max_requests:
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded. Please slow down and try again shortly."
