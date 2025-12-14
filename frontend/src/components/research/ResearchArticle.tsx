@@ -273,9 +273,9 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
   const displayBody = hasSummary ? synthesis : synthesis.slice(300);
 
   // Use custom article_title from backend if available, else generate
-  const articleTitle = (data as Record<string, unknown>).article_title as string || toHeadlineCase(data.query);
-  const articleSubtitle = (data as Record<string, unknown>).subtitle as string || '';
-  const bottomLine = (data as Record<string, unknown>).bottom_line as string || '';
+  const articleTitle = data.article_title || toHeadlineCase(data.query);
+  const articleSubtitle = data.subtitle || '';
+  const bottomLine = data.bottom_line || '';
   
   return (
     <article style={styles.article}>
