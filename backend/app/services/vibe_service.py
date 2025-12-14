@@ -1643,8 +1643,14 @@ class VibeService:
                 )
             except Exception as e:
                 last_error = e
+                error_str = str(e).lower()
+                
+                # Check for overload/rate limit errors - use longer delays
+                is_overload = "529" in error_str or "overload" in error_str or "rate" in error_str
+                
                 if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    # Longer delay for overload errors
+                    delay = base_delay * (2 ** attempt) * (3 if is_overload else 1)
                     logger.warning(
                         "[VIBE] Claude call attempt %d/%d failed: %s. Retrying in %.1fs...",
                         attempt + 1, max_retries, e, delay
@@ -1656,7 +1662,16 @@ class VibeService:
                         max_retries, e, exc_info=True
                     )
         
-        raise last_error or Exception("Claude call failed")
+        # Create user-friendly error message
+        error_str = str(last_error).lower() if last_error else ""
+        if "529" in error_str or "overload" in error_str:
+            raise Exception("Claude AI is temporarily overloaded. Please wait a moment and try again.")
+        elif "rate" in error_str:
+            raise Exception("Rate limit reached. Please wait a moment before retrying.")
+        elif "timeout" in error_str:
+            raise Exception("Request timed out. Please try again.")
+        else:
+            raise last_error or Exception("AI service temporarily unavailable. Please retry.")
     
     async def _update_api_cost(
         self,
