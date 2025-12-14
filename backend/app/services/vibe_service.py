@@ -1005,11 +1005,56 @@ class VibeService:
             }
     
     async def _tool_web_search(self, query: str, intent: str) -> Dict[str, Any]:
-        """Execute web search using Brave Search MCP or Gemini fallback."""
-        from app.mcp import call_mcp_tool, mcp_manager, AlphawaveMCPManager
+        """Execute web search using Docker MCP Gateway (Brave Search) or Gemini fallback."""
         
         try:
-            # Try Brave Search via MCP first
+            # Try Docker MCP Gateway first (this is the PRIMARY MCP system)
+            from app.mcp.docker_mcp_client import get_mcp_client
+            
+            try:
+                mcp = await get_mcp_client()
+                if mcp.is_connected:
+                    # Call Brave Search via Docker MCP Gateway
+                    result = await mcp.call_tool("brave_web_search", {"query": query, "count": 5})
+                    
+                    if not result.is_error and result.content:
+                        # Parse the response
+                        import json as json_module
+                        try:
+                            if isinstance(result.content, str):
+                                data = json_module.loads(result.content)
+                            else:
+                                data = result.content
+                            
+                            formatted = []
+                            web_results = data.get("web", {}).get("results", []) if isinstance(data, dict) else []
+                            for r in web_results[:5]:
+                                formatted.append({
+                                    "title": r.get("title", ""),
+                                    "url": r.get("url", ""),
+                                    "description": r.get("description", "")[:200]
+                                })
+                            
+                            if formatted:
+                                logger.info(f"[VIBE] Brave Search via Docker MCP returned {len(formatted)} results")
+                                return {
+                                    "success": True,
+                                    "result": {
+                                        "query": query,
+                                        "intent": intent,
+                                        "results": formatted,
+                                        "result_count": len(formatted),
+                                        "source": "brave_search_docker"
+                                    }
+                                }
+                        except json_module.JSONDecodeError:
+                            logger.warning(f"[VIBE] Failed to parse Brave Search response")
+            except Exception as e:
+                logger.warning(f"[VIBE] Docker MCP Gateway not available: {e}")
+            
+            # Fallback: Try legacy MCP manager
+            from app.mcp import call_mcp_tool, mcp_manager, AlphawaveMCPManager
+            
             if isinstance(mcp_manager, AlphawaveMCPManager):
                 server_status = mcp_manager.get_server_status("brave-search")
                 from app.mcp.alphawave_mcp_manager import MCPServerStatus
@@ -1037,7 +1082,7 @@ class VibeService:
                                 "intent": intent,
                                 "results": formatted,
                                 "result_count": len(formatted),
-                                "source": "brave_search"
+                                "source": "brave_search_legacy"
                             }
                         }
             
@@ -1110,15 +1155,15 @@ class VibeService:
         project_id: int
     ) -> Dict[str, Any]:
         """
-        Capture a website screenshot using Puppeteer MCP and store in Cloudinary.
+        Capture a website screenshot using Docker MCP Gateway (Puppeteer) and store in Cloudinary.
         
         Flow:
-        1. Use Puppeteer MCP to navigate and screenshot
-        2. Upload base64 image to Cloudinary
-        3. Store reference in inspiration cache
-        4. Return permanent URL
+        1. Try Docker MCP Gateway for Puppeteer screenshot
+        2. Fall back to legacy Playwright MCP
+        3. Upload base64 image to Cloudinary
+        4. Store reference in inspiration cache
+        5. Return permanent URL
         """
-        from app.mcp.alphawave_playwright_mcp import playwright_mcp
         from app.services.alphawave_cloudinary_service import cloudinary_service
         
         # Get project name for folder organization
@@ -1127,35 +1172,75 @@ class VibeService:
         project_slug = project_name.lower().replace(" ", "-")[:30]
         
         screenshot_url = None
+        base64_data = None
         
-        # Try Puppeteer MCP for actual screenshot
-        if playwright_mcp.is_connected or await playwright_mcp.connect():
+        # Try Docker MCP Gateway first (Puppeteer)
+        try:
+            from app.mcp.docker_mcp_client import get_mcp_client
+            mcp = await get_mcp_client()
+            
+            if mcp.is_connected:
+                # Check if puppeteer tools are available
+                tools = await mcp.list_tools()
+                puppeteer_tools = [t for t in tools if "puppeteer" in t.name.lower()]
+                
+                if puppeteer_tools:
+                    # Navigate to URL
+                    nav_result = await mcp.call_tool("puppeteer_navigate", {"url": url})
+                    if not nav_result.is_error:
+                        # Take screenshot
+                        screenshot_result = await mcp.call_tool("puppeteer_screenshot", {})
+                        
+                        if not screenshot_result.is_error and screenshot_result.content:
+                            # Parse base64 from result
+                            content = screenshot_result.content
+                            if isinstance(content, str):
+                                # Look for base64 data
+                                import json as json_module
+                                try:
+                                    data = json_module.loads(content)
+                                    base64_data = data.get("data") or data.get("screenshot")
+                                except:
+                                    # Content might be the base64 directly
+                                    if len(content) > 100 and "," not in content[:50]:
+                                        base64_data = content
+                            logger.info(f"[VIBE] Screenshot captured via Docker MCP Gateway")
+        except Exception as e:
+            logger.warning(f"[VIBE] Docker MCP screenshot failed: {e}")
+        
+        # Fall back to legacy Playwright MCP
+        if not base64_data:
             try:
-                # Navigate to URL
-                await playwright_mcp.navigate(url, wait_until="networkidle")
+                from app.mcp.alphawave_playwright_mcp import playwright_mcp
                 
-                # Take screenshot
-                result = await playwright_mcp.screenshot(full_page=False, format="png")
-                
-                if result and not result.get("error"):
-                    # Get base64 data from result
-                    base64_data = result.get("data") or result.get("screenshot")
+                if playwright_mcp.is_connected or await playwright_mcp.connect():
+                    # Navigate to URL
+                    await playwright_mcp.navigate(url, wait_until="networkidle")
                     
-                    if base64_data and cloudinary_service.is_configured:
-                        # Upload to Cloudinary
-                        upload_result = await cloudinary_service.upload_screenshot(
-                            base64_data=base64_data,
-                            project_name=project_slug,
-                            description=description,
-                            url_source=url
-                        )
-                        
-                        if upload_result.get("success"):
-                            screenshot_url = upload_result.get("url")
-                            logger.info(f"[VIBE] Screenshot captured and uploaded: {screenshot_url}")
-                        
+                    # Take screenshot
+                    result = await playwright_mcp.screenshot(full_page=False, format="png")
+                    
+                    if result and not result.get("error"):
+                        base64_data = result.get("data") or result.get("screenshot")
+                        logger.info(f"[VIBE] Screenshot captured via legacy Playwright MCP")
             except Exception as e:
-                logger.warning(f"[VIBE] Screenshot capture failed: {e}")
+                logger.warning(f"[VIBE] Legacy Playwright MCP screenshot failed: {e}")
+        
+        # Upload to Cloudinary if we have screenshot data
+        if base64_data and cloudinary_service.is_configured:
+            try:
+                upload_result = await cloudinary_service.upload_screenshot(
+                    base64_data=base64_data,
+                    project_name=project_slug,
+                    description=description,
+                    url_source=url
+                )
+                
+                if upload_result.get("success"):
+                    screenshot_url = upload_result.get("url")
+                    logger.info(f"[VIBE] Screenshot uploaded to Cloudinary: {screenshot_url}")
+            except Exception as e:
+                logger.warning(f"[VIBE] Cloudinary upload failed: {e}")
         
         # Store in inspiration cache
         if project_id not in self._inspiration_cache:
