@@ -639,24 +639,62 @@ export function useVibeProject(projectId?: number) {
       { role: 'assistant', content: '✨ Analyzing your message...' },
     ]);
     
-    // Animated thinking phases
-    const thinkingPhases = [
+    // Real-time activity polling for live tool status
+    let lastActivityDesc = '✨ Analyzing your message...';
+    const activityInterval = setInterval(async () => {
+      try {
+        // Fetch latest activities to show real tool usage
+        const response = await apiClient.request<{
+          activities: VibeActivity[];
+        }>(`/projects/${id}/activities?limit=5`);
+        
+        if (response.success && response.data?.activities?.length) {
+          // Find the most recent tool activity
+          const latestActivity = response.data.activities[0];
+          if (latestActivity && latestActivity.description) {
+            const desc = latestActivity.description;
+            // Only update if it's a tool activity (has emoji) and different from last
+            if (desc.match(/^[🔍📸💾🔬🧠✅⚠️🔧]/) && desc !== lastActivityDesc) {
+              lastActivityDesc = desc;
+              setIntakeHistory(prev => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg?.role === 'assistant' && lastMsg.content.match(/^[✨🔍💭📝📸💾🔬🧠⚠️🔧]/)) {
+                  return [...prev.slice(0, -1), { role: 'assistant', content: desc }];
+                }
+                return prev;
+              });
+            }
+          }
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 1500); // Poll every 1.5 seconds for real-time feel
+    
+    // Fallback phases if no activities found
+    const fallbackPhases = [
       '✨ Analyzing your message...',
-      '🔍 Researching relevant information...',
       '💭 Thinking about the best approach...',
       '📝 Preparing response...',
     ];
-    let phaseIndex = 0;
-    const thinkingInterval = setInterval(() => {
-      phaseIndex = (phaseIndex + 1) % thinkingPhases.length;
+    let fallbackIndex = 0;
+    const fallbackInterval = setInterval(() => {
+      fallbackIndex = (fallbackIndex + 1) % fallbackPhases.length;
       setIntakeHistory(prev => {
         const lastMsg = prev[prev.length - 1];
-        if (lastMsg?.role === 'assistant' && thinkingPhases.some(p => lastMsg.content.includes(p.slice(2)))) {
-          return [...prev.slice(0, -1), { role: 'assistant', content: thinkingPhases[phaseIndex] }];
+        // Only use fallback if still showing initial message
+        if (lastMsg?.role === 'assistant' && lastMsg.content === '✨ Analyzing your message...') {
+          return [...prev.slice(0, -1), { role: 'assistant', content: fallbackPhases[fallbackIndex] }];
         }
         return prev;
       });
-    }, 3000);
+    }, 4000);
+    
+    // Combined cleanup function
+    const clearAllIntervals = () => {
+      clearInterval(activityInterval);
+      clearInterval(fallbackInterval);
+    };
     
     try {
       console.log('[runIntake] Sending to API:', { id, message: message.slice(0, 50) + '...' });
@@ -674,20 +712,20 @@ export function useVibeProject(projectId?: number) {
       console.log('[runIntake] API Response:', response);
       
       if (!response.success || !response.data) {
-        clearInterval(thinkingInterval);
+        clearAllIntervals();
         const errMsg = response.error || 'Intake failed';
         console.error('[runIntake] API failed:', errMsg);
         setOperationState('intake', { loading: false, error: errMsg });
         setError(errMsg);
         // Replace thinking indicator with error
         setIntakeHistory(prev => {
-          const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
+          const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝📸💾🔬🧠⚠️🔧]/));
           return [...filtered, { role: 'assistant', content: `⚠️ Error: ${errMsg}` }];
         });
         return null;
       }
       
-      clearInterval(thinkingInterval);
+      clearAllIntervals();
       const intakeData = response.data;
       console.log('[runIntake] Success, response:', intakeData.response?.slice(0, 100) + '...');
       
@@ -698,7 +736,7 @@ export function useVibeProject(projectId?: number) {
       
       // Replace thinking indicator with actual response
       setIntakeHistory(prev => {
-        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
+        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝📸💾🔬🧠⚠️🔧]/));
         return [...filtered, { role: 'assistant', content: intakeData.response }];
       });
       
@@ -710,20 +748,20 @@ export function useVibeProject(projectId?: number) {
       setOperationState('intake', { loading: false, error: null });
       return intakeData;
     } catch (err) {
-      clearInterval(thinkingInterval);
+      clearAllIntervals();
       const rawMessage = err instanceof Error ? err.message : 'Intake failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'intake');
       setOperationState('intake', { loading: false, error: friendlyMessage });
       setError(friendlyMessage);
       // Replace thinking indicator with error
       setIntakeHistory(prev => {
-        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝]/));
+        const filtered = prev.filter(m => m.role !== 'assistant' || !m.content.match(/^[✨🔍💭📝📸💾🔬🧠⚠️🔧]/));
         return [...filtered, { role: 'assistant', content: `⚠️ ${friendlyMessage}` }];
       });
       console.error('[useVibeProject] Intake error:', err);
       return null;
     }
-  }, [intakeHistory, fetchProject, setOperationState, trackApiCost]);
+  }, [intakeHistory, fetchProject, fetchActivities, setOperationState, trackApiCost]);
 
   // Run planning (architecture generation)
   const runPlanning = useCallback(async (id: number): Promise<BuildData | null> => {

@@ -2002,10 +2002,40 @@ class VibeService:
         tool_uses = []
         
         if USE_INTAKE_TOOLS:
-            # Create tool executor for this project
+            # Create tool executor for this project with real-time activity logging
             async def tool_executor(tool_name: str, tool_input: Dict[str, Any]) -> str:
-                """Execute Vibe tools and return results."""
+                """Execute Vibe tools and return results with activity logging."""
+                # Log tool start with user-friendly descriptions
+                tool_descriptions = {
+                    "web_search": f"🔍 Searching: {tool_input.get('query', 'web')}...",
+                    "screenshot_website": f"📸 Capturing screenshot: {tool_input.get('url', '')}...",
+                    "save_inspiration": f"💾 Saving inspiration: {tool_input.get('description', '')}...",
+                    "deep_research": f"🔬 Deep research: {tool_input.get('query', 'topic')}...",
+                    "memory_search": f"🧠 Searching memories: {tool_input.get('query', '')}...",
+                }
+                activity_desc = tool_descriptions.get(tool_name, f"🔧 Using tool: {tool_name}")
+                
+                # Log activity for real-time UI feedback
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.INTAKE_MESSAGE,
+                    description=activity_desc,
+                    agent_name="Nicole",
+                    metadata={"tool": tool_name, "status": "started"}
+                )
+                
                 result = await self._execute_vibe_tool(tool_name, tool_input, project_id)
+                
+                # Log completion
+                success = result.get("success", False) if isinstance(result, dict) else True
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.INTAKE_MESSAGE,
+                    description=f"{'✅' if success else '⚠️'} {tool_name} complete",
+                    agent_name="Nicole",
+                    metadata={"tool": tool_name, "status": "complete", "success": success}
+                )
+                
                 return json.dumps(result, default=str)
             
             # Try tool-enabled call, fall back to simple if it fails
@@ -2055,6 +2085,13 @@ class VibeService:
         # Estimate cost (rough: ~500 input, ~1000 output tokens)
         cost = estimate_api_cost(self.SONNET_MODEL, 500, 1000)
         await self._update_api_cost(project_id, user_id, cost)
+        
+        # Clean response of any XML hallucinations (Claude sometimes outputs fake function calls)
+        import re
+        response = re.sub(r'<function_calls>.*?</function_calls>', '', response, flags=re.DOTALL)
+        response = re.sub(r'<invoke\s+name="[^"]*">.*?</invoke>', '', response, flags=re.DOTALL)
+        response = re.sub(r'<parameter\s+name="[^"]*">.*?</parameter>', '', response, flags=re.DOTALL)
+        response = response.strip()
         
         # Check if response contains a JSON brief
         brief = extract_json_from_response(response)
