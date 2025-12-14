@@ -289,8 +289,8 @@ class AlphawaveUsageService:
                     COALESCE(SUM(cost_usd), 0) AS total_api_cost
                 FROM api_usage_log
                 WHERE user_id = $1
-                  AND created_at >= $2
-                  AND created_at < $3 + INTERVAL '1 day'
+                  AND created_at >= $2::date
+                  AND created_at < ($3::date + INTERVAL '1 day')
                 """,
                 user_id,
                 period_start,
@@ -471,7 +471,7 @@ class AlphawaveUsageService:
                 """
                 SELECT
                     (SELECT MAX(created_at) FROM conversations WHERE user_id = $1) AS last_conversation,
-                    (SELECT MAX(created_at) FROM messages m 
+                    (SELECT MAX(m.created_at) FROM messages m 
                      JOIN conversations c ON c.conversation_id = m.conversation_id 
                      WHERE c.user_id = $1) AS last_message,
                     (SELECT MAX(created_at) FROM memory_entries WHERE user_id = $1) AS last_memory,
