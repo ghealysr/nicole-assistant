@@ -1101,7 +1101,13 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                       }
                     );
                     
-                    let design = {
+                    let design: {
+                      primaryColor?: string;
+                      secondaryColor?: string;
+                      accentColor?: string;
+                      headingFont?: string;
+                      bodyFont?: string;
+                    } = {
                       primaryColor: '#8B9D83',
                       secondaryColor: '#F4E4BC',
                       accentColor: '#D4A574',
