@@ -32,13 +32,15 @@ logger = logging.getLogger(__name__)
 # CORS origins for error responses
 CORS_ORIGINS = [
     "https://nicole.alphawavetech.com",
+    "https://nicole.alphawavelabs.io",
     "https://nicole-v7.vercel.app",
+    "https://nicole-assistant-yyr5.vercel.app",
     "https://ghealysr-nicole-assistant-yyr5.vercel.app",
     "http://localhost:3000",
 ]
 
-# Regex pattern for Vercel preview deployments
-CORS_ORIGIN_REGEX = re.compile(r"https://ghealysr-nicole-assistant.*\.vercel\.app")
+# Regex pattern for Vercel preview deployments (matches both naming patterns)
+CORS_ORIGIN_REGEX = re.compile(r"https://(nicole-assistant|ghealysr-nicole-assistant).*\.vercel\.app")
 
 
 def add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:

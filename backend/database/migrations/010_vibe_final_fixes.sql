@@ -70,3 +70,4 @@ COMMENT ON INDEX idx_vibe_projects_active IS 'Partial index for active project l
 -- SELECT indexname FROM pg_indexes WHERE tablename = 'vibe_projects';
 -- SELECT conname FROM pg_constraint WHERE conrelid = 'vibe_activities'::regclass;
 
+

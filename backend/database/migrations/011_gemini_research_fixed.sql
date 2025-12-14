@@ -91,3 +91,4 @@ COMMENT ON TABLE research_results IS 'Raw research outputs from Gemini + Claude 
 COMMENT ON TABLE research_reports IS 'Final structured research reports';
 COMMENT ON TABLE vibe_inspirations IS 'Saved design inspirations for Vibe projects';
 
+

@@ -303,3 +303,4 @@ class CloudinaryService:
 # Singleton instance
 cloudinary_service = CloudinaryService()
 
+

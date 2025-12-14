@@ -155,3 +155,4 @@ COMMENT ON COLUMN vibe_activities.agent_name IS 'Name of AI agent that performed
 COMMENT ON TRIGGER trigger_vibe_projects_updated_at ON vibe_projects IS 'Auto-update updated_at on row changes';
 COMMENT ON TRIGGER trigger_vibe_set_completed_at ON vibe_projects IS 'Auto-set completed_at when project reaches final status';
 
+

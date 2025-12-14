@@ -124,3 +124,4 @@ COMMENT ON COLUMN vibe_projects.architecture IS 'Technical architecture spec fro
 COMMENT ON COLUMN vibe_projects.config IS 'Build configuration (colors, fonts, etc.)';
 COMMENT ON COLUMN vibe_projects.api_cost IS 'Cumulative API costs for this project';
 
+
