@@ -235,17 +235,11 @@ export function getStackBlitzUrl(
     bodyFont?: string;
   }
 ): string {
-  const sbFiles = convertFilesToStackBlitz(files, design);
+  // Convert files to StackBlitz format (validates the files are usable)
+  convertFilesToStackBlitz(files, design);
   
-  // Create a base64 encoded project config
-  const projectConfig = {
-    title: projectName,
-    template: 'node',
-    files: sbFiles,
-  };
-  
-  // For now, return a generic StackBlitz URL
-  // In production, you'd use their API to create a persistent project
+  // Return a StackBlitz URL for forking a Next.js project
+  // Note: For persistent projects, you'd use their API to create and store the project
   return `https://stackblitz.com/fork/nextjs?title=${encodeURIComponent(projectName)}`;
 }
 

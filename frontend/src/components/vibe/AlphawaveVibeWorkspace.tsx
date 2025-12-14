@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
-import { openInStackBlitz, embedInStackBlitz } from '@/lib/stackblitz';
+import { openInStackBlitz } from '@/lib/stackblitz';
 
 // ============================================================================
 // IMAGE LIGHTBOX - For viewing screenshots full-size
