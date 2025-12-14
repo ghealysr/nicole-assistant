@@ -1,27 +1,27 @@
 """
 Multi-Model Orchestrator for AlphaWave Vibe
 
-Implements Anthropic-style agent orchestration with Nicole as the authority:
+NYC Design Agency Quality Agent Team led by Nicole.
 
-AGENT HIERARCHY:
-┌─────────────────────────────────────────────────────────────────┐
-│                       NICOLE (Authority)                        │
-│                    Orchestrates all agents                      │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│   GEMINI 3 PRO  │  CLAUDE OPUS    │     CLAUDE SONNET          │
-│   Design Agent  │  Architect      │     Builder/QA             │
-├─────────────────┼─────────────────┼─────────────────────────────┤
-│ • Web Research  │ • Architecture  │ • Code Generation          │
-│ • Design Trends │ • System Design │ • QA Validation            │
-│ • Color Theory  │ • Final Review  │ • Fast Iteration           │
-│ • Visual Ideas  │ • Judgment      │ • Pattern Matching         │
-└─────────────────┴─────────────────┴─────────────────────────────┘
+AGENT PIPELINE:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           NICOLE (Creative Director)                        │
+│                    The authority - orchestrates all agents                  │
+├─────────────────┬─────────────────┬──────────────────┬──────────────────────┤
+│  DESIGN AGENT   │ ARCHITECT AGENT │  CODING AGENT    │    QA AGENT          │
+│  🎨             │ 🏗️              │  💻              │    🔍                │
+├─────────────────┼─────────────────┼──────────────────┼──────────────────────┤
+│ Visual Research │ System Design   │ Implementation   │ Quality Assurance    │
+│ Color Theory    │ Component Arch  │ Code Generation  │ Accessibility        │
+│ Typography      │ Data Flow       │ Styling          │ Performance          │
+│ Trend Analysis  │ SEO Strategy    │ Interactions     │ Security             │
+└─────────────────┴─────────────────┴──────────────────┴──────────────────────┘
 
-Fallback Strategy:
-- If primary model fails, gracefully degrade to backup
-- Track model health and adjust routing dynamically
-- Provide user-friendly error messages
-- Nicole maintains authority and oversight at all times
+STANDARDS:
+- Code as if Elon Musk and Sam Altman will review it
+- NYC design agency quality - Webby Award worthy
+- Cutting-edge, futuristic, flawless execution
+- Each agent owns their phase completely
 
 Author: AlphaWave Architecture
 """
@@ -242,41 +242,53 @@ class ModelOrchestrator:
     4. Provide clear observability into model decisions
     """
     
-    # Model capability mapping - Gemini 3 Pro for advanced design
+    # Agent-to-Model mapping (role-based naming)
+    AGENT_MODELS = {
+        "design_agent": "gemini-3-pro",      # Web research, visual creativity
+        "architect_agent": "claude-opus",     # Complex reasoning
+        "coding_agent": "claude-sonnet",      # Fast, accurate code
+        "qa_agent": "claude-sonnet",          # Systematic review
+        "review_agent": "claude-opus",        # Judgment calls
+    }
+    
+    # Model capability mapping - which agents handle which capabilities
     MODEL_CAPABILITIES = {
-        "gemini-3-pro": [
+        "design_agent": [
             ModelCapability.DESIGN_RESEARCH,
             ModelCapability.WEB_GROUNDING,
         ],
-        "claude-opus": [
+        "architect_agent": [
             ModelCapability.ARCHITECTURE,
             ModelCapability.JUDGMENT,
-            ModelCapability.CODE_REVIEW,
         ],
-        "claude-sonnet": [
+        "coding_agent": [
             ModelCapability.CODE_GENERATION,
-            ModelCapability.CODE_REVIEW,
             ModelCapability.CONVERSATION,
+        ],
+        "qa_agent": [
+            ModelCapability.CODE_REVIEW,
         ],
     }
     
-    # Fallback chains for each capability
+    # Fallback chains for each capability (by agent role)
     FALLBACK_CHAINS = {
-        ModelCapability.DESIGN_RESEARCH: ["gemini-3-pro", "claude-opus"],
-        ModelCapability.WEB_GROUNDING: ["gemini-3-pro", "claude-sonnet"],
-        ModelCapability.ARCHITECTURE: ["claude-opus", "claude-sonnet"],
-        ModelCapability.CODE_GENERATION: ["claude-sonnet", "gemini-3-pro"],
-        ModelCapability.CODE_REVIEW: ["claude-sonnet", "claude-opus"],
-        ModelCapability.JUDGMENT: ["claude-opus", "claude-sonnet"],
-        ModelCapability.CONVERSATION: ["claude-sonnet", "claude-opus"],
+        ModelCapability.DESIGN_RESEARCH: ["design_agent", "architect_agent"],
+        ModelCapability.WEB_GROUNDING: ["design_agent", "coding_agent"],
+        ModelCapability.ARCHITECTURE: ["architect_agent", "coding_agent"],
+        ModelCapability.CODE_GENERATION: ["coding_agent", "design_agent"],
+        ModelCapability.CODE_REVIEW: ["qa_agent", "architect_agent"],
+        ModelCapability.JUDGMENT: ["architect_agent", "coding_agent"],
+        ModelCapability.CONVERSATION: ["coding_agent", "architect_agent"],
     }
     
     def __init__(self):
-        """Initialize orchestrator with model health tracking."""
+        """Initialize orchestrator with agent health tracking."""
         self.model_health: Dict[str, ModelHealth] = {
-            "gemini-3-pro": ModelHealth("gemini-3-pro"),
-            "claude-opus": ModelHealth("claude-opus"),
-            "claude-sonnet": ModelHealth("claude-sonnet"),
+            "design_agent": ModelHealth("design_agent"),
+            "architect_agent": ModelHealth("architect_agent"),
+            "coding_agent": ModelHealth("coding_agent"),
+            "qa_agent": ModelHealth("qa_agent"),
+            "review_agent": ModelHealth("review_agent"),
         }
         
         # Lazy imports to avoid circular dependencies
@@ -350,20 +362,20 @@ class ModelOrchestrator:
         )
         
         try:
-            if model == "gemini-3-pro" and self.gemini.is_configured:
-                try:
-                    result = await self._generate_design_with_gemini(brief, project_id)
-                    nicole_authority.complete_task(task.task_id, True, {"generated_by": "gemini-3-pro"})
-                    return result
-                except Exception as e:
-                    logger.warning(f"[ORCHESTRATOR] Gemini 3 Pro design failed: {e}")
-                    self.record_result("gemini-3-pro", False, str(e))
-                    # Fall through to Claude fallback
-            
-            # Fallback to Claude for design
-            logger.info("[ORCHESTRATOR] Nicole reassigning design task to Claude")
-            result = await self._generate_design_with_claude(brief, project_id)
-            nicole_authority.complete_task(task.task_id, True, {"generated_by": "claude"})
+        if model == "design_agent" and self.gemini.is_configured:
+            try:
+                result = await self._generate_design_with_gemini(brief, project_id)
+                nicole_authority.complete_task(task.task_id, True, {"generated_by": "design_agent"})
+                return result
+            except Exception as e:
+                logger.warning(f"[ORCHESTRATOR] Design Agent failed: {e}")
+                self.record_result("design_agent", False, str(e))
+                # Fall through to Architect Agent as fallback
+        
+        # Fallback to Architect Agent for design (uses Claude Opus)
+        logger.info("[ORCHESTRATOR] Nicole reassigning design task to Architect Agent")
+        result = await self._generate_design_with_claude(brief, project_id)
+        nicole_authority.complete_task(task.task_id, True, {"generated_by": "architect_agent"})
             return result
             
         except Exception as e:
@@ -436,7 +448,7 @@ class ModelOrchestrator:
             research_type="general"
         )
         
-        self.record_result("gemini-3-pro", True)
+        self.record_result("design_agent", True)
         
         # Parse the response
         design_data = design_response.get("structured_data", {})

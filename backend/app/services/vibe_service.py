@@ -25,6 +25,10 @@ from functools import wraps
 from app.database import db
 from app.integrations.alphawave_claude import claude_client
 from app.integrations.alphawave_openai import openai_client
+from app.services.vibe_agents import (
+    AGENT_DEFINITIONS, AgentRole, get_agent,
+    ARCHITECT_AGENT_PROMPT, CODING_AGENT_PROMPT, QA_AGENT_PROMPT, REVIEW_AGENT_PROMPT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2465,9 +2469,9 @@ class VibeService:
             await self._log_activity(
                 project_id=project_id,
                 activity_type=ActivityType.INTAKE_MESSAGE,
-                description="🎨 Gemini is researching design trends...",
+                description="🎨 Design Agent is researching design trends...",
                 user_id=user_id,
-                agent_name="Gemini",
+                agent_name="Design Agent",
                 metadata={"phase": "planning", "step": "design_research"}
             )
             
@@ -2481,7 +2485,7 @@ class VibeService:
                     activity_type=ActivityType.INTAKE_MESSAGE,
                     description=f"✨ Design system ready - using {', '.join(design_system.trends_applied[:2]) if design_system.trends_applied else 'modern'} trends",
                     user_id=user_id,
-                    agent_name="Gemini",
+                    agent_name="Design Agent",
                     metadata={"phase": "planning", "step": "design_complete", "generated_by": "gemini"}
                 )
         except Exception as e:
@@ -2492,9 +2496,9 @@ class VibeService:
             await self._log_activity(
                 project_id=project_id,
                 activity_type=ActivityType.INTAKE_MESSAGE,
-                description="🧠 Claude Opus is designing the site structure...",
+                description="🏗️ Architect Agent is designing the site structure...",
                 user_id=user_id,
-                agent_name="Opus",
+                agent_name="Architect Agent",
                 metadata={"phase": "planning", "step": "claude_call"}
             )
             
@@ -2520,7 +2524,7 @@ Style Notes: {design_system.inspiration_notes}
                     "role": "user",
                     "content": f"{design_context}Create a detailed architecture specification for this project:\n\n{json.dumps(brief, indent=2)}"
                 }],
-                system_prompt=ARCHITECTURE_SYSTEM_PROMPT,
+                system_prompt=ARCHITECT_AGENT_PROMPT,
                 model=self.OPUS_MODEL,
                 max_tokens=4000,
                 temperature=0.5,
@@ -2587,7 +2591,7 @@ Style Notes: {design_system.inspiration_notes}
                 activity_type=ActivityType.ARCHITECTURE_GENERATED,
                 description=f"Architecture generated with {page_count} pages",
                 user_id=user_id,
-                agent_name="Opus",
+                agent_name="Architect Agent",
                 metadata={"page_count": page_count, "complexity": architecture.get("complexity")}
             )
             
@@ -2660,9 +2664,9 @@ Style Notes: {design_system.inspiration_notes}
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.BUILD_STARTED,
-            description=f"🔨 Starting code generation ({page_count} pages)...",
+            description=f"💻 Coding Agent starting code generation ({page_count} pages)...",
             user_id=user_id,
-            agent_name="Sonnet",
+            agent_name="Coding Agent",
             metadata={"page_count": page_count, "phase": "build", "step": "started"}
         )
         
@@ -2742,15 +2746,15 @@ Generate COMPLETE code for each file. No abbreviations."""
             await self._log_activity(
                 project_id=project_id,
                 activity_type=ActivityType.BUILD_STARTED,
-                description="⚙️ Sonnet is generating code files...",
+                description="💻 Coding Agent is generating code files...",
                 user_id=user_id,
-                agent_name="Sonnet",
+                agent_name="Coding Agent",
                 metadata={"phase": "build", "step": "claude_call"}
             )
             
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": build_prompt}],
-                system_prompt=BUILD_SYSTEM_PROMPT,
+                system_prompt=CODING_AGENT_PROMPT,
                 model=self.SONNET_MODEL,
                 max_tokens=16000,  # Large budget for code generation
                 temperature=0.3,   # Lower temperature for code
@@ -2762,9 +2766,9 @@ Generate COMPLETE code for each file. No abbreviations."""
             await self._log_activity(
                 project_id=project_id,
                 activity_type=ActivityType.BUILD_STARTED,
-                description="📝 Parsing generated files...",
+                description="📝 Coding Agent parsing generated files...",
                 user_id=user_id,
-                agent_name="Sonnet",
+                agent_name="Coding Agent",
                 metadata={"phase": "build", "step": "parsing"}
             )
         except Exception as e:
@@ -2795,7 +2799,7 @@ Generate COMPLETE code for each file. No abbreviations."""
                 file_count = await self._save_files_batch(
                     project_id, files,
                     user_id=user_id,
-                    agent_name="Sonnet",
+                    agent_name="Coding Agent",
                     conn=conn
                 )
                 
@@ -2835,9 +2839,9 @@ Generate COMPLETE code for each file. No abbreviations."""
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.BUILD_COMPLETED,
-            description=f"Build completed: {file_count} files generated",
+            description=f"💻 Coding Agent completed: {file_count} files generated",
             user_id=user_id,
-            agent_name="Sonnet",
+            agent_name="Coding Agent",
             metadata={"file_count": file_count, "files": [f.path for f in files[:10]]}
         )
         
@@ -2932,7 +2936,7 @@ Perform a comprehensive QA review and output your findings as JSON."""
         try:
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": qa_prompt}],
-                system_prompt=QA_SYSTEM_PROMPT,
+                system_prompt=QA_AGENT_PROMPT,
                 model=self.SONNET_MODEL,
                 max_tokens=3000,
                 temperature=0.3,
@@ -3114,7 +3118,7 @@ Output your comprehensive review as JSON."""
         try:
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": review_prompt}],
-                system_prompt=REVIEW_SYSTEM_PROMPT,
+                system_prompt=REVIEW_AGENT_PROMPT,
                 model=self.OPUS_MODEL,
                 max_tokens=2500,
                 temperature=0.3,
@@ -3172,9 +3176,9 @@ Output your comprehensive review as JSON."""
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.REVIEW_APPROVED if approved else ActivityType.REVIEW_REJECTED,
-            description=f"Review {'approved' if approved else 'needs revision'} - Score: {score}/10",
+            description=f"✨ Review Agent: {'Approved' if approved else 'Needs revision'} - Score: {score}/10",
             user_id=user_id,
-            agent_name="Opus Reviewer",
+            agent_name="Review Agent",
             metadata={"score": score, "recommendation": recommendation, "approved": approved}
         )
         

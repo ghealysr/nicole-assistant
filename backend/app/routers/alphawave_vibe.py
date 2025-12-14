@@ -1341,30 +1341,32 @@ async def get_agent_status(
     Get Nicole's agent orchestration status.
     
     Returns active tasks assigned to each agent and performance metrics.
-    Nicole maintains authority over all agents.
+    Nicole (Creative Director) maintains authority over all agents.
     """
     from app.services.model_orchestrator import nicole_authority, model_orchestrator
+    from app.services.vibe_agents import AGENT_DEFINITIONS, AgentRole
+    
+    # Build agent info from definitions
+    agents_info = {}
+    for role, agent in AGENT_DEFINITIONS.items():
+        agents_info[agent.role.value] = {
+            "display_name": agent.display_name,
+            "emoji": agent.emoji,
+            "model": agent.model,
+            "capabilities": agent.capabilities,
+            "tools": agent.tools,
+            "handoff_to": agent.handoff_to.value if agent.handoff_to else None
+        }
     
     return APIResponse(
         success=True,
         data={
             "authority": "nicole",
+            "authority_title": "Creative Director",
             "active_tasks": nicole_authority.get_active_tasks(),
             "agent_performance": nicole_authority.get_agent_performance(),
-            "model_health": model_orchestrator.get_health_summary(),
-            "agents": {
-                "gemini-3-pro": {
-                    "role": "Design Agent",
-                    "capabilities": ["design_research", "web_grounding", "visual_trends"]
-                },
-                "claude-opus": {
-                    "role": "Architect",
-                    "capabilities": ["architecture", "judgment", "code_review"]
-                },
-                "claude-sonnet": {
-                    "role": "Builder/QA",
-                    "capabilities": ["code_generation", "code_review", "conversation"]
-                }
-            }
+            "agent_health": model_orchestrator.get_health_summary(),
+            "pipeline": ["design_agent", "architect_agent", "coding_agent", "qa_agent", "review_agent"],
+            "agents": agents_info
         }
     )
