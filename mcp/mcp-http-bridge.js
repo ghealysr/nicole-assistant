@@ -12,6 +12,38 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const { readdir, readFile, stat } = require('fs').promises;
 const { join } = require('path');
+const puppeteer = require('puppeteer');
+
+// Puppeteer browser instance (lazy loaded)
+let browser = null;
+let currentPage = null;
+
+async function getBrowser() {
+  if (!browser) {
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
+    });
+    console.log('[Puppeteer] Browser launched');
+  }
+  return browser;
+}
+
+async function getPage() {
+  const b = await getBrowser();
+  if (!currentPage || currentPage.isClosed()) {
+    currentPage = await b.newPage();
+    await currentPage.setViewport({ width: 1280, height: 800 });
+    console.log('[Puppeteer] New page created');
+  }
+  return currentPage;
+}
 
 const app = express();
 app.use(express.json());
@@ -191,6 +223,48 @@ const TOOLS = [
       required: ['prompt']
     },
     server: 'recraft'
+  },
+  {
+    name: 'puppeteer_navigate',
+    description: 'Navigate to a URL using a headless browser. Use this before taking screenshots.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL to navigate to'
+        },
+        waitUntil: {
+          type: 'string',
+          enum: ['load', 'domcontentloaded', 'networkidle0', 'networkidle2'],
+          description: 'When to consider navigation complete (default: networkidle2)',
+          default: 'networkidle2'
+        }
+      },
+      required: ['url']
+    },
+    server: 'puppeteer'
+  },
+  {
+    name: 'puppeteer_screenshot',
+    description: 'Take a screenshot of the current page. Must navigate first with puppeteer_navigate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fullPage: {
+          type: 'boolean',
+          description: 'Capture full scrollable page (default: false)',
+          default: false
+        },
+        type: {
+          type: 'string',
+          enum: ['png', 'jpeg', 'webp'],
+          description: 'Image format (default: png)',
+          default: 'png'
+        }
+      }
+    },
+    server: 'puppeteer'
   }
 ];
 
@@ -411,6 +485,76 @@ async function executeRecraftGenerateImage(args) {
   }
 }
 
+// Puppeteer executors
+async function executePuppeteerNavigate(args) {
+  const { url, waitUntil = 'networkidle2' } = args;
+  
+  if (!url) {
+    throw new Error('URL is required');
+  }
+  
+  try {
+    const page = await getPage();
+    console.log(`[Puppeteer] Navigating to: ${url}`);
+    
+    await page.goto(url, {
+      waitUntil,
+      timeout: 30000
+    });
+    
+    const title = await page.title();
+    
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        url,
+        title,
+        message: `Navigated to ${url}`
+      })
+    }];
+  } catch (error) {
+    throw new Error(`Navigation failed: ${error.message}`);
+  }
+}
+
+async function executePuppeteerScreenshot(args) {
+  const { fullPage = false, type = 'png' } = args;
+  
+  try {
+    const page = await getPage();
+    
+    if (!page.url() || page.url() === 'about:blank') {
+      throw new Error('No page loaded. Use puppeteer_navigate first.');
+    }
+    
+    console.log(`[Puppeteer] Taking screenshot (fullPage: ${fullPage}, type: ${type})`);
+    
+    const screenshot = await page.screenshot({
+      encoding: 'base64',
+      fullPage,
+      type
+    });
+    
+    const url = page.url();
+    const title = await page.title();
+    
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        data: screenshot,
+        url,
+        title,
+        format: type,
+        fullPage
+      })
+    }];
+  } catch (error) {
+    throw new Error(`Screenshot failed: ${error.message}`);
+  }
+}
+
 const TOOL_EXECUTORS = {
   'brave_web_search': executeBraveSearch,
   'read_file': executeReadFile,
@@ -421,7 +565,9 @@ const TOOL_EXECUTORS = {
   'notion_update_page': executeNotionUpdatePage,
   'notion_query_database': executeNotionQueryDatabase,
   'notion_create_database_item': executeNotionCreateDatabaseItem,
-  'recraft_generate_image': executeRecraftGenerateImage
+  'recraft_generate_image': executeRecraftGenerateImage,
+  'puppeteer_navigate': executePuppeteerNavigate,
+  'puppeteer_screenshot': executePuppeteerScreenshot
 };
 
 
@@ -530,8 +676,21 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('Shutting down MCP HTTP Bridge...');
+  if (browser) {
+    await browser.close();
+    console.log('[Puppeteer] Browser closed');
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('Shutting down MCP HTTP Bridge...');
+  if (browser) {
+    await browser.close();
+    console.log('[Puppeteer] Browser closed');
+  }
   process.exit(0);
 });
 
