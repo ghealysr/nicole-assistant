@@ -110,8 +110,9 @@ function extractImagesFromText(text: string): string[] {
   const cloudinaryMatches = text.match(cloudinaryPattern) || [];
   const imageMatches = text.match(genericImagePattern) || [];
   
-  // Dedupe and return
-  return [...new Set([...cloudinaryMatches, ...imageMatches])];
+  // Dedupe and return using Array.from for TypeScript compatibility
+  const allMatches = [...cloudinaryMatches, ...imageMatches];
+  return Array.from(new Set(allMatches));
 }
 
 // ============================================================================
