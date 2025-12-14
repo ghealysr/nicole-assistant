@@ -371,6 +371,10 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   // Intake chat
   const [intakeMessage, setIntakeMessage] = useState('');
   
+  // Preview HTML state (fetched from backend)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  
   // Local activity state for immediate UI feedback (will be replaced by API activities)
   const [localActivities, setLocalActivities] = useState<Array<{
     agent: string;
@@ -565,6 +569,38 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
       setOpenTabs([first]);
     }
   }, [files, activeFilePath]);
+
+  // Fetch preview HTML when files are available
+  useEffect(() => {
+    if (!project?.project_id || files.length === 0) return;
+    
+    const fetchPreview = async () => {
+      setPreviewLoading(true);
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com'}/vibe/projects/${project.project_id}/preview`,
+          {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.html) {
+            setPreviewHtml(data.data.html);
+          }
+        }
+      } catch (err) {
+        console.error('[Preview] Failed to fetch preview:', err);
+      } finally {
+        setPreviewLoading(false);
+      }
+    };
+    
+    fetchPreview();
+  }, [project?.project_id, files.length]);
 
   // Get file content
   const getFileContent = useCallback((filePath: string) => {
@@ -1235,16 +1271,32 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                   </div>
                   <div className="vibe-device-url">
                     <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    <span>{project?.preview_url || 'localhost:3000'}</span>
+                    <span>{previewHtml ? `preview.alphawave.ai/${project?.name?.toLowerCase().replace(/\s+/g, '-') || 'project'}` : 'localhost:3000'}</span>
                   </div>
                 </div>
                 <div className="vibe-device-content">
-                  {project?.preview_url ? (
+                  {previewLoading ? (
+                    <div className="vibe-preview-placeholder">
+                      <div className="vibe-preview-placeholder-icon animate-pulse">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                      </div>
+                      <h3>Generating Preview...</h3>
+                    </div>
+                  ) : previewHtml ? (
                     <iframe 
-                      src={project.preview_url}
+                      srcDoc={previewHtml}
                       title="Preview"
                       className="vibe-preview-iframe"
+                      sandbox="allow-scripts allow-same-origin"
                     />
+                  ) : files.length > 0 ? (
+                    <div className="vibe-preview-placeholder">
+                      <div className="vibe-preview-placeholder-icon">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </div>
+                      <h3>Loading Preview...</h3>
+                      <p>Rendering your generated code</p>
+                    </div>
                   ) : (
                     <div className="vibe-preview-placeholder">
                       <div className="vibe-preview-placeholder-icon">

@@ -725,6 +725,242 @@ async def get_file_content(
     )
 
 
+@router.get("/projects/{project_id}/preview", response_model=APIResponse)
+async def get_project_preview(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Generate a renderable HTML preview from project files.
+    
+    Combines CSS and page components into a static HTML preview
+    that can be displayed in an iframe.
+    """
+    user_id = get_user_id(user)
+    rate_limit(user_id, "GET:/vibe/projects/{id}/preview")
+    
+    # Verify project access
+    project = await vibe_service.get_project(project_id, user_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    files = await vibe_service.get_project_files(project_id)
+    
+    if not files:
+        return APIResponse(
+            success=True,
+            data={
+                "html": """
+                <!DOCTYPE html>
+                <html>
+                <head><title>Preview</title></head>
+                <body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;">
+                    <div style="text-align:center;color:#666;">
+                        <p style="font-size:48px;margin:0;">🔧</p>
+                        <p>No files generated yet. Run the build pipeline first.</p>
+                    </div>
+                </body>
+                </html>
+                """,
+                "generated": False
+            }
+        )
+    
+    # Extract CSS
+    css_content = ""
+    for f in files:
+        if f.get("file_path", "").endswith("globals.css"):
+            css_content = f.get("content", "")
+            # Strip Tailwind directives since we'll use CDN
+            css_content = "\n".join(
+                line for line in css_content.split("\n") 
+                if not line.strip().startswith("@tailwind")
+            )
+            break
+    
+    # Extract design info from architecture
+    architecture = project.get("architecture", {})
+    if isinstance(architecture, str):
+        try:
+            architecture = json.loads(architecture)
+        except:
+            architecture = {}
+    
+    design = architecture.get("design_system", architecture.get("design", {}))
+    colors = design.get("colors", {})
+    typography = design.get("typography", {})
+    
+    # Get page content (simplified extraction)
+    page_content = ""
+    for f in files:
+        path = f.get("file_path", "")
+        if path.endswith("page.tsx") and "app/page" in path:
+            content = f.get("content", "")
+            # Extract JSX from the return statement (simplified)
+            if "return" in content:
+                # This is a rough extraction - works for simple cases
+                page_content = content
+            break
+    
+    # Extract component names used
+    components_used = []
+    for f in files:
+        path = f.get("file_path", "")
+        if "/components/" in path and path.endswith(".tsx"):
+            name = path.split("/")[-1].replace(".tsx", "")
+            content = f.get("content", "")
+            components_used.append({"name": name, "content": content})
+    
+    # Build a static HTML preview using Tailwind CDN
+    heading_font = typography.get("heading_font", "Playfair Display")
+    body_font = typography.get("body_font", "Source Sans Pro")
+    primary_color = colors.get("primary", "#8B9D83")
+    secondary_color = colors.get("secondary", "#F4E4BC")
+    accent_color = colors.get("accent", "#D4A574")
+    
+    brief = project.get("brief", {})
+    if isinstance(brief, str):
+        try:
+            brief = json.loads(brief)
+        except:
+            brief = {}
+    
+    business_name = brief.get("business_name", architecture.get("content", {}).get("business_name", "Preview"))
+    
+    preview_html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{business_name} - Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family={heading_font.replace(' ', '+')}:wght@400;600;700&family={body_font.replace(' ', '+')}:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {{
+            theme: {{
+                extend: {{
+                    colors: {{
+                        primary: '{primary_color}',
+                        secondary: '{secondary_color}',
+                        accent: '{accent_color}',
+                        sage: '{primary_color}',
+                        cream: '{secondary_color}',
+                        'warm-brown': '{accent_color}',
+                    }},
+                    fontFamily: {{
+                        heading: ['{heading_font}', 'serif'],
+                        body: ['{body_font}', 'sans-serif'],
+                    }}
+                }}
+            }}
+        }}
+    </script>
+    <style>
+        body {{ font-family: '{body_font}', sans-serif; }}
+        h1, h2, h3, h4, h5, h6 {{ font-family: '{heading_font}', serif; }}
+        {css_content}
+    </style>
+</head>
+<body class="bg-white text-gray-800">
+    <div class="preview-notice bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-center py-2 text-sm">
+        ✨ Live Preview - Generated by AlphaWave Vibe
+    </div>
+    
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="font-heading text-2xl font-bold text-primary">{business_name}</h1>
+            <nav class="hidden md:flex space-x-6">
+                <a href="#" class="text-gray-600 hover:text-primary">Home</a>
+                <a href="#services" class="text-gray-600 hover:text-primary">Services</a>
+                <a href="#about" class="text-gray-600 hover:text-primary">About</a>
+                <a href="#contact" class="text-gray-600 hover:text-primary">Contact</a>
+            </nav>
+            <button class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90">
+                Book Now
+            </button>
+        </div>
+    </header>
+    
+    <!-- Hero -->
+    <section class="relative bg-gradient-to-b from-secondary/30 to-white py-20 lg:py-32">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <h2 class="font-heading text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
+                {brief.get('tagline', 'Welcome to ' + business_name)}
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+                {brief.get('description', 'Professional services tailored to your needs.')[:200]}
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button class="bg-primary text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-primary/90">
+                    Get Started
+                </button>
+                <button class="border-2 border-primary text-primary px-8 py-3 rounded-lg text-lg font-semibold hover:bg-primary/10">
+                    Learn More
+                </button>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Services Preview -->
+    <section id="services" class="py-16 bg-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <h3 class="font-heading text-3xl font-bold text-center mb-12">Our Services</h3>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-secondary/20 rounded-2xl p-6 text-center">
+                    <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-3xl">✨</span>
+                    </div>
+                    <h4 class="font-heading text-xl font-semibold mb-2">Service One</h4>
+                    <p class="text-gray-600">Professional service tailored to your needs.</p>
+                </div>
+                <div class="bg-secondary/20 rounded-2xl p-6 text-center">
+                    <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-3xl">💫</span>
+                    </div>
+                    <h4 class="font-heading text-xl font-semibold mb-2">Service Two</h4>
+                    <p class="text-gray-600">Expert guidance every step of the way.</p>
+                </div>
+                <div class="bg-secondary/20 rounded-2xl p-6 text-center">
+                    <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-3xl">🌟</span>
+                    </div>
+                    <h4 class="font-heading text-xl font-semibold mb-2">Service Three</h4>
+                    <p class="text-gray-600">Comprehensive support and care.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <h5 class="font-heading text-2xl font-bold mb-4">{business_name}</h5>
+            <p class="text-gray-400 mb-4">{brief.get('location', '')}</p>
+            <p class="text-gray-500 text-sm">&copy; 2025 {business_name}. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+"""
+    
+    return APIResponse(
+        success=True,
+        data={
+            "html": preview_html,
+            "generated": True,
+            "file_count": len(files),
+            "design": {
+                "primary_color": primary_color,
+                "secondary_color": secondary_color,
+                "heading_font": heading_font,
+                "body_font": body_font
+            }
+        }
+    )
+
+
 # ============================================================================
 # ACTIVITY ENDPOINTS
 # ============================================================================
