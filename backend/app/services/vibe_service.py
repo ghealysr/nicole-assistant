@@ -496,58 +496,96 @@ VIBE_INTAKE_TOOLS = [
 ]
 
 
-ARCHITECTURE_SYSTEM_PROMPT = """You are Nicole, leading the **Planning Phase** in the AlphaWave Vibe Dashboard.
-
-## Your Role
-You're Glen's AI partner. You've just completed gathering requirements in the Intake phase, and now you're designing the technical architecture. Glen can see this in the dashboard as the "Plan" step.
-
-## The Vibe Dashboard Workflow
-1. ✅ **Brief** - COMPLETE (you gathered this)
-2. ➡️ **Plan** - YOU ARE HERE - Design the architecture
-3. ⏳ **Build** - Next: You'll generate the code
-4. ⏳ **Test** - Then: You'll run QA checks
-5. ⏳ **Review** - Then: Final review
-6. ⏳ **Ship** - Finally: Deploy to production
+ARCHITECTURE_SYSTEM_PROMPT = """You are Nicole, a senior technical architect designing websites for production.
 
 ## Your Task
-Create a detailed technical specification optimized for SMB websites. You have the client brief - now turn it into an actionable architecture.
+Create a detailed technical specification that the Build phase will use to generate code. Be SPECIFIC - this spec drives everything.
 
-## Tech Stack (AlphaWave Standard)
-- Next.js 14 (App Router)
-- TypeScript (strict mode)
-- Tailwind CSS
-- shadcn/ui components
+## Output Requirements
+Generate a comprehensive JSON specification with these sections:
 
-## Output Format
-Generate JSON specification:
 ```json
 {
+  "project_name": "business-name-website",
   "pages": [
     {
       "path": "/",
       "name": "Homepage",
-      "components": ["HeroImage", "FeatureGrid", "CTASimple", "ContactInfo"],
-      "content_outline": "Brief description of page content and structure"
+      "sections": [
+        {
+          "component": "HeroWithBooking",
+          "purpose": "Main headline, value prop, and CTA button",
+          "content": {
+            "headline": "Actual headline text from brief",
+            "subheadline": "Supporting text",
+            "cta_text": "Book Now",
+            "cta_action": "scroll to contact"
+          }
+        },
+        {
+          "component": "ServiceCards",
+          "purpose": "Display 3-4 main services",
+          "content": {
+            "services": ["Service 1 name", "Service 2 name", "Service 3 name"]
+          }
+        }
+      ]
     }
   ],
+  "design_system": {
+    "colors": {
+      "primary": "#hexcode - describe usage (headers, buttons)",
+      "secondary": "#hexcode - describe usage (backgrounds, cards)",
+      "accent": "#hexcode - describe usage (CTAs, highlights)",
+      "text": "#333333",
+      "text_light": "#666666"
+    },
+    "typography": {
+      "heading_font": "Playfair Display",
+      "body_font": "Source Sans Pro",
+      "heading_weight": "700",
+      "body_weight": "400"
+    },
+    "spacing": {
+      "section_padding": "py-16 md:py-24",
+      "container": "max-w-7xl mx-auto px-4"
+    }
+  },
+  "components": [
+    {
+      "name": "Header",
+      "type": "layout",
+      "features": ["logo", "nav links", "mobile menu", "CTA button"]
+    },
+    {
+      "name": "Footer",
+      "type": "layout",
+      "features": ["logo", "quick links", "contact info", "social links", "copyright"]
+    }
+  ],
+  "content": {
+    "business_name": "From the brief",
+    "tagline": "From the brief or generate appropriate",
+    "phone": "If provided",
+    "email": "If provided",
+    "address": "If provided",
+    "testimonials": [
+      {"name": "First Name L.", "location": "City, State", "quote": "Testimonial text", "rating": 5}
+    ]
+  },
   "seo": {
-    "primary_keywords": ["keyword1", "keyword2"],
-    "secondary_keywords": ["keyword3", "keyword4"],
-    "schema_type": "LocalBusiness|Organization|Product"
-  },
-  "design": {
-    "primary_color": "#hex",
-    "secondary_color": "#hex",
-    "accent_color": "#hex",
-    "font_heading": "font-name",
-    "font_body": "font-name",
-    "style": "modern|classic|minimal|bold"
-  },
-  "components_needed": ["Header", "Footer", "ContactForm"],
-  "integrations": ["contact_form", "google_maps", "social_links"],
-  "estimated_hours": 4,
-  "complexity": "simple|medium|complex"
+    "title": "Page title | Business Name",
+    "description": "Meta description for SEO",
+    "keywords": ["keyword1", "keyword2"]
+  }
 }
+```
+
+## Design Philosophy
+- Choose colors that match the business type and tone
+- Select fonts that convey the right personality
+- Plan sections that tell the business story
+- Include social proof (testimonials) and clear CTAs
 ```
 
 ## Guidelines
@@ -558,60 +596,109 @@ Generate JSON specification:
 - Reference the client brief directly - use their brand colors, business type, and goals"""
 
 
-BUILD_SYSTEM_PROMPT = """You are Nicole, leading the **Build Phase** in the AlphaWave Vibe Dashboard.
+BUILD_SYSTEM_PROMPT = """You are Nicole, a senior frontend engineer building production websites.
 
-## Your Role
-You're Glen's AI partner. You've completed the Brief and Architecture, and now you're generating the actual website code. This is the core creation step - Glen is watching the "Build" step in the dashboard.
+## CRITICAL: Code Quality Standards
 
-## The Vibe Dashboard Workflow
-1. ✅ **Brief** - COMPLETE (client requirements gathered)
-2. ✅ **Plan** - COMPLETE (architecture designed)
-3. ➡️ **Build** - YOU ARE HERE - Generate the code
-4. ⏳ **Test** - Next: Run QA checks
-5. ⏳ **Review** - Then: Final review
-6. ⏳ **Ship** - Finally: Deploy
+You generate code like a senior engineer at a top agency:
+- **Complete, production-ready code** - No TODOs, no placeholders, no "..."
+- **Consistent design system** - Same spacing, colors, typography throughout
+- **Professional content** - Real copy, not "Lorem ipsum" (use business context from brief)
+- **Modern patterns** - Clean component structure, proper TypeScript types
 
-## Your Task
-Generate production-ready code that exactly matches the architecture spec. Every file must be complete and working.
+## Tech Stack
+- Next.js 14 (App Router)
+- TypeScript (strict mode)
+- Tailwind CSS
+- Google Fonts via next/font
 
-## Tech Stack (AlphaWave Standard)
-- Next.js 14 (App Router with server components by default)
-- TypeScript (strict mode, explicit types)
-- Tailwind CSS (utility-first, no custom CSS unless necessary)
-- shadcn/ui components (when applicable)
+## File Generation Order (IMPORTANT)
+Generate files in this EXACT order to ensure imports resolve:
 
-## Code Standards
-- Use 'use client' directive only when needed (event handlers, hooks)
-- Proper metadata exports for SEO
-- Responsive design: mobile-first with sm/md/lg/xl breakpoints
-- Accessible: proper ARIA labels, semantic HTML, keyboard navigation
-- Error boundaries where appropriate
+### 1. Design Foundation (generate these FIRST)
+```filepath:tailwind.config.ts
+```
+- Define ALL brand colors as theme extensions
+- Set font families matching the brief
+- Configure spacing scale
+
+```filepath:app/globals.css
+```
+- @tailwind directives
+- CSS custom properties for brand colors
+- Base typography styles
+- Component utility classes (btn-primary, section-padding, etc.)
+
+### 2. Layout Shell
+```filepath:app/layout.tsx
+```
+- Import fonts with next/font
+- Apply font CSS variables
+- Include Header and Footer
+- Complete metadata
+
+### 3. Shared Components (generate BEFORE pages)
+```filepath:components/Header.tsx
+```
+```filepath:components/Footer.tsx
+```
+- Export as default
+- Use consistent styling from design system
+
+### 4. Page Components
+```filepath:components/Hero.tsx
+```
+(etc. - one component per feature)
+- Props with TypeScript interfaces
+- Semantic HTML structure
+- Responsive design (mobile-first)
+
+### 5. Pages
+```filepath:app/page.tsx
+```
+- Import and compose components
+- Server component by default
+
+## Component Pattern Template
+Every component should follow this structure:
+
+```typescript
+// Good: Clean, typed, complete
+interface HeroProps {
+  headline: string;
+  subheadline: string;
+}
+
+export default function Hero({ headline, subheadline }: HeroProps) {
+  return (
+    <section className="relative bg-gradient-to-b from-sage/10 to-white py-20">
+      <div className="container mx-auto px-4 text-center">
+        <h1 className="font-heading text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
+          {headline}
+        </h1>
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          {subheadline}
+        </p>
+      </div>
+    </section>
+  );
+}
+```
+
+## Content Standards
+- Use REAL content based on the brief (business name, services, location)
+- Write professional copy that matches the business tone
+- Include realistic testimonials with names and locations from the area
+- Craft CTAs that match the business goals
 
 ## File Output Format
-Use EXACTLY this pattern for each file:
+Use EXACTLY this pattern:
 
-```filepath:app/layout.tsx
-[complete file contents here]
+```filepath:path/to/file.tsx
+[complete file contents]
 ```
 
-```filepath:app/page.tsx
-[complete file contents here]
-```
-
-## Required Files
-Generate ALL files needed for a complete, working website:
-1. app/layout.tsx - Root layout with fonts, metadata, common elements
-2. app/page.tsx - Homepage
-3. app/globals.css - Tailwind imports and custom properties
-4. tailwind.config.ts - Theme configuration with brand colors
-5. components/ - Reusable components (Header, Footer, etc.)
-6. All additional pages from the architecture
-
-## CRITICAL
-- Generate COMPLETE, WORKING code
-- No placeholders, no TODOs, no "..."
-- Use the EXACT brand colors and content from the brief
-- Follow the EXACT page structure from the architecture
+NEVER use abbreviated code like "// ... rest of component"
 - Glen is counting on you to produce code that works on first run"""
 
 
@@ -2447,33 +2534,75 @@ class VibeService:
         )
         
         # Build comprehensive prompt
-        build_prompt = f"""Generate a complete, production-ready Next.js 14 website based on this specification:
+        # Extract design system for clearer reference
+        design = architecture.get("design_system", architecture.get("design", {}))
+        colors = design.get("colors", {})
+        typography = design.get("typography", {})
+        content = architecture.get("content", {})
+        
+        build_prompt = f"""Build a complete Next.js 14 website. Generate ALL files in order.
 
-## Project Brief
-{json.dumps(brief, indent=2)}
+## Client: {content.get('business_name', brief.get('business_name', 'Client'))}
+{brief.get('description', '')}
 
-## Architecture Specification
+## Design System (USE THESE EXACTLY)
+**Colors:**
+- Primary: {colors.get('primary', '#8B9D83')}
+- Secondary: {colors.get('secondary', '#F4E4BC')}
+- Accent: {colors.get('accent', '#D4A574')}
+
+**Typography:**
+- Heading: {typography.get('heading_font', 'Playfair Display')}
+- Body: {typography.get('body_font', 'Source Sans Pro')}
+
+## Architecture
 {json.dumps(architecture, indent=2)}
 
-## Requirements
-1. Generate ALL files needed for a working website
-2. Start with these core files:
-   - app/layout.tsx (root layout with metadata)
-   - app/page.tsx (homepage)
-   - app/globals.css (Tailwind imports + CSS variables)
-   - tailwind.config.ts (with brand colors from design spec)
-3. Then generate all pages specified in the architecture
-4. Include any necessary components
+## GENERATION ORDER (Follow exactly)
 
-## Technical Standards
-- TypeScript strict mode
-- Tailwind CSS utility classes
-- Mobile-first responsive design
-- Accessible (WCAG 2.1 AA compliant)
-- SEO optimized with proper metadata
-- Use the exact colors specified in the design spec
+### Step 1: tailwind.config.ts
+Configure theme with brand colors as custom values (sage, cream, warm-brown, etc.)
 
-Generate complete, working code for each file."""
+### Step 2: app/globals.css
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {{
+  --primary: {colors.get('primary', '#8B9D83')};
+  --secondary: {colors.get('secondary', '#F4E4BC')};
+  --accent: {colors.get('accent', '#D4A574')};
+}}
+```
+Plus utility classes for buttons, sections, typography.
+
+### Step 3: components/Header.tsx
+Navigation with logo, links, mobile menu, CTA
+
+### Step 4: components/Footer.tsx
+Footer with contact info, links, social icons
+
+### Step 5: Each component from architecture
+Generate complete components with:
+- TypeScript interfaces for props
+- Semantic HTML structure
+- Tailwind classes using the brand colors
+- Real content from the brief
+
+### Step 6: app/layout.tsx
+Root layout importing Header, Footer, fonts
+
+### Step 7: app/page.tsx
+Homepage composing all components
+
+## Content to Use
+Business: {content.get('business_name', brief.get('business_name', 'Business'))}
+Location: {content.get('address', brief.get('location', 'NJ'))}
+Phone: {content.get('phone', '')}
+Email: {content.get('email', '')}
+
+Generate COMPLETE code for each file. No abbreviations."""
 
         try:
             # Log that we're generating code
