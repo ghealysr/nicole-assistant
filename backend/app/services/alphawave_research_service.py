@@ -396,13 +396,12 @@ Respond ONLY with valid JSON, no markdown code blocks."""
             await db.execute(
                 """
                 INSERT INTO research_results (
-                    request_id, raw_response, sources, images, created_at
-                ) VALUES ($1, $2, $3, $4, NOW())
+                    request_id, raw_gemini_output, sources, created_at
+                ) VALUES ($1, $2, $3, NOW())
                 """,
                 request_id,
                 json.dumps(results, default=str),
-                json.dumps(results.get("sources", [])),
-                json.dumps([])  # Images captured separately
+                json.dumps(results.get("sources", []))
             )
         except Exception as e:
             logger.error(f"[RESEARCH] Failed to store raw results: {e}")
@@ -462,7 +461,7 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                 SELECT 
                     rr.id, rr.type, rr.query, rr.status, rr.created_at, rr.completed_at,
                     rep.executive_summary, rep.findings, rep.recommendations, rep.artifact_html,
-                    res.raw_response, res.sources
+                    res.raw_gemini_output, res.sources
                 FROM research_requests rr
                 LEFT JOIN research_reports rep ON rep.request_id = rr.id
                 LEFT JOIN research_results res ON res.request_id = rr.id

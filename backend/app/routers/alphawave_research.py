@@ -132,13 +132,13 @@ async def get_research_history(
     Returns list of recent research requests with basic metadata.
     """
     try:
-        from app.database import db_manager
+        from app.database import db
         
         query = """
             SELECT 
                 id as request_id,
                 query,
-                research_type,
+                type as research_type,
                 status,
                 created_at,
                 completed_at
@@ -148,8 +148,7 @@ async def get_research_history(
             LIMIT $2
         """
         
-        async with db_manager.pool.acquire() as conn:
-            rows = await conn.fetch(query, user.user_id, limit)
+        rows = await db.fetch(query, user.user_id, limit)
         
         history = [
             {
