@@ -187,9 +187,9 @@ class ActivityType(str, Enum):
 
 # API Cost estimates (per 1K tokens)
 MODEL_COSTS = {
-    "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
-    "claude-opus-4-20250514": {"input": 0.015, "output": 0.075},
-    "claude-haiku-4-20250514": {"input": 0.00025, "output": 0.00125},
+    "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+    "claude-opus-4-5-20251101": {"input": 0.015, "output": 0.075},
+    "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
 }
 
 
@@ -887,7 +887,7 @@ class ConcurrencyError(VibeServiceError):
 
 def estimate_api_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal:
     """Estimate API cost for a Claude call."""
-    costs = MODEL_COSTS.get(model, MODEL_COSTS["claude-sonnet-4-20250514"])
+    costs = MODEL_COSTS.get(model, MODEL_COSTS["claude-sonnet-4-5-20250929"])
     # Use Decimal throughout to avoid Decimal * float error
     input_cost = Decimal(str(costs["input"])) * Decimal(str(input_tokens)) / Decimal("1000")
     output_cost = Decimal(str(costs["output"])) * Decimal(str(output_tokens)) / Decimal("1000")
@@ -1021,9 +1021,9 @@ class VibeService:
     - Lessons learning system
     """
     
-    # Model configuration
-    SONNET_MODEL = "claude-sonnet-4-20250514"
-    OPUS_MODEL = "claude-opus-4-20250514"
+    # Model configuration - Latest Claude versions
+    SONNET_MODEL = "claude-sonnet-4-5-20250929"
+    OPUS_MODEL = "claude-opus-4-5-20251101"
     
     def __init__(self):
         """Initialize the Vibe service."""

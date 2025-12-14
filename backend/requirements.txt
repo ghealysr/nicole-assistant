@@ -99,7 +99,7 @@ anthropic>=0.45.0
 # REQUIRES: httpx>=0.27.0 for proxy kwarg support
 # REQUIRES: >=0.45.0 for extended thinking feature (thinking parameter)
 # Used for: Primary LLM (chat, agent routing, reasoning, content generation)
-# Models: claude-sonnet-4-5-20250929, claude-haiku-4-5-20250514
+# Models: claude-sonnet-4-5-20250929, claude-haiku-4-5-20251001, claude-opus-4-5-20251101
 # Features: Streaming responses, function calling, vision, extended thinking
 
 openai==1.54.3

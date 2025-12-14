@@ -583,7 +583,7 @@ AGENT_DEFINITIONS: Dict[AgentRole, AgentDefinition] = {
     AgentRole.ARCHITECT: AgentDefinition(
         role=AgentRole.ARCHITECT,
         display_name="Architect Agent",
-        model="claude-opus-4-20250514",  # Best for complex reasoning
+        model="claude-opus-4-5-20251101",  # Best for complex reasoning
         emoji="🏗️",
         capabilities=[
             "System architecture design",
@@ -603,7 +603,7 @@ AGENT_DEFINITIONS: Dict[AgentRole, AgentDefinition] = {
     AgentRole.CODING: AgentDefinition(
         role=AgentRole.CODING,
         display_name="Coding Agent",
-        model="claude-sonnet-4-20250514",  # Best for fast, accurate code
+        model="claude-sonnet-4-5-20250929",  # Best for fast, accurate code
         emoji="💻",
         capabilities=[
             "Next.js 14 implementation",
@@ -623,7 +623,7 @@ AGENT_DEFINITIONS: Dict[AgentRole, AgentDefinition] = {
     AgentRole.QA: AgentDefinition(
         role=AgentRole.QA,
         display_name="QA Agent",
-        model="claude-sonnet-4-20250514",  # Good at systematic review
+        model="claude-sonnet-4-5-20250929",  # Good at systematic review
         emoji="🔍",
         capabilities=[
             "Code quality review",
@@ -643,7 +643,7 @@ AGENT_DEFINITIONS: Dict[AgentRole, AgentDefinition] = {
     AgentRole.REVIEW: AgentDefinition(
         role=AgentRole.REVIEW,
         display_name="Review Agent",
-        model="claude-opus-4-20250514",  # Best for judgment calls
+        model="claude-opus-4-5-20251101",  # Best for judgment calls
         emoji="✨",
         capabilities=[
             "Executive review",

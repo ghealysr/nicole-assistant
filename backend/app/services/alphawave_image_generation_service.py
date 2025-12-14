@@ -296,7 +296,7 @@ Rules:
 
         try:
             response = await self.anthropic.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-5-20250929",
                 max_tokens=300,
                 system=system,
                 messages=[{"role": "user", "content": original_prompt}],
