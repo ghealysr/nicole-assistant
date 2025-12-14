@@ -1,16 +1,27 @@
 """
 Multi-Model Orchestrator for AlphaWave Vibe
 
-Implements Anthropic-style model orchestration with intelligent routing:
+Implements Anthropic-style agent orchestration with Nicole as the authority:
 
-- Gemini 2.0 Flash: Design research, visual trends, color theory, inspiration
-- Claude Opus: Architecture, complex reasoning, quality judgment
-- Claude Sonnet: Fast code generation, QA validation
+AGENT HIERARCHY:
+┌─────────────────────────────────────────────────────────────────┐
+│                       NICOLE (Authority)                        │
+│                    Orchestrates all agents                      │
+├─────────────────┬─────────────────┬─────────────────────────────┤
+│   GEMINI 3 PRO  │  CLAUDE OPUS    │     CLAUDE SONNET          │
+│   Design Agent  │  Architect      │     Builder/QA             │
+├─────────────────┼─────────────────┼─────────────────────────────┤
+│ • Web Research  │ • Architecture  │ • Code Generation          │
+│ • Design Trends │ • System Design │ • QA Validation            │
+│ • Color Theory  │ • Final Review  │ • Fast Iteration           │
+│ • Visual Ideas  │ • Judgment      │ • Pattern Matching         │
+└─────────────────┴─────────────────┴─────────────────────────────┘
 
 Fallback Strategy:
 - If primary model fails, gracefully degrade to backup
 - Track model health and adjust routing dynamically
 - Provide user-friendly error messages
+- Nicole maintains authority and oversight at all times
 
 Author: AlphaWave Architecture
 """
@@ -93,6 +104,133 @@ class DesignSystem:
     generated_by: str = "gemini"
 
 
+@dataclass
+class AgentTask:
+    """A task assigned by Nicole to an agent."""
+    task_id: str
+    agent: str  # "gemini-3-pro", "claude-opus", "claude-sonnet"
+    task_type: str  # "design", "architecture", "build", "qa", "review"
+    description: str
+    started_at: datetime = field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+    status: str = "pending"  # pending, running, completed, failed
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class NicoleAgentAuthority:
+    """
+    Nicole's authority over the agent team.
+    
+    Nicole orchestrates all agents and maintains oversight:
+    - Assigns tasks to appropriate agents
+    - Reviews agent output for quality
+    - Intervenes when agents produce subpar results
+    - Tracks agent performance and adjusts accordingly
+    """
+    
+    def __init__(self):
+        self.active_tasks: Dict[str, AgentTask] = {}
+        self.task_history: List[AgentTask] = []
+        self._task_counter = 0
+    
+    def assign_task(
+        self,
+        agent: str,
+        task_type: str,
+        description: str,
+        project_id: int
+    ) -> AgentTask:
+        """Nicole assigns a task to an agent."""
+        self._task_counter += 1
+        task_id = f"task_{project_id}_{self._task_counter}"
+        
+        task = AgentTask(
+            task_id=task_id,
+            agent=agent,
+            task_type=task_type,
+            description=description,
+            status="running"
+        )
+        
+        self.active_tasks[task_id] = task
+        logger.info(f"[NICOLE] Assigned {task_type} to {agent}: {description[:50]}...")
+        
+        return task
+    
+    def complete_task(
+        self,
+        task_id: str,
+        success: bool,
+        result: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None
+    ):
+        """Mark a task as completed."""
+        task = self.active_tasks.pop(task_id, None)
+        if task:
+            task.completed_at = datetime.utcnow()
+            task.status = "completed" if success else "failed"
+            task.result = result
+            task.error = error
+            self.task_history.append(task)
+            
+            duration = (task.completed_at - task.started_at).total_seconds()
+            logger.info(
+                f"[NICOLE] Task {task_id} {'completed' if success else 'failed'} "
+                f"by {task.agent} in {duration:.1f}s"
+            )
+    
+    def get_agent_performance(self) -> Dict[str, Dict[str, Any]]:
+        """Get performance metrics for each agent."""
+        metrics: Dict[str, Dict[str, Any]] = {}
+        
+        for task in self.task_history:
+            if task.agent not in metrics:
+                metrics[task.agent] = {
+                    "total_tasks": 0,
+                    "successful": 0,
+                    "failed": 0,
+                    "avg_duration": 0.0,
+                    "durations": []
+                }
+            
+            m = metrics[task.agent]
+            m["total_tasks"] += 1
+            if task.status == "completed":
+                m["successful"] += 1
+            else:
+                m["failed"] += 1
+            
+            if task.completed_at:
+                duration = (task.completed_at - task.started_at).total_seconds()
+                m["durations"].append(duration)
+        
+        # Calculate averages
+        for agent, m in metrics.items():
+            if m["durations"]:
+                m["avg_duration"] = sum(m["durations"]) / len(m["durations"])
+            del m["durations"]  # Don't expose raw list
+        
+        return metrics
+    
+    def get_active_tasks(self) -> List[Dict[str, Any]]:
+        """Get currently active tasks for all agents."""
+        return [
+            {
+                "task_id": t.task_id,
+                "agent": t.agent,
+                "task_type": t.task_type,
+                "description": t.description,
+                "running_for": (datetime.utcnow() - t.started_at).total_seconds()
+            }
+            for t in self.active_tasks.values()
+        ]
+
+
+# Global Nicole authority instance
+nicole_authority = NicoleAgentAuthority()
+
+
 class ModelOrchestrator:
     """
     Orchestrates multi-model AI workflow for Vibe Dashboard.
@@ -104,9 +242,9 @@ class ModelOrchestrator:
     4. Provide clear observability into model decisions
     """
     
-    # Model capability mapping
+    # Model capability mapping - Gemini 3 Pro for advanced design
     MODEL_CAPABILITIES = {
-        "gemini-2.0-flash": [
+        "gemini-3-pro": [
             ModelCapability.DESIGN_RESEARCH,
             ModelCapability.WEB_GROUNDING,
         ],
@@ -124,10 +262,10 @@ class ModelOrchestrator:
     
     # Fallback chains for each capability
     FALLBACK_CHAINS = {
-        ModelCapability.DESIGN_RESEARCH: ["gemini-2.0-flash", "claude-opus"],
-        ModelCapability.WEB_GROUNDING: ["gemini-2.0-flash", "claude-sonnet"],
+        ModelCapability.DESIGN_RESEARCH: ["gemini-3-pro", "claude-opus"],
+        ModelCapability.WEB_GROUNDING: ["gemini-3-pro", "claude-sonnet"],
         ModelCapability.ARCHITECTURE: ["claude-opus", "claude-sonnet"],
-        ModelCapability.CODE_GENERATION: ["claude-sonnet", "gemini-2.0-flash"],
+        ModelCapability.CODE_GENERATION: ["claude-sonnet", "gemini-3-pro"],
         ModelCapability.CODE_REVIEW: ["claude-sonnet", "claude-opus"],
         ModelCapability.JUDGMENT: ["claude-opus", "claude-sonnet"],
         ModelCapability.CONVERSATION: ["claude-sonnet", "claude-opus"],
@@ -136,7 +274,7 @@ class ModelOrchestrator:
     def __init__(self):
         """Initialize orchestrator with model health tracking."""
         self.model_health: Dict[str, ModelHealth] = {
-            "gemini-2.0-flash": ModelHealth("gemini-2.0-flash"),
+            "gemini-3-pro": ModelHealth("gemini-3-pro"),
             "claude-opus": ModelHealth("claude-opus"),
             "claude-sonnet": ModelHealth("claude-sonnet"),
         }
@@ -193,27 +331,44 @@ class ModelOrchestrator:
         project_id: int
     ) -> DesignSystem:
         """
-        Generate a design system using Gemini's creative and research capabilities.
+        Generate a design system using Gemini 3 Pro's creative and research capabilities.
         
-        Gemini excels at:
-        - Understanding visual trends via web grounding
-        - Creative color palette generation
-        - Typography recommendations based on industry
-        - Modern design pattern suggestions
+        Nicole assigns this task to Gemini 3 Pro because it excels at:
+        - Understanding visual trends via web grounding (real-time search)
+        - Creative color palette generation based on industry research
+        - Typography recommendations based on current trends
+        - Modern design pattern suggestions with real examples
         """
         model = self.get_best_model(ModelCapability.DESIGN_RESEARCH)
         
-        if model == "gemini-2.0-flash" and self.gemini.is_configured:
-            try:
-                return await self._generate_design_with_gemini(brief, project_id)
-            except Exception as e:
-                logger.warning(f"[ORCHESTRATOR] Gemini design failed: {e}")
-                self.record_result("gemini-2.0-flash", False, str(e))
-                # Fall through to Claude fallback
+        # Nicole assigns the design task
+        task = nicole_authority.assign_task(
+            agent=model or "gemini-3-pro",
+            task_type="design",
+            description=f"Research and generate design system for {brief.get('business_name', 'project')}",
+            project_id=project_id
+        )
         
-        # Fallback to Claude for design
-        logger.info("[ORCHESTRATOR] Using Claude fallback for design system")
-        return await self._generate_design_with_claude(brief, project_id)
+        try:
+            if model == "gemini-3-pro" and self.gemini.is_configured:
+                try:
+                    result = await self._generate_design_with_gemini(brief, project_id)
+                    nicole_authority.complete_task(task.task_id, True, {"generated_by": "gemini-3-pro"})
+                    return result
+                except Exception as e:
+                    logger.warning(f"[ORCHESTRATOR] Gemini 3 Pro design failed: {e}")
+                    self.record_result("gemini-3-pro", False, str(e))
+                    # Fall through to Claude fallback
+            
+            # Fallback to Claude for design
+            logger.info("[ORCHESTRATOR] Nicole reassigning design task to Claude")
+            result = await self._generate_design_with_claude(brief, project_id)
+            nicole_authority.complete_task(task.task_id, True, {"generated_by": "claude"})
+            return result
+            
+        except Exception as e:
+            nicole_authority.complete_task(task.task_id, False, error=str(e))
+            raise
     
     async def _generate_design_with_gemini(
         self,
@@ -281,7 +436,7 @@ class ModelOrchestrator:
             research_type="general"
         )
         
-        self.record_result("gemini-2.0-flash", True)
+        self.record_result("gemini-3-pro", True)
         
         # Parse the response
         design_data = design_response.get("structured_data", {})

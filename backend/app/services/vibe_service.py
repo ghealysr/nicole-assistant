@@ -1334,17 +1334,32 @@ class VibeService:
             except Exception as e:
                 logger.warning(f"[VIBE] Cloudinary upload failed: {e}")
         
-        # Store in inspiration cache
-        if project_id not in self._inspiration_cache:
-            self._inspiration_cache[project_id] = []
-        
-        self._inspiration_cache[project_id].append({
+        # Store in inspiration cache AND database for persistence
+        inspiration_data = {
             "url": url,
             "description": description,
             "type": "screenshot" if screenshot_url else "screenshot_reference",
             "image_url": screenshot_url,
             "captured_at": datetime.now().isoformat()
-        })
+        }
+        
+        if project_id not in self._inspiration_cache:
+            self._inspiration_cache[project_id] = []
+        self._inspiration_cache[project_id].append(inspiration_data)
+        
+        # Persist to database
+        try:
+            await db.execute(
+                """
+                INSERT INTO vibe_inspirations 
+                (project_id, image_url, screenshot_url, source_site, relevance_notes, created_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+                """,
+                project_id, url, screenshot_url, url, description
+            )
+            logger.info(f"[VIBE] Inspiration saved to database for project {project_id}")
+        except Exception as e:
+            logger.warning(f"[VIBE] Failed to persist inspiration to DB: {e}")
         
         if screenshot_url:
             return {
@@ -1541,9 +1556,48 @@ class VibeService:
             }
         }
     
-    def get_project_inspirations(self, project_id: int) -> List[Dict[str, Any]]:
-        """Get saved inspirations for a project."""
-        return self._inspiration_cache.get(project_id, [])
+    async def get_project_inspirations(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get saved inspirations for a project from database and cache."""
+        # First check cache for any recent (non-persisted) inspirations
+        cached = self._inspiration_cache.get(project_id, [])
+        
+        # Load from database
+        try:
+            rows = await db.fetch(
+                """
+                SELECT id, image_url, screenshot_url, source_site, relevance_notes, created_at
+                FROM vibe_inspirations
+                WHERE project_id = $1
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                project_id
+            )
+            
+            db_inspirations = [
+                {
+                    "id": row["id"],
+                    "url": row["image_url"] or row["source_site"],
+                    "image_url": row["screenshot_url"],
+                    "description": row["relevance_notes"],
+                    "type": "screenshot" if row["screenshot_url"] else "reference",
+                    "captured_at": row["created_at"].isoformat() if row["created_at"] else None
+                }
+                for row in (rows or [])
+            ]
+            
+            # Merge with cache (cache may have items not yet in DB)
+            # Use URL as dedup key
+            seen_urls = {i.get("url") for i in db_inspirations}
+            for cached_item in cached:
+                if cached_item.get("url") not in seen_urls:
+                    db_inspirations.append(cached_item)
+            
+            return db_inspirations
+            
+        except Exception as e:
+            logger.warning(f"[VIBE] Failed to load inspirations from DB: {e}")
+            return cached
     
     # ========================================================================
     # INTERNAL HELPERS

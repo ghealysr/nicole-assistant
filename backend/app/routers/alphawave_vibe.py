@@ -678,7 +678,7 @@ async def get_project_inspirations(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    inspirations = vibe_service.get_project_inspirations(project_id)
+    inspirations = await vibe_service.get_project_inspirations(project_id)
     
     return APIResponse(
         success=True,
@@ -1317,7 +1317,7 @@ async def get_model_health(
     Get health status of AI models.
     
     Returns availability and cooldown status for all models used
-    in the Vibe pipeline (Gemini, Claude Opus, Claude Sonnet).
+    in the Vibe pipeline (Gemini 3 Pro, Claude Opus, Claude Sonnet).
     """
     from app.services.model_orchestrator import model_orchestrator
     
@@ -1327,7 +1327,44 @@ async def get_model_health(
         success=True,
         data={
             "models": health_summary,
-            "orchestrator_version": "1.0.0",
-            "strategy": "gemini_design_claude_architecture"
+            "orchestrator_version": "2.0.0",
+            "strategy": "gemini_3_pro_design_claude_architecture"
+        }
+    )
+
+
+@router.get("/agents/status", response_model=APIResponse)
+async def get_agent_status(
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get Nicole's agent orchestration status.
+    
+    Returns active tasks assigned to each agent and performance metrics.
+    Nicole maintains authority over all agents.
+    """
+    from app.services.model_orchestrator import nicole_authority, model_orchestrator
+    
+    return APIResponse(
+        success=True,
+        data={
+            "authority": "nicole",
+            "active_tasks": nicole_authority.get_active_tasks(),
+            "agent_performance": nicole_authority.get_agent_performance(),
+            "model_health": model_orchestrator.get_health_summary(),
+            "agents": {
+                "gemini-3-pro": {
+                    "role": "Design Agent",
+                    "capabilities": ["design_research", "web_grounding", "visual_trends"]
+                },
+                "claude-opus": {
+                    "role": "Architect",
+                    "capabilities": ["architecture", "judgment", "code_review"]
+                },
+                "claude-sonnet": {
+                    "role": "Builder/QA",
+                    "capabilities": ["code_generation", "code_review", "conversation"]
+                }
+            }
         }
     )
