@@ -568,6 +568,44 @@ button:focus {
   stroke: #6b7280;
 }
 
+/* Voice button active states */
+.tool-btn.voice-active {
+  background: #fee2e2;
+  animation: pulse-red 1.5s infinite;
+}
+
+.tool-btn.voice-active svg {
+  stroke: #dc2626;
+}
+
+.tool-btn.voice-processing {
+  background: #fef3c7;
+  cursor: wait;
+}
+
+.tool-btn.voice-processing svg {
+  stroke: #d97706;
+  animation: spin 1s linear infinite;
+}
+
+.tool-btn.voice-enabled {
+  background: #ddd6fe;
+}
+
+.tool-btn.voice-enabled svg {
+  stroke: #7c3aed;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Send button */
 .send-btn {
   width: 40px;

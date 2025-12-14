@@ -52,8 +52,8 @@ class SynthesizeResponse(BaseModel):
     duration_seconds: Optional[float] = None
 
 
-@router.post("/transcribe", response_model=TranscribeResponse)
-async def transcribe_audio(request: Request, body: TranscribeRequest):
+@router.post("/transcribe/url", response_model=TranscribeResponse)
+async def transcribe_audio_url(request: Request, body: TranscribeRequest):
     """
     Transcribe audio to text using Whisper.
     
@@ -117,10 +117,10 @@ async def transcribe_audio(request: Request, body: TranscribeRequest):
         raise HTTPException(status_code=500, detail="Transcription failed")
 
 
-@router.post("/transcribe/upload")
+@router.post("/transcribe")
 async def transcribe_uploaded_audio(
     request: Request,
-    file: UploadFile = File(...),
+    audio: UploadFile = File(...),
     language: Optional[str] = None
 ):
     """
@@ -140,27 +140,44 @@ async def transcribe_uploaded_audio(
         "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"
     }
     
-    if file.content_type and file.content_type not in allowed_types:
+    if audio.content_type and audio.content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported audio format: {file.content_type}"
+            detail=f"Unsupported audio format: {audio.content_type}"
         )
     
     # Check file size (25MB limit)
-    content = await file.read()
+    content = await audio.read()
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(
             status_code=400,
             detail="Audio file too large. Maximum size is 25MB"
         )
     
-    # For now, return a placeholder since we need URL-based upload
-    # In production, we'd upload to Supabase Storage and get a public URL
-    return {
-        "message": "File upload transcription requires storage integration",
-        "file_size": len(content),
-        "file_type": file.content_type
-    }
+    try:
+        import openai
+        import io
+        
+        # Use OpenAI Whisper API
+        client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        # Create a file-like object for the API
+        audio_file = io.BytesIO(content)
+        audio_file.name = audio.filename or "recording.webm"
+        
+        transcription = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            language=language or "en"
+        )
+        
+        logger.info(f"Transcribed audio for user {user_id}: {len(transcription.text)} chars")
+        
+        return {"text": transcription.text, "language": language or "en"}
+        
+    except Exception as e:
+        logger.error(f"Whisper transcription error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Transcription failed")
 
 
 @router.post("/synthesize")

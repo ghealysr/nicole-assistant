@@ -6,6 +6,10 @@ import { getStoredToken } from '@/lib/google_auth';
 import { API_URL } from '@/lib/alphawave_config';
 import { parseSlashCommand } from '@/lib/hooks/useImageGeneration';
 
+// Voice state types
+type VoiceInputState = 'idle' | 'listening' | 'processing';
+type VoiceOutputState = 'off' | 'on';
+
 /**
  * File attachment with metadata for Claude-style display.
  */
@@ -50,6 +54,13 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  
+  // Voice states
+  const [voiceInputState, setVoiceInputState] = useState<VoiceInputState>('idle');
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState<VoiceOutputState>('off');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +291,97 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
     f.status === 'uploading' || f.status === 'processing'
   );
 
+  /**
+   * Start voice recording for Whisper STT.
+   */
+  const startVoiceInput = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        setVoiceInputState('processing');
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        try {
+          const token = getStoredToken();
+          if (!token) throw new Error('Not authenticated');
+
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'recording.webm');
+
+          const response = await fetch(`${API_URL}/voice/transcribe`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.text) {
+              setContent(prev => prev + (prev ? ' ' : '') + data.text);
+            }
+          }
+        } catch (error) {
+          console.error('Transcription error:', error);
+        } finally {
+          setVoiceInputState('idle');
+          stream.getTracks().forEach(track => track.stop());
+        }
+      };
+
+      mediaRecorder.start();
+      setVoiceInputState('listening');
+    } catch (error) {
+      console.error('Microphone access error:', error);
+      setVoiceInputState('idle');
+    }
+  }, []);
+
+  /**
+   * Stop voice recording.
+   */
+  const stopVoiceInput = useCallback(() => {
+    if (mediaRecorderRef.current && voiceInputState === 'listening') {
+      mediaRecorderRef.current.stop();
+    }
+  }, [voiceInputState]);
+
+  /**
+   * Toggle voice input recording.
+   */
+  const toggleVoiceInput = useCallback(() => {
+    if (voiceInputState === 'idle') {
+      startVoiceInput();
+    } else if (voiceInputState === 'listening') {
+      stopVoiceInput();
+    }
+  }, [voiceInputState, startVoiceInput, stopVoiceInput]);
+
+  /**
+   * Toggle voice output (TTS for Nicole's responses).
+   */
+  const toggleVoiceOutput = useCallback(() => {
+    setVoiceOutputEnabled(prev => prev === 'off' ? 'on' : 'off');
+    // Store preference in localStorage
+    const newState = voiceOutputEnabled === 'off' ? 'on' : 'off';
+    localStorage.setItem('nicole_voice_output', newState);
+  }, [voiceOutputEnabled]);
+
+  // Load voice output preference on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('nicole_voice_output') as VoiceOutputState | null;
+    if (saved) setVoiceOutputEnabled(saved);
+  }, []);
+
   return (
     <div 
       className={`bg-[#F5F4ED] px-6 py-4 pb-6 shrink-0 transition-all ${
@@ -433,16 +535,38 @@ export function AlphawaveChatInput({ onSendMessage, isLoading }: AlphawaveChatIn
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
               </button>
-              <button type="button" className="tool-btn" title="Extended thinking">
+              <button 
+                type="button" 
+                className={`tool-btn ${voiceInputState === 'listening' ? 'voice-active' : ''} ${voiceInputState === 'processing' ? 'voice-processing' : ''}`}
+                title={voiceInputState === 'idle' ? 'Voice input (Whisper)' : voiceInputState === 'listening' ? 'Stop recording' : 'Processing...'}
+                onClick={toggleVoiceInput}
+                disabled={voiceInputState === 'processing'}
+              >
+                {/* Microphone icon for Whisper STT */}
                 <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
               </button>
-              <button type="button" className="tool-btn" title="Web search">
+              <button 
+                type="button" 
+                className={`tool-btn ${voiceOutputEnabled === 'on' ? 'voice-enabled' : ''}`}
+                title={voiceOutputEnabled === 'on' ? "Disable Nicole's voice" : "Enable Nicole's voice"}
+                onClick={toggleVoiceOutput}
+              >
+                {/* Speaker/volume icon for ElevenLabs TTS */}
                 <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                  {voiceOutputEnabled === 'on' ? (
+                    <>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                    </>
+                  ) : (
+                    <line x1="23" y1="9" x2="17" y2="15"/>
+                  )}
                 </svg>
               </button>
             </div>
