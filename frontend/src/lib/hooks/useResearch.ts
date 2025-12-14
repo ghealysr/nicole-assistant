@@ -416,15 +416,12 @@ export function useResearch(config: UseResearchConfig = {}): UseResearchReturn {
    */
   const loadHistory = useCallback(async (): Promise<void> => {
     try {
-      const result = await apiRequest<{ request_id: number; query: string; research_type: ResearchType; created_at: string }[]>('/research/history', {
+      const result = await apiRequest<{ history: { request_id: number; query: string; type: ResearchType; created_at: string }[] }>('/research/history', {
         method: 'GET',
       });
 
-      if (result.success && result.data) {
-        setHistory(result.data.map(h => ({
-          ...h,
-          type: h.research_type,
-        })));
+      if (result.success && result.data?.history) {
+        setHistory(result.data.history);
       }
     } catch (err) {
       console.error('Failed to load research history:', err);

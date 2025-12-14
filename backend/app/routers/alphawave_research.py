@@ -154,7 +154,7 @@ async def get_research_history(
             {
                 "request_id": row["request_id"],
                 "query": row["query"],
-                "research_type": row["research_type"],
+                "type": row["research_type"],
                 "status": row["status"],
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
@@ -162,7 +162,7 @@ async def get_research_history(
             for row in rows
         ]
         
-        return APIResponse(success=True, data=history)
+        return APIResponse(success=True, data={"history": history})
         
     except Exception as e:
         logger.error(f"Failed to fetch research history: {e}")
