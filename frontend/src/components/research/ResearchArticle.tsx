@@ -316,9 +316,6 @@ export function ResearchArticle({ data }: ResearchArticleProps) {
         {articleSubtitle && (
           <p style={{ ...styles.subtitle, fontStyle: 'italic', color: '#555' }}>{articleSubtitle}</p>
         )}
-        {displaySummary && !articleSubtitle && (
-          <p style={styles.subtitle}>{displaySummary}</p>
-        )}
         <div style={styles.meta}>
           <div style={styles.avatar}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} width={20} height={20}>
