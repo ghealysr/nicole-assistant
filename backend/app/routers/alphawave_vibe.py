@@ -1303,3 +1303,31 @@ def detect_language(file_path: str) -> str:
     }
     
     return language_map.get(ext, "text")
+
+
+# ============================================================================
+# MODEL HEALTH ENDPOINTS
+# ============================================================================
+
+@router.get("/models/health", response_model=APIResponse)
+async def get_model_health(
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get health status of AI models.
+    
+    Returns availability and cooldown status for all models used
+    in the Vibe pipeline (Gemini, Claude Opus, Claude Sonnet).
+    """
+    from app.services.model_orchestrator import model_orchestrator
+    
+    health_summary = model_orchestrator.get_health_summary()
+    
+    return APIResponse(
+        success=True,
+        data={
+            "models": health_summary,
+            "orchestrator_version": "1.0.0",
+            "strategy": "gemini_design_claude_architecture"
+        }
+    )
