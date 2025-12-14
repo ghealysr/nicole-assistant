@@ -2273,8 +2273,19 @@ class VibeService:
             return OperationResult(success=False, error=str(e))
         
         # Validate brief exists
-        brief = project.get("brief", {})
+        raw_brief = project.get("brief")
+        logger.info(f"[VIBE] Project {project_id} raw brief type: {type(raw_brief).__name__}, value preview: {str(raw_brief)[:200] if raw_brief else 'None'}")
+        
+        brief = raw_brief if raw_brief else {}
+        # Handle case where brief might be a JSON string
+        if isinstance(brief, str):
+            try:
+                brief = json.loads(brief)
+            except (json.JSONDecodeError, TypeError):
+                brief = {}
+        
         if not brief or not isinstance(brief, dict) or not brief.get("business_name"):
+            logger.warning(f"[VIBE] Project {project_id} brief validation failed: brief={type(brief).__name__}, keys={brief.keys() if isinstance(brief, dict) else 'N/A'}")
             return OperationResult(
                 success=False,
                 error="Project has no brief. Complete intake first."
