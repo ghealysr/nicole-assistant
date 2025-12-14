@@ -161,8 +161,30 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
     );
   }
   
+  // Memory notification (shows briefly when Nicole remembers something)
+  if (status.memoryNotification && !isVisible) {
+    return (
+      <div className="py-2 px-6 transition-all duration-300 ease-out animate-fade-in">
+        <div className="max-w-[800px] mx-auto flex justify-center">
+          <div 
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full"
+            style={{
+              background: 'linear-gradient(135deg, #f0e8ff 0%, #e8f4ff 100%)',
+              border: '1px solid #d4c6f5',
+              boxShadow: '0 2px 8px rgba(155, 138, 184, 0.2)',
+            }}
+          >
+            <span className="text-sm font-medium text-purple-700">
+              {status.memoryNotification}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   // Simple status pill for non-thinking operations
-  if (!isVisible) {
+  if (!isVisible && !status.memoryNotification) {
     return null;
   }
   

@@ -63,6 +63,9 @@ export interface ActivityStatus {
   
   // Extended thinking (Claude-style)
   extendedThinking: ExtendedThinking;
+  
+  // Memory notification (shows when Nicole remembers something)
+  memoryNotification?: string;
 }
 
 /**
@@ -488,6 +491,20 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 // Set flag to prevent reloading history (we already have the messages in state)
                 isNewConversationRef.current = true;
                 setConversationId(data.conversation_id);
+              } else if (data.type === 'memory_saved') {
+                // Nicole remembered something
+                const count = data.count || 1;
+                setActivityStatus(prev => ({
+                  ...prev,
+                  memoryNotification: `✨ Nicole remembered ${count} thing${count > 1 ? 's' : ''}`,
+                }));
+                // Clear notification after 4 seconds
+                setTimeout(() => {
+                  setActivityStatus(prev => ({
+                    ...prev,
+                    memoryNotification: undefined,
+                  }));
+                }, 4000);
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'An error occurred during response');
               }

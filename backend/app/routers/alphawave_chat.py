@@ -77,7 +77,7 @@ async def process_memories_intelligently(
     assistant_response: str,
     conversation_id: int,
     user_name: str = "User",
-) -> None:
+) -> int:
     """
     Intelligently process conversation for memory extraction using AI.
     
@@ -104,9 +104,10 @@ async def process_memories_intelligently(
         
         if not analysis.should_save:
             logger.info(f"[MEMORY INTEL] No memories to save: {analysis.analysis_reasoning}")
-            return
+            return 0
         
         logger.info(f"[MEMORY INTEL] Found {len(analysis.memories)} memories to save")
+        saved_count = 0
         
         # Step 2: Process each extracted memory
         for extracted_mem in analysis.memories:
@@ -126,6 +127,7 @@ async def process_memories_intelligently(
                     logger.debug(f"[MEMORY INTEL] Memory not saved (likely duplicate)")
                     continue
                 
+                saved_count += 1
                 memory_id = saved_memory.get("memory_id") or saved_memory.get("id")
                 logger.info(f"[MEMORY INTEL] ✅ Saved memory {memory_id}: {extracted_mem.content[:50]}...")
                 
@@ -210,11 +212,13 @@ async def process_memories_intelligently(
                     )
                     logger.info(f"[MEMORY INTEL] Created KB '{analysis.suggested_kb}' with {organized} memories")
         
-        logger.info(f"[MEMORY INTEL] Memory processing complete")
+        logger.info(f"[MEMORY INTEL] Memory processing complete - saved {saved_count} memories")
+        return saved_count
         
     except Exception as e:
         logger.error(f"[MEMORY INTEL] Intelligent processing failed: {e}", exc_info=True)
         # Don't raise - memory processing shouldn't break chat
+        return 0
 
 
 # ============================================================================
@@ -790,14 +794,19 @@ async def send_message(
             try:
                 logger.info(f"[MEMORY] Starting intelligent processing for user {tiger_user_id}")
                 # Use the new intelligent memory processing
-                await process_memories_intelligently(
+                memories_saved = await process_memories_intelligently(
                     tiger_user_id=tiger_user_id,
                     user_message=chat_request.text,
                     assistant_response=full_response,
                     conversation_id=conversation_id,
                     user_name=user_name,
                 )
-                logger.info(f"[MEMORY] Intelligent processing complete")
+                logger.info(f"[MEMORY] Intelligent processing complete - saved {memories_saved} memories")
+                
+                # Emit memory saved event if any were saved
+                if memories_saved > 0:
+                    yield f"data: {json.dumps({'type': 'memory_saved', 'count': memories_saved})}\n\n"
+                    
             except Exception as mem_save_err:
                 logger.error(f"[MEMORY] Error in intelligent memory processing: {mem_save_err}", exc_info=True)
             
