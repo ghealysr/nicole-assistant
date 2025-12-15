@@ -456,14 +456,21 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   
   // Combine local and API activities for display
   const combinedActivities = useMemo(() => {
-    const apiFormatted = (activities || []).map(a => ({
-      agent: a.agent_name || 'System',
-      action: a.description,
-      time: formatActivityTime(a.created_at),
-    }));
+    const apiFormatted = (activities || []).map(a => {
+      // Prefer rich content from metadata.full_content or metadata.message
+      const meta = (a.metadata || {}) as { full_content?: string; message?: string; message_type?: string };
+      const content = meta.full_content || meta.message || a.description;
+      const messageType = meta.message_type || (a.activity_type || '').toLowerCase();
+      return {
+        agent: a.agent_name || 'System',
+        action: content,
+        time: formatActivityTime(a.created_at),
+        messageType,
+      };
+    });
     
     // Local activities first (most recent), then API activities
-    return [...localActivities, ...apiFormatted].slice(0, 10);
+    return [...localActivities, ...apiFormatted].slice(0, 30);
   }, [localActivities, activities]);
 
   // Create new project
@@ -1584,13 +1591,14 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
               };
               const color = agentColors[a.agent] || '#8B5CF6';
               
-              // Clean up action text - remove brackets and make it conversational
+              // Clean up action text - remove bracket markers
               let message = a.action || '';
               message = message.replace(/\[PROMPT\]|\[RESPONSE\]|\[THINKING\]|\[TOOL_CALL\]|\[TOOL_RESULT\]|\[ERROR\]/gi, '').trim();
               
-              // Determine if this is a thinking/working message
-              const isThinking = a.action?.includes('💭') || a.action?.includes('[THINKING]');
-              const isError = a.action?.includes('❌') || a.action?.includes('[ERROR]');
+              // Determine message type
+              const messageType = a.messageType || '';
+              const isThinking = messageType.includes('thinking') || a.action?.includes('💭');
+              const isError = messageType.includes('error') || a.action?.includes('❌');
               
               return (
                 <div key={i} className={`vibe-chat-bubble ${isThinking ? 'thinking' : ''} ${isError ? 'error' : ''}`}>

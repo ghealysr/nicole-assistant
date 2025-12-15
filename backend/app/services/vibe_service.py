@@ -1972,7 +1972,20 @@ class VibeService:
             """,
             project_id, limit
         )
-        return [dict(r) for r in results] if results else []
+        formatted: List[Dict[str, Any]] = []
+        if results:
+            for r in results:
+                item = dict(r)
+                # Decode metadata JSON if stored as string
+                meta = item.get("metadata")
+                if isinstance(meta, str):
+                    try:
+                        item["metadata"] = json.loads(meta)
+                    except json.JSONDecodeError:
+                        # Keep raw string if not valid JSON
+                        item["metadata"] = {"raw": meta}
+                formatted.append(item)
+        return formatted
     
     # ========================================================================
     # PROJECT CRUD
@@ -2542,6 +2555,14 @@ class VibeService:
         
         if not has_content:
             logger.warning(f"[VIBE] Project {project_id} brief validation failed: brief={type(brief).__name__}, keys={list(brief.keys()) if isinstance(brief, dict) else 'N/A'}")
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ERROR,
+                description="⚠️ Planning stopped: brief is missing or incomplete.",
+                user_id=user_id,
+                agent_name="Orchestrator",
+                metadata={"phase": "planning", "reason": "missing_brief"}
+            )
             return OperationResult(
                 success=False,
                 error="Project has no brief. Complete intake first."
@@ -2957,6 +2978,14 @@ Generate COMPLETE code for each file. No abbreviations."""
             )
         except Exception as e:
             logger.error("[VIBE] Build Claude call failed after retries: %s", e, exc_info=True)
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ERROR,
+                description=f"⚠️ Build failed: {str(e)[:120]}",
+                user_id=user_id,
+                agent_name="Coding Agent",
+                metadata={"phase": "build", "error": str(e)}
+            )
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (large generation: ~2000 input, ~8000 output)
@@ -2967,6 +2996,14 @@ Generate COMPLETE code for each file. No abbreviations."""
         files = parse_files_from_response(response)
         
         if not files:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ERROR,
+                description="⚠️ Build produced no files. See raw preview.",
+                user_id=user_id,
+                agent_name="Coding Agent",
+                metadata={"phase": "build", "reason": "no_files"}
+            )
             return OperationResult(
                 success=False,
                 error="No files could be parsed from the build output. Please retry.",
@@ -3138,6 +3175,14 @@ Perform a comprehensive QA review and output your findings as JSON."""
             )
         except Exception as e:
             logger.error("[VIBE] QA Claude call failed after retries: %s", e, exc_info=True)
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ERROR,
+                description=f"⚠️ QA failed: {str(e)[:120]}",
+                user_id=user_id,
+                agent_name="QA Agent",
+                metadata={"phase": "qa", "error": str(e)}
+            )
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost
@@ -3340,6 +3385,14 @@ Output your comprehensive review as JSON."""
             )
         except Exception as e:
             logger.error("[VIBE] Review Claude call failed after retries: %s", e, exc_info=True)
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.ERROR,
+                description=f"⚠️ Review failed: {str(e)[:120]}",
+                user_id=user_id,
+                agent_name="Review Agent",
+                metadata={"phase": "review", "error": str(e)}
+            )
             return OperationResult(success=False, error=f"AI service error: {e}")
         
         # Estimate cost (Opus)
