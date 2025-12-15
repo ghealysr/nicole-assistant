@@ -167,6 +167,13 @@ interface OperationState {
   error: string | null;
 }
 
+// Pipeline error surface for UI
+export interface PipelineError {
+  phase: OperationName | 'planning' | 'build' | 'qa' | 'review' | 'pipeline';
+  message: string;
+  raw_preview?: string;
+}
+
 // ============================================================================
 // USER-FRIENDLY ERROR MESSAGES
 // ============================================================================
@@ -470,6 +477,8 @@ export function useVibeProject(projectId?: number) {
   const [fileTree, setFileTree] = useState<VibeFileTreeItem[]>([]);
   const [intakeHistory, setIntakeHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [activities, setActivities] = useState<VibeActivity[]>([]);
+  const [pipelineError, setPipelineError] = useState<PipelineError | null>(null);
+  const [rawBuildPreview, setRawBuildPreview] = useState<string | null>(null);
   
   // Global loading/error
   const [loading, setLoading] = useState(false);
@@ -854,6 +863,7 @@ export function useVibeProject(projectId?: number) {
         stopPolling();
         const errMsg = response.error || 'Planning failed';
         setOperationState('planning', { loading: false, error: errMsg });
+        setPipelineErrorState('planning', errMsg);
         setAgents(prev => prev.map(a => 
           a.id === 'planning' ? { ...a, status: 'error' as const, task: errMsg } : a
         ));
@@ -877,6 +887,7 @@ export function useVibeProject(projectId?: number) {
       const rawMessage = err instanceof Error ? err.message : 'Planning failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'planning');
       setOperationState('planning', { loading: false, error: friendlyMessage });
+      setPipelineErrorState('planning', friendlyMessage);
       setError(friendlyMessage);
       console.error('[useVibeProject] Planning error:', err);
       return null;
@@ -911,6 +922,10 @@ export function useVibeProject(projectId?: number) {
         stopPolling();
         const errMsg = response.error || 'Build failed';
         setOperationState('build', { loading: false, error: errMsg });
+        setPipelineErrorState('build', errMsg);
+        if (response.data && (response.data as any).raw_response_preview) {
+          setRawBuildPreview((response.data as any).raw_response_preview as string);
+        }
         setAgents(prev => prev.map(a => 
           a.id === 'build' ? { ...a, status: 'error' as const, task: errMsg } : a
         ));
@@ -936,6 +951,7 @@ export function useVibeProject(projectId?: number) {
       const rawMessage = err instanceof Error ? err.message : 'Build failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'build');
       setOperationState('build', { loading: false, error: friendlyMessage });
+      setPipelineErrorState('build', friendlyMessage);
       setError(friendlyMessage);
       console.error('[useVibeProject] Build error:', err);
       return null;
@@ -970,6 +986,7 @@ export function useVibeProject(projectId?: number) {
         stopPolling();
         const errMsg = response.error || 'QA failed';
         setOperationState('qa', { loading: false, error: errMsg });
+        setPipelineErrorState('qa', errMsg);
         setAgents(prev => prev.map(a => 
           a.id === 'qa' ? { ...a, status: 'error' as const, task: errMsg } : a
         ));
@@ -1003,6 +1020,7 @@ export function useVibeProject(projectId?: number) {
       const rawMessage = err instanceof Error ? err.message : 'QA failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'qa');
       setOperationState('qa', { loading: false, error: friendlyMessage });
+      setPipelineErrorState('qa', friendlyMessage);
       setError(friendlyMessage);
       console.error('[useVibeProject] QA error:', err);
       return null;
@@ -1037,6 +1055,7 @@ export function useVibeProject(projectId?: number) {
         stopPolling();
         const errMsg = response.error || 'Review failed';
         setOperationState('review', { loading: false, error: errMsg });
+        setPipelineErrorState('review', errMsg);
         setAgents(prev => prev.map(a => 
           a.id === 'review' ? { ...a, status: 'error' as const, task: errMsg } : a
         ));
@@ -1071,6 +1090,7 @@ export function useVibeProject(projectId?: number) {
       const rawMessage = err instanceof Error ? err.message : 'Review failed';
       const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'review');
       setOperationState('review', { loading: false, error: friendlyMessage });
+      setPipelineErrorState('review', friendlyMessage);
       setError(friendlyMessage);
       console.error('[useVibeProject] Review error:', err);
       return null;
@@ -1169,6 +1189,7 @@ export function useVibeProject(projectId?: number) {
   const runPipeline = useCallback(async (id: number): Promise<boolean> => {
     setLoading(true);
     setError(null);
+    clearPipelineError();
     
     // Always get fresh project state to avoid stale closure
     const freshProject = await fetchProject(id);
@@ -1298,6 +1319,13 @@ export function useVibeProject(projectId?: number) {
     Object.values(operationStates).some(s => s.loading),
     [operationStates]
   );
+  const setPipelineErrorState = useCallback((phase: PipelineError['phase'], message: string, raw_preview?: string) => {
+    setPipelineError({ phase, message, raw_preview });
+  }, []);
+  const clearPipelineError = useCallback(() => {
+    setPipelineError(null);
+    setRawBuildPreview(null);
+  }, []);
   
   // Polling for real-time updates during operations
   useEffect(() => {
@@ -1380,6 +1408,8 @@ export function useVibeProject(projectId?: number) {
     totalApiCost,
     apiBudget,
     remainingApiBudget,
+    pipelineError,
+    rawBuildPreview,
     
     // Actions
     fetchProject,
@@ -1398,6 +1428,7 @@ export function useVibeProject(projectId?: number) {
     // Helpers
     clearIntakeHistory: useCallback(() => setIntakeHistory([]), []),
     clearError: useCallback(() => setError(null), []),
+    clearPipelineError,
     resetOperationStates: useCallback(() => {
       setOperationStates({
         intake: { loading: false, error: null },

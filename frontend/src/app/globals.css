@@ -2065,11 +2065,125 @@ body.resizing * {
   color: #ef4444;
 }
 
+.vibe-chat-tag {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #d9c8ff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
 /* Responsive - slide left when vibe panel is open */
 .vibe-workspace.open ~ .vibe-agent-chat,
 .vibe-workspace.open + .vibe-agent-chat {
   left: calc(var(--sidebar-width) + 400px);
 }
+
+/* Pipeline error banner */
+.vibe-error-banner {
+  margin: 8px 0;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.vibe-error-banner-left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.vibe-error-title { font-weight: 700; color: #fca5a5; }
+.vibe-error-message { color: #fef2f2; font-size: 13px; }
+.vibe-error-banner-actions { display: flex; gap: 8px; align-items: center; }
+.vibe-error-preview summary { cursor: pointer; color: #fca5a5; }
+.vibe-error-preview pre {
+  max-height: 200px;
+  overflow: auto;
+  background: #0f0f1a;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Architecture card */
+.vibe-architecture-card {
+  background: #101020;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.vibe-architecture-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.vibe-design-tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+.vibe-token-title { font-size: 12px; color: #bfbfff; }
+.vibe-token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.vibe-token-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.vibe-token-label { color: #999; }
+.vibe-architecture-json {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  background: #0d0d18;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Model health */
+.vibe-model-health {
+  margin-top: 12px;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px;
+}
+.vibe-model-health-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  color: #d1d5db;
+  margin-bottom: 8px;
+}
+.vibe-model-health-error { color: #f87171; font-size: 12px; }
+.vibe-model-health-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.vibe-model-health-row:last-child { border-bottom: none; }
+.vibe-model-name { color: #e5e7eb; flex: 1; }
+.vibe-model-status.ok { color: #22c55e; }
+.vibe-model-status.warn { color: #fbbf24; }
+.vibe-model-cooldown { color: #9ca3af; font-size: 11px; }
 
 /* Agent Card */
 .vibe-agent-card {

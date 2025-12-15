@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { useVibeProjects, useVibeProject, type VibeProject, type ProjectType } from '@/lib/hooks/useVibeProject';
 import { openInStackBlitz } from '@/lib/stackblitz';
+import { API_URL } from '@/lib/alphawave_config';
+import { getStoredToken } from '@/lib/google_auth';
 
 // ============================================================================
 // IMAGE LIGHTBOX - For viewing screenshots full-size
@@ -350,6 +352,8 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [modelHealth, setModelHealth] = useState<any[] | null>(null);
+  const [modelHealthError, setModelHealthError] = useState<string | null>(null);
   
   // Lightbox state for screenshot viewing
   const [lightbox, setLightbox] = useState<LightboxState>({ isOpen: false, imageUrl: '', description: '' });
@@ -415,6 +419,12 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
     totalApiCost,
     apiBudget,
     remainingApiBudget,
+    pipelineError,
+    rawBuildPreview,
+    runPlanning,
+    runBuild,
+    runQA,
+    runReview,
     fetchProject,
     fetchFiles,
     fetchActivities,
@@ -423,6 +433,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
     deployProject,
     runPipeline,
     retryPhase,
+    clearPipelineError,
     clearIntakeHistory,
   } = useVibeProject(selectedProjectId || undefined);
 
@@ -432,6 +443,35 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
       fetchProjects();
     }
   }, [isOpen, fetchProjects]);
+
+  // Fetch model health (for single-user insight)
+  useEffect(() => {
+    if (!isOpen) return;
+    const token = getStoredToken();
+    if (!token) return;
+    const controller = new AbortController();
+    fetch(`${API_URL}/vibe/models/health`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      signal: controller.signal,
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.success && data?.data?.models) {
+          setModelHealth(data.data.models);
+          setModelHealthError(null);
+        } else {
+          setModelHealthError(data?.error || 'Unable to load model health');
+        }
+      })
+      .catch(err => {
+        if (err.name === 'AbortError') return;
+        setModelHealthError('Unable to load model health');
+      });
+    return () => controller.abort();
+  }, [isOpen]);
 
   // Add activity
   const addActivity = useCallback((agent: string, action: string) => {
@@ -466,6 +506,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
         action: content,
         time: formatActivityTime(a.created_at),
         messageType,
+        meta,
       };
     });
     
@@ -1234,6 +1275,33 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
         </div>
       </div>
 
+      {/* Pipeline Error Banner */}
+      {pipelineError && (
+        <div className="vibe-error-banner">
+          <div className="vibe-error-banner-left">
+            <span className="vibe-error-icon">⚠️</span>
+            <div>
+              <div className="vibe-error-title">Pipeline issue in {pipelineError.phase}</div>
+              <div className="vibe-error-message">{pipelineError.message}</div>
+            </div>
+          </div>
+          <div className="vibe-error-banner-actions">
+            {rawBuildPreview && pipelineError.phase === 'build' && (
+              <details className="vibe-error-preview">
+                <summary>Raw build preview</summary>
+                <pre>{rawBuildPreview}</pre>
+              </details>
+            )}
+            <button className="vibe-btn-secondary" onClick={() => selectedProjectId && retryPhase(selectedProjectId)}>
+              Retry Phase
+            </button>
+            <button className="vibe-btn-secondary" onClick={clearPipelineError}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Workspace */}
       <div className="vibe-workspace-main">
         {/* Files Panel */}
@@ -1337,6 +1405,36 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
           ) : (
             // Preview Frame
             <div className="vibe-preview-container">
+              {/* Planning Artifacts */}
+              {project?.architecture && (
+                <div className="vibe-architecture-card">
+                  <div className="vibe-architecture-header">
+                    <div>
+                      <h4>Architecture Plan</h4>
+                      <p>{Array.isArray((project.architecture as any)?.pages) ? `${(project.architecture as any).pages.length} pages` : 'Structured spec'}</p>
+                    </div>
+                    {(project.architecture as any)?.design_system && (
+                      <div className="vibe-design-tokens">
+                        <span className="vibe-token-title">Design Tokens</span>
+                        <div className="vibe-token-row">
+                          <span className="vibe-token-swatch" style={{ background: (project.architecture as any).design_system.colors?.primary || '#8B5CF6' }} />
+                          <span>{(project.architecture as any).design_system.colors?.primary || 'Primary'}</span>
+                        </div>
+                        {(project.architecture as any).design_system.typography?.heading_font && (
+                          <div className="vibe-token-row">
+                            <span className="vibe-token-label">Heading</span>
+                            <span>{(project.architecture as any).design_system.typography.heading_font}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <pre className="vibe-architecture-json">
+                    {JSON.stringify(project.architecture, null, 2).slice(0, 2000)}
+                  </pre>
+                </div>
+              )}
+
               <div className={`vibe-device-frame ${currentDevice}`}>
                 <div className="vibe-device-header">
                   <div className="vibe-device-dots">
@@ -1524,10 +1622,33 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                   </div>
                 </div>
               );
-            })}
-          </div>
+          })}
+        </div>
 
-          {/* Workflow */}
+        {/* Model Health */}
+        <div className="vibe-model-health">
+          <div className="vibe-model-health-header">
+            <span>Model Health</span>
+            {modelHealthError && <span className="vibe-model-health-error">{modelHealthError}</span>}
+          </div>
+          {modelHealth ? (
+            modelHealth.map((m, idx) => (
+              <div key={idx} className="vibe-model-health-row">
+                <span className="vibe-model-name">{m.model}</span>
+                <span className={`vibe-model-status ${m.status === 'healthy' ? 'ok' : 'warn'}`}>
+                  {m.status || 'unknown'}
+                </span>
+                {m.cooldown_until && (
+                  <span className="vibe-model-cooldown">cooldown until {m.cooldown_until}</span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="vibe-model-health-row">Loading...</div>
+          )}
+        </div>
+
+        {/* Workflow */}
           <div className="vibe-workflow-section">
             <div className="vibe-workflow-title">Pipeline</div>
             <div className="vibe-workflow-visual">
@@ -1591,6 +1712,9 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
               };
               const color = agentColors[a.agent] || '#8B5CF6';
               
+              const meta = (a as any).meta || {};
+              const tool = meta.tool as string | undefined;
+
               // Clean up action text - remove bracket markers
               let message = a.action || '';
               message = message.replace(/\[PROMPT\]|\[RESPONSE\]|\[THINKING\]|\[TOOL_CALL\]|\[TOOL_RESULT\]|\[ERROR\]/gi, '').trim();
@@ -1609,6 +1733,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                     <div className="vibe-chat-name" style={{ color }}>
                       {a.agent}
                       <span className="vibe-chat-time">{a.time}</span>
+                      {tool && <span className="vibe-chat-tag">{tool}</span>}
                     </div>
                     <div className="vibe-chat-text">{message}</div>
                   </div>
