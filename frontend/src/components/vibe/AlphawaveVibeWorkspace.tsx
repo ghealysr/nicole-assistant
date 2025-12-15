@@ -1540,61 +1540,73 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
         </div>
       </div>
 
-      {/* Agent Console - Shows all agent activity like a terminal */}
-      <div className={`vibe-agent-console ${activityCollapsed ? 'collapsed' : ''}`}>
-        <div className="vibe-console-header" onClick={() => setActivityCollapsed(!activityCollapsed)}>
-          <div className="vibe-console-title">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
-            Agent Console
-            {isAnyOperationLoading && <span className="vibe-console-live">● LIVE</span>}
-            <span className="vibe-console-badge">{combinedActivities.length}</span>
+      {/* Agent Chat - Conversation between agents */}
+      <div className={`vibe-agent-chat ${activityCollapsed ? 'collapsed' : ''}`}>
+        <div className="vibe-chat-header" onClick={() => setActivityCollapsed(!activityCollapsed)}>
+          <div className="vibe-chat-title">
+            <span className="vibe-chat-icon">💬</span>
+            Agent Chat
+            {isAnyOperationLoading && <span className="vibe-chat-live">● LIVE</span>}
           </div>
-          <button className="vibe-console-toggle">
-            <svg viewBox="0 0 24 24" fill="none"><path d={activityCollapsed ? "M6 9l6 6 6-6" : "M18 15l-6-6-6 6"}/></svg>
+          <button className="vibe-chat-toggle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d={activityCollapsed ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"}/>
+            </svg>
           </button>
         </div>
-        <div className="vibe-console-body">
+        <div className="vibe-chat-messages">
           {activitiesError ? (
-            <div className="vibe-console-error">
-              <span>Failed to load console</span>
-              <button onClick={() => selectedProjectId && fetchActivities(selectedProjectId)}>
-                Retry
-              </button>
+            <div className="vibe-chat-error">
+              Failed to load chat. <button onClick={() => selectedProjectId && fetchActivities(selectedProjectId)}>Retry</button>
             </div>
           ) : combinedActivities.length === 0 ? (
-            <div className="vibe-console-empty">
-              <span className="vibe-console-prompt">$</span> Waiting for agent activity...
+            <div className="vibe-chat-empty">
+              <div className="vibe-chat-waiting">
+                <span className="vibe-chat-dot"></span>
+                <span className="vibe-chat-dot"></span>
+                <span className="vibe-chat-dot"></span>
+              </div>
+              <span>Agents are standing by...</span>
             </div>
           ) : (
-            <div className="vibe-console-messages">
-              {combinedActivities.slice(0, 20).map((a, i) => {
-                // Determine message type from content
-                const isPrompt = a.action?.includes('[PROMPT]');
-                const isResponse = a.action?.includes('[RESPONSE]');
-                const isThinking = a.action?.includes('[THINKING]');
-                const isError = a.action?.includes('[ERROR]') || a.action?.includes('❌');
-                const isToolCall = a.action?.includes('[TOOL_CALL]') || a.action?.includes('🔧');
-                
-                let messageClass = 'vibe-console-msg';
-                if (isPrompt) messageClass += ' prompt';
-                else if (isResponse) messageClass += ' response';
-                else if (isThinking) messageClass += ' thinking';
-                else if (isError) messageClass += ' error';
-                else if (isToolCall) messageClass += ' tool';
-                
-                return (
-                  <div key={i} className={messageClass}>
-                    <div className="vibe-console-msg-header">
-                      <span className="vibe-console-agent">{a.agent}</span>
-                      <span className="vibe-console-time">{a.time}</span>
-                    </div>
-                    <div className="vibe-console-msg-body">
-                      {a.action}
-                    </div>
+            combinedActivities.slice(0, 30).map((a, i) => {
+              // Get agent avatar color
+              const agentColors: Record<string, string> = {
+                'Nicole': '#8B5CF6',
+                'Design Agent': '#EC4899',
+                'Architect Agent': '#3B82F6',
+                'Coding Agent': '#10B981',
+                'QA Agent': '#F59E0B',
+                'Review Agent': '#6366F1',
+                'System': '#6B7280',
+                'Pipeline': '#6B7280',
+                'Orchestrator': '#8B5CF6'
+              };
+              const color = agentColors[a.agent] || '#8B5CF6';
+              
+              // Clean up action text - remove brackets and make it conversational
+              let message = a.action || '';
+              message = message.replace(/\[PROMPT\]|\[RESPONSE\]|\[THINKING\]|\[TOOL_CALL\]|\[TOOL_RESULT\]|\[ERROR\]/gi, '').trim();
+              
+              // Determine if this is a thinking/working message
+              const isThinking = a.action?.includes('💭') || a.action?.includes('[THINKING]');
+              const isError = a.action?.includes('❌') || a.action?.includes('[ERROR]');
+              
+              return (
+                <div key={i} className={`vibe-chat-bubble ${isThinking ? 'thinking' : ''} ${isError ? 'error' : ''}`}>
+                  <div className="vibe-chat-avatar" style={{ background: color }}>
+                    {a.agent?.charAt(0) || '?'}
                   </div>
-                );
-              })}
-            </div>
+                  <div className="vibe-chat-content">
+                    <div className="vibe-chat-name" style={{ color }}>
+                      {a.agent}
+                      <span className="vibe-chat-time">{a.time}</span>
+                    </div>
+                    <div className="vibe-chat-text">{message}</div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       </div>

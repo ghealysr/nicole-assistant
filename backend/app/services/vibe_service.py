@@ -2533,12 +2533,24 @@ class VibeService:
             except (json.JSONDecodeError, TypeError):
                 brief = {}
         
-        if not brief or not isinstance(brief, dict) or not brief.get("business_name"):
-            logger.warning(f"[VIBE] Project {project_id} brief validation failed: brief={type(brief).__name__}, keys={brief.keys() if isinstance(brief, dict) else 'N/A'}")
+        # More flexible validation - check for any meaningful content
+        has_content = (
+            brief and 
+            isinstance(brief, dict) and 
+            (brief.get("business_name") or brief.get("project_name") or brief.get("name") or brief.get("description") or len(brief) > 0)
+        )
+        
+        if not has_content:
+            logger.warning(f"[VIBE] Project {project_id} brief validation failed: brief={type(brief).__name__}, keys={list(brief.keys()) if isinstance(brief, dict) else 'N/A'}")
             return OperationResult(
                 success=False,
                 error="Project has no brief. Complete intake first."
             )
+        
+        # Ensure business_name exists (use fallback)
+        if not brief.get("business_name"):
+            brief["business_name"] = brief.get("project_name") or brief.get("name") or project.get("name") or "Project"
+            logger.info(f"[VIBE] Set fallback business_name: {brief['business_name']}")
         
         # Log planning start for progress tracking
         await self._log_activity(
