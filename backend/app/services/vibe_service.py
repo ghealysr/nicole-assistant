@@ -2789,16 +2789,38 @@ Style Notes: {design_system.inspiration_notes}
         if architecture:
             logger.info("[VIBE] Successfully parsed architecture with %d pages", len(architecture.get("pages", [])))
         else:
-            logger.warning("[VIBE] Failed to parse architecture from response (length=%d)", len(response))
-            logger.debug("[VIBE] Raw response (first 1000): %s", response[:1000])
+            logger.warning("[VIBE] Failed to parse architecture from response (length=%d)", len(response) if response else 0)
+            # Log more of the raw response for debugging
+            raw_preview = response[:1500] if response else "EMPTY RESPONSE"
+            logger.warning("[VIBE] Raw response: %s", raw_preview)
+            
             # Log to agent console so user sees what happened
             await self._log_agent_message(
                 project_id=project_id,
                 agent_name="Architect Agent",
                 message_type="error",
-                content=f"Could not parse architecture. Response preview: {response[:200]}...",
+                content=f"Could not parse JSON from response. Got {len(response) if response else 0} chars. First 300: {response[:300] if response else 'EMPTY'}...",
                 user_id=user_id
             )
+            
+            # Try a more aggressive JSON extraction
+            import re
+            json_patterns = [
+                r'```json\s*([\s\S]*?)\s*```',  # ```json ... ```
+                r'```\s*([\s\S]*?)\s*```',       # ``` ... ```
+                r'\{[\s\S]*"pages"[\s\S]*\}',    # Any object with "pages"
+            ]
+            for pattern in json_patterns:
+                match = re.search(pattern, response or "", re.DOTALL)
+                if match:
+                    try:
+                        candidate = match.group(1) if match.lastindex else match.group()
+                        architecture = json.loads(candidate.strip())
+                        if architecture.get("pages"):
+                            logger.info("[VIBE] Recovered architecture via fallback pattern")
+                            break
+                    except:
+                        continue
         
         # Merge Gemini's design system into the architecture (if available)
         if architecture and design_system:
