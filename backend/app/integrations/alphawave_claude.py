@@ -58,9 +58,9 @@ class AlphawaveClaudeClient:
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         # Async client for true async streaming
         self.async_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        # Use latest Claude Sonnet and Haiku models
-        self.sonnet_model = "claude-sonnet-4-5-20250929"
-        self.haiku_model = "claude-haiku-4-5-20251001"
+        # Use latest Claude Sonnet and Haiku models (correct Anthropic model names)
+        self.sonnet_model = "claude-3-5-sonnet-20241022"
+        self.haiku_model = "claude-3-5-haiku-20241022"
         logger.info(f"Claude client initialized with Sonnet: {self.sonnet_model}, Haiku: {self.haiku_model}")
     
     async def generate_response(
