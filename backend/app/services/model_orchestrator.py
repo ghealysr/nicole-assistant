@@ -362,20 +362,20 @@ class ModelOrchestrator:
         )
         
         try:
-        if model == "design_agent" and self.gemini.is_configured:
-            try:
-                result = await self._generate_design_with_gemini(brief, project_id)
-                nicole_authority.complete_task(task.task_id, True, {"generated_by": "design_agent"})
-                return result
-            except Exception as e:
-                logger.warning(f"[ORCHESTRATOR] Design Agent failed: {e}")
-                self.record_result("design_agent", False, str(e))
-                # Fall through to Architect Agent as fallback
-        
-        # Fallback to Architect Agent for design (uses Claude Opus)
-        logger.info("[ORCHESTRATOR] Nicole reassigning design task to Architect Agent")
-        result = await self._generate_design_with_claude(brief, project_id)
-        nicole_authority.complete_task(task.task_id, True, {"generated_by": "architect_agent"})
+            if model == "design_agent" and self.gemini.is_configured:
+                try:
+                    result = await self._generate_design_with_gemini(brief, project_id)
+                    nicole_authority.complete_task(task.task_id, True, {"generated_by": "design_agent"})
+                    return result
+                except Exception as e:
+                    logger.warning(f"[ORCHESTRATOR] Design Agent failed: {e}")
+                    self.record_result("design_agent", False, str(e))
+                    # Fall through to Architect Agent as fallback
+            
+            # Fallback to Architect Agent for design (uses Claude Opus)
+            logger.info("[ORCHESTRATOR] Nicole reassigning design task to Architect Agent")
+            result = await self._generate_design_with_claude(brief, project_id)
+            nicole_authority.complete_task(task.task_id, True, {"generated_by": "architect_agent"})
             return result
             
         except Exception as e:
