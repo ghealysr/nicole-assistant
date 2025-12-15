@@ -791,7 +791,8 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Intake error:', err);
       return null;
     }
-  }, [intakeHistory, fetchProject, fetchActivities, setOperationState, trackApiCost]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intakeHistory, fetchProject, setOperationState, trackApiCost]);
 
   // Helper to poll activities and update agent task
   const startActivityPolling = useCallback((id: number, agentId: string): (() => void) => {
@@ -892,6 +893,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Planning error:', err);
       return null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run build (code generation)
@@ -923,8 +925,9 @@ export function useVibeProject(projectId?: number) {
         const errMsg = response.error || 'Build failed';
         setOperationState('build', { loading: false, error: errMsg });
         setPipelineErrorState('build', errMsg);
-        if (response.data && (response.data as any).raw_response_preview) {
-          setRawBuildPreview((response.data as any).raw_response_preview as string);
+        const dataWithPreview = response.data as { raw_response_preview?: string } | undefined;
+        if (dataWithPreview?.raw_response_preview) {
+          setRawBuildPreview(dataWithPreview.raw_response_preview);
         }
         setAgents(prev => prev.map(a => 
           a.id === 'build' ? { ...a, status: 'error' as const, task: errMsg } : a
@@ -956,6 +959,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Build error:', err);
       return null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProject, fetchFiles, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run QA
@@ -1025,6 +1029,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] QA error:', err);
       return null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Run review
@@ -1095,6 +1100,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Review error:', err);
       return null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProject, setOperationState, trackApiCost, startActivityPolling]);
 
   // Manual approval
@@ -1261,6 +1267,7 @@ export function useVibeProject(projectId?: number) {
       console.error('[useVibeProject] Pipeline error:', err);
       return false;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProject, runPlanning, runBuild, runQA, runReview]);
 
   // Retry a stuck phase

@@ -352,7 +352,8 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const [modelHealth, setModelHealth] = useState<any[] | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [modelHealth, setModelHealth] = useState<Record<string, unknown>[] | null>(null);
   const [modelHealthError, setModelHealthError] = useState<string | null>(null);
   
   // Lightbox state for screenshot viewing
@@ -421,9 +422,14 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
     remainingApiBudget,
     pipelineError,
     rawBuildPreview,
+    // These are available for manual phase execution (not currently used in pipeline)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     runPlanning,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     runBuild,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     runQA,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     runReview,
     fetchProject,
     fetchFiles,
@@ -1411,23 +1417,36 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                   <div className="vibe-architecture-header">
                     <div>
                       <h4>Architecture Plan</h4>
-                      <p>{Array.isArray((project.architecture as any)?.pages) ? `${(project.architecture as any).pages.length} pages` : 'Structured spec'}</p>
+                      <p>{(() => {
+                        const arch = project.architecture as Record<string, unknown> | undefined;
+                        const pages = arch?.pages;
+                        return Array.isArray(pages) ? `${pages.length} pages` : 'Structured spec';
+                      })()}</p>
                     </div>
-                    {(project.architecture as any)?.design_system && (
-                      <div className="vibe-design-tokens">
-                        <span className="vibe-token-title">Design Tokens</span>
-                        <div className="vibe-token-row">
-                          <span className="vibe-token-swatch" style={{ background: (project.architecture as any).design_system.colors?.primary || '#8B5CF6' }} />
-                          <span>{(project.architecture as any).design_system.colors?.primary || 'Primary'}</span>
-                        </div>
-                        {(project.architecture as any).design_system.typography?.heading_font && (
+                    {(() => {
+                      const arch = project.architecture as Record<string, unknown> | undefined;
+                      const designSystem = arch?.design_system as Record<string, unknown> | undefined;
+                      const colors = designSystem?.colors as Record<string, string> | undefined;
+                      const typography = designSystem?.typography as Record<string, string> | undefined;
+                      
+                      if (!designSystem) return null;
+                      
+                      return (
+                        <div className="vibe-design-tokens">
+                          <span className="vibe-token-title">Design Tokens</span>
                           <div className="vibe-token-row">
-                            <span className="vibe-token-label">Heading</span>
-                            <span>{(project.architecture as any).design_system.typography.heading_font}</span>
+                            <span className="vibe-token-swatch" style={{ background: colors?.primary || '#8B5CF6' }} />
+                            <span>{colors?.primary || 'Primary'}</span>
                           </div>
-                        )}
-                      </div>
-                    )}
+                          {typography?.heading_font && (
+                            <div className="vibe-token-row">
+                              <span className="vibe-token-label">Heading</span>
+                              <span>{typography.heading_font}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <pre className="vibe-architecture-json">
                     {JSON.stringify(project.architecture, null, 2).slice(0, 2000)}
@@ -1712,7 +1731,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
               };
               const color = agentColors[a.agent] || '#8B5CF6';
               
-              const meta = (a as any).meta || {};
+              const meta = (a as { meta?: Record<string, unknown> }).meta || {};
               const tool = meta.tool as string | undefined;
 
               // Clean up action text - remove bracket markers
