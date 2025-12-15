@@ -472,7 +472,16 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
       .then(res => res.json())
       .then(data => {
         if (data?.success && data?.data?.models) {
-          setModelHealth(data.data.models);
+          // Convert dictionary to array format expected by UI
+          const modelsDict = data.data.models as Record<string, { available?: boolean; consecutive_failures?: number; cooldown_remaining?: number }>;
+          const modelsArray: ModelHealthItem[] = Object.entries(modelsDict).map(([name, info]) => ({
+            model: name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            status: info.available ? 'healthy' : 'unhealthy',
+            cooldown_until: info.cooldown_remaining && info.cooldown_remaining > 0 
+              ? `${Math.ceil(info.cooldown_remaining)}s` 
+              : undefined,
+          }));
+          setModelHealth(modelsArray);
           setModelHealthError(null);
         } else {
           setModelHealthError(data?.error || 'Unable to load model health');
