@@ -1054,9 +1054,9 @@ class VibeService:
     - Lessons learning system
     """
     
-    # Model configuration - Latest Claude versions (actual model names from Anthropic)
-    SONNET_MODEL = "claude-3-5-sonnet-20241022"  # Claude 3.5 Sonnet
-    OPUS_MODEL = "claude-3-opus-20240229"         # Claude 3 Opus
+    # Model configuration - Latest Claude 4.5 models (December 2025)
+    SONNET_MODEL = "claude-sonnet-4-5-20250929"  # Claude 4.5 Sonnet
+    OPUS_MODEL = "claude-opus-4-5-20251101"       # Claude 4.5 Opus
     
     def __init__(self):
         """Initialize the Vibe service."""

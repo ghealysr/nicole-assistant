@@ -512,7 +512,7 @@ class ModelOrchestrator:
             response = await self.claude.generate_response(
                 messages=[{"role": "user", "content": prompt}],
                 system_prompt="You are a professional web designer. Generate modern, attractive design systems.",
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-5-20250929",
                 max_tokens=2000,
                 temperature=0.7
             )
@@ -583,8 +583,8 @@ class ModelOrchestrator:
                 
                 elif "claude" in model:
                     claude_model = (
-                        "claude-3-5-sonnet-20241022" if "sonnet" in model 
-                        else "claude-3-opus-20240229"
+                        "claude-sonnet-4-5-20250929" if "sonnet" in model 
+                        else "claude-opus-4-5-20251101"
                     )
                     response = await self.claude.generate_response(
                         messages=[{"role": "user", "content": prompt}],
