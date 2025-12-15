@@ -71,6 +71,8 @@ class AlphawaveClaudeClient:
         max_tokens: int = 4096,
         temperature: float = 1.0,
         tools: Optional[List[Dict[str, Any]]] = None,
+        enable_extended_thinking: bool = False,
+        thinking_budget: int = 8000,
     ) -> str:
         """
         Generate response from Claude (non-streaming, async).
@@ -101,6 +103,12 @@ class AlphawaveClaudeClient:
             
             if tools:
                 kwargs["tools"] = tools
+
+            if enable_extended_thinking:
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": min(thinking_budget, max_tokens - 1) if max_tokens else thinking_budget
+                }
             
             logger.debug(f"[Claude] Calling {model} with {len(messages)} messages")
             
@@ -138,6 +146,8 @@ class AlphawaveClaudeClient:
         max_tokens: int = 4096,
         temperature: float = 1.0,
         max_tool_iterations: int = 10,
+        enable_extended_thinking: bool = False,
+        thinking_budget: int = 8000,
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Generate response with tool use loop.
@@ -179,7 +189,8 @@ class AlphawaveClaudeClient:
                     temperature=temperature,
                     system=system_prompt if system_prompt else "",
                     messages=conversation,
-                    tools=tools
+                    tools=tools,
+                    thinking={"type": "enabled", "budget_tokens": min(thinking_budget, max_tokens - 1) if max_tokens else thinking_budget} if enable_extended_thinking else None,
                 )
                 
                 # Check stop reason

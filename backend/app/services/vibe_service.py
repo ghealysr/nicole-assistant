@@ -1667,7 +1667,9 @@ class VibeService:
         max_tokens: int = 4000,
         temperature: float = 0.5,
         max_retries: int = 3,
-        base_delay: float = 1.0
+        base_delay: float = 1.0,
+        enable_extended_thinking: bool = False,
+        thinking_budget: int = 8000,
     ) -> str:
         """
         Call Claude API with exponential backoff retry.
@@ -1697,7 +1699,9 @@ class VibeService:
                     system_prompt=system_prompt,
                     model=model,
                     max_tokens=max_tokens,
-                    temperature=temperature
+                    temperature=temperature,
+                    enable_extended_thinking=enable_extended_thinking,
+                    thinking_budget=thinking_budget,
                 )
             except Exception as e:
                 last_error = e
@@ -2694,7 +2698,9 @@ Style Notes: {design_system.inspiration_notes}
                 max_tokens=4000,
                 temperature=0.5,
                 max_retries=3,
-                base_delay=2.0
+                base_delay=2.0,
+                enable_extended_thinking=True,
+                thinking_budget=8000
             )
             
             # Log response preview
@@ -2954,7 +2960,9 @@ Generate COMPLETE code for each file. No abbreviations."""
                 max_tokens=16000,  # Large budget for code generation
                 temperature=0.3,   # Lower temperature for code
                 max_retries=3,
-                base_delay=2.0     # Longer delay for large generations
+                base_delay=2.0,     # Longer delay for large generations
+                enable_extended_thinking=True,
+                thinking_budget=8000
             )
             
             # Log the response summary (for visibility)
@@ -3171,7 +3179,9 @@ Perform a comprehensive QA review and output your findings as JSON."""
                 max_tokens=3000,
                 temperature=0.3,
                 max_retries=3,
-                base_delay=1.5
+                base_delay=1.5,
+                enable_extended_thinking=True,
+                thinking_budget=6000
             )
         except Exception as e:
             logger.error("[VIBE] QA Claude call failed after retries: %s", e, exc_info=True)
@@ -3381,7 +3391,9 @@ Output your comprehensive review as JSON."""
                 max_tokens=2500,
                 temperature=0.3,
                 max_retries=3,
-                base_delay=2.0
+                base_delay=2.0,
+                enable_extended_thinking=True,
+                thinking_budget=6000
             )
         except Exception as e:
             logger.error("[VIBE] Review Claude call failed after retries: %s", e, exc_info=True)
