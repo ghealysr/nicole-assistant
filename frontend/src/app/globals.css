@@ -1776,6 +1776,105 @@ body.resizing * {
   gap: 12px;
 }
 
+/* ═══ LIVE STATUS INDICATOR ═══ */
+.vibe-live-status {
+  margin: 12px 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(184, 168, 212, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  animation: vibe-live-glow 2s ease-in-out infinite;
+}
+
+@keyframes vibe-live-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(139, 92, 246, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.4); }
+}
+
+.vibe-live-status-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vibe-live-pulse {
+  width: 10px;
+  height: 10px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: vibe-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes vibe-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+.vibe-live-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #22c55e;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.vibe-live-status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vibe-live-agent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vibe-text);
+}
+
+.vibe-live-action {
+  font-size: 13px;
+  color: var(--vibe-text-muted);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.vibe-live-time {
+  font-size: 10px;
+  color: var(--vibe-text-dim);
+  margin-top: 4px;
+}
+
+.vibe-live-previous {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--vibe-text-dim);
+}
+
+.vibe-live-previous-label {
+  opacity: 0.6;
+}
+
+.vibe-live-previous-text {
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Agent task text - ensure it wraps */
+.vibe-agent-task-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
 /* Agent Card */
 .vibe-agent-card {
   background: var(--vibe-surface-2);

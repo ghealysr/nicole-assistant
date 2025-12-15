@@ -1463,30 +1463,61 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
             <span className="vibe-panel-title">Agents</span>
           </div>
 
+          {/* LIVE STATUS - Always visible when working */}
+          {isAnyOperationLoading && combinedActivities.length > 0 && (
+            <div className="vibe-live-status">
+              <div className="vibe-live-status-header">
+                <span className="vibe-live-pulse" />
+                <span className="vibe-live-label">LIVE</span>
+              </div>
+              <div className="vibe-live-status-content">
+                <div className="vibe-live-agent">{combinedActivities[0]?.agent || 'Working'}</div>
+                <div className="vibe-live-action">{combinedActivities[0]?.action || 'Processing...'}</div>
+                <div className="vibe-live-time">{combinedActivities[0]?.time || 'Now'}</div>
+              </div>
+              {combinedActivities.length > 1 && combinedActivities[1] && (
+                <div className="vibe-live-previous">
+                  <span className="vibe-live-previous-label">Previous:</span>
+                  <span className="vibe-live-previous-text">{combinedActivities[1].action}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="vibe-agents-list">
-            {Array.isArray(agents) && agents.map(agent => (
-              <div key={agent.id} className={`vibe-agent-card ${agent.status}`}>
-                <div className="vibe-agent-header">
-                  <div className={`vibe-agent-icon ${agent.id}`}>{agent.icon}</div>
-                  <div className="vibe-agent-info">
-                    <div className="vibe-agent-name">{agent.name}</div>
-                    <div className={`vibe-agent-status-text ${agent.status}`}>
-                      {agent.status === 'working' && <span className="vibe-spinner" />}
-                      {agent.status === 'idle' ? 'Ready' : agent.status === 'working' ? 'Working' : agent.status === 'complete' ? 'Complete' : 'Error'}
+            {Array.isArray(agents) && agents.map(agent => {
+              // Find the latest activity for this agent
+              const agentActivity = combinedActivities.find(a => 
+                a.agent?.toLowerCase().includes(agent.name?.toLowerCase().split(' ')[0] || '')
+              );
+              const displayTask = agent.status === 'working' && agentActivity 
+                ? agentActivity.action 
+                : agent.task;
+              
+              return (
+                <div key={agent.id} className={`vibe-agent-card ${agent.status}`}>
+                  <div className="vibe-agent-header">
+                    <div className={`vibe-agent-icon ${agent.id}`}>{agent.icon}</div>
+                    <div className="vibe-agent-info">
+                      <div className="vibe-agent-name">{agent.name}</div>
+                      <div className={`vibe-agent-status-text ${agent.status}`}>
+                        {agent.status === 'working' && <span className="vibe-spinner" />}
+                        {agent.status === 'idle' ? 'Ready' : agent.status === 'working' ? 'Working' : agent.status === 'complete' ? 'Complete' : 'Error'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="vibe-agent-progress">
+                    <div className="vibe-agent-progress-bar">
+                      <div className={`vibe-agent-progress-fill ${agent.status}`} style={{ width: `${agent.progress}%` }} />
+                    </div>
+                    <div className="vibe-agent-progress-text">
+                      <span className="vibe-agent-task-text">{displayTask}</span>
+                      <span>{agent.progress}%</span>
                     </div>
                   </div>
                 </div>
-                <div className="vibe-agent-progress">
-                  <div className="vibe-agent-progress-bar">
-                    <div className={`vibe-agent-progress-fill ${agent.status}`} style={{ width: `${agent.progress}%` }} />
-                  </div>
-                  <div className="vibe-agent-progress-text">
-                    <span>{agent.task}</span>
-                    <span>{agent.progress}%</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Workflow */}
