@@ -30,9 +30,82 @@ Author: AlphaWave Architecture
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from enum import Enum
+from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Skill file locations
+SKILLS_DIR = Path(__file__).parent.parent / "skills"
+
+
+def load_skill_content(skill_name: str) -> Optional[str]:
+    """
+    Load skill content from the skills directory.
+    
+    Args:
+        skill_name: Name of the skill (e.g., 'frontend-design', 'canvas-design')
+        
+    Returns:
+        Skill content as a string, or None if not found
+    """
+    skill_path = SKILLS_DIR / skill_name / "SKILL.md"
+    
+    if not skill_path.exists():
+        # Try alternate naming (e.g., fontend-design typo)
+        for alt_name in [skill_name, skill_name.replace("-", "_"), f"fontend-{skill_name.split('-')[-1]}"]:
+            alt_path = SKILLS_DIR / alt_name / "SKILL.md"
+            if alt_path.exists():
+                skill_path = alt_path
+                break
+    
+    if skill_path.exists():
+        try:
+            content = skill_path.read_text(encoding="utf-8")
+            # Strip YAML frontmatter if present
+            if content.startswith("---"):
+                end_idx = content.find("---", 3)
+                if end_idx > 0:
+                    content = content[end_idx + 3:].strip()
+            return content
+        except Exception as e:
+            logger.warning(f"[SKILLS] Failed to load {skill_name}: {e}")
+    
+    return None
+
+
+def get_enhanced_prompt(base_prompt: str, skill_names: List[str]) -> str:
+    """
+    Enhance a base prompt with skill content.
+    
+    Args:
+        base_prompt: The agent's base system prompt
+        skill_names: List of skill names to inject
+        
+    Returns:
+        Enhanced prompt with skill content appended
+    """
+    skill_contents = []
+    
+    for skill_name in skill_names:
+        content = load_skill_content(skill_name)
+        if content:
+            skill_contents.append(f"""
+## SKILL: {skill_name.upper()}
+
+{content}
+
+---
+""")
+    
+    if skill_contents:
+        return base_prompt + "\n\n## LOADED SKILLS\n\nThe following skills are now active. Follow their guidelines when applicable:\n" + "\n".join(skill_contents)
+    
+    return base_prompt
+
+
+# Cache for enhanced prompts
+_enhanced_prompt_cache: Dict[str, str] = {}
 
 
 class AgentRole(Enum):
@@ -672,6 +745,54 @@ AGENT_DEFINITIONS: Dict[AgentRole, AgentDefinition] = {
 def get_agent(role: AgentRole) -> AgentDefinition:
     """Get agent definition by role."""
     return AGENT_DEFINITIONS.get(role)
+
+
+def get_agent_with_skills(role: AgentRole) -> AgentDefinition:
+    """
+    Get agent definition with skill content injected into the prompt.
+    
+    Each agent gets skills relevant to their role:
+    - DESIGN: canvas-design (for visual artifacts)
+    - CODING: frontend-design (for UI implementation)
+    - ARCHITECT: (no extra skills, uses base prompt)
+    - QA: (no extra skills, uses base prompt)
+    - REVIEW: (no extra skills, uses base prompt)
+    """
+    agent = AGENT_DEFINITIONS.get(role)
+    if not agent:
+        return None
+    
+    # Determine which skills to inject based on role
+    skill_map = {
+        AgentRole.DESIGN: ["canvas-design"],
+        AgentRole.CODING: ["frontend-design"],
+    }
+    
+    skills = skill_map.get(role, [])
+    
+    if skills:
+        cache_key = f"{role.value}:{','.join(skills)}"
+        
+        if cache_key not in _enhanced_prompt_cache:
+            enhanced_prompt = get_enhanced_prompt(agent.system_prompt, skills)
+            _enhanced_prompt_cache[cache_key] = enhanced_prompt
+        
+        # Return a copy with enhanced prompt
+        return AgentDefinition(
+            role=agent.role,
+            display_name=agent.display_name,
+            model=agent.model,
+            emoji=agent.emoji,
+            capabilities=agent.capabilities,
+            tools=agent.tools,
+            system_prompt=_enhanced_prompt_cache[cache_key],
+            handoff_from=agent.handoff_from,
+            handoff_to=agent.handoff_to,
+            startup_message=agent.startup_message,
+            completion_message=agent.completion_message,
+        )
+    
+    return agent
 
 
 def get_agent_by_name(name: str) -> Optional[AgentDefinition]:

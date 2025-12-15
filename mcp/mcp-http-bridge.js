@@ -265,6 +265,66 @@ const TOOLS = [
       }
     },
     server: 'puppeteer'
+  },
+  {
+    name: 'github_create_repo',
+    description: 'Create a new GitHub repository. Returns the repository URL and clone URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Repository name (lowercase, hyphens allowed)'
+        },
+        description: {
+          type: 'string',
+          description: 'Repository description'
+        },
+        private: {
+          type: 'boolean',
+          description: 'Make repository private (default: true)',
+          default: true
+        }
+      },
+      required: ['name']
+    },
+    server: 'github'
+  },
+  {
+    name: 'github_push_files',
+    description: 'Push multiple files to a GitHub repository in a single commit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: {
+          type: 'string',
+          description: 'Repository name'
+        },
+        files: {
+          type: 'array',
+          description: 'Array of {path, content} objects',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              content: { type: 'string' }
+            }
+          }
+        },
+        message: {
+          type: 'string',
+          description: 'Commit message',
+          default: 'Update from Vibe'
+        },
+        branch: {
+          type: 'string',
+          description: 'Target branch',
+          default: 'main'
+        }
+      },
+      required: ['repo', 'files']
+    },
+    server: 'github'
   }
 ];
 
@@ -555,6 +615,156 @@ async function executePuppeteerScreenshot(args) {
   }
 }
 
+// GitHub helpers
+function githubHeaders() {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error('GITHUB_TOKEN not configured');
+  }
+  return {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+}
+
+async function executeGithubCreateRepo(args) {
+  const { name, description = '', private: isPrivate = true } = args;
+  const headers = githubHeaders();
+  const org = process.env.GITHUB_ORG;
+  
+  const url = org 
+    ? `https://api.github.com/orgs/${org}/repos`
+    : 'https://api.github.com/user/repos';
+  
+  try {
+    const resp = await axios.post(url, {
+      name,
+      description,
+      private: isPrivate,
+      auto_init: true
+    }, { headers });
+    
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        name: resp.data.name,
+        full_name: resp.data.full_name,
+        html_url: resp.data.html_url,
+        clone_url: resp.data.clone_url
+      }, null, 2)
+    }];
+  } catch (error) {
+    if (error.response?.status === 422 && error.response?.data?.errors?.[0]?.message?.includes('already exists')) {
+      // Repo already exists, return existing
+      const owner = org || (await axios.get('https://api.github.com/user', { headers })).data.login;
+      const repoResp = await axios.get(`https://api.github.com/repos/${owner}/${name}`, { headers });
+      return [{
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          name: repoResp.data.name,
+          full_name: repoResp.data.full_name,
+          html_url: repoResp.data.html_url,
+          clone_url: repoResp.data.clone_url,
+          already_existed: true
+        }, null, 2)
+      }];
+    }
+    throw new Error(`GitHub API error: ${error.response?.data?.message || error.message}`);
+  }
+}
+
+async function executeGithubPushFiles(args) {
+  const { repo, files, message = 'Update from Vibe', branch = 'main' } = args;
+  const headers = githubHeaders();
+  const org = process.env.GITHUB_ORG;
+  
+  // Get owner
+  let owner = org;
+  if (!owner) {
+    const userResp = await axios.get('https://api.github.com/user', { headers });
+    owner = userResp.data.login;
+  }
+  
+  const repoPath = `https://api.github.com/repos/${owner}/${repo}`;
+  
+  try {
+    // Get latest commit SHA
+    let latestSha = null;
+    let baseTreeSha = null;
+    
+    try {
+      const refResp = await axios.get(`${repoPath}/git/refs/heads/${branch}`, { headers });
+      latestSha = refResp.data.object.sha;
+      
+      const commitResp = await axios.get(`${repoPath}/git/commits/${latestSha}`, { headers });
+      baseTreeSha = commitResp.data.tree.sha;
+    } catch (e) {
+      // Branch doesn't exist, will create
+    }
+    
+    // Create blobs for each file
+    const treeItems = [];
+    for (const file of files) {
+      const blobResp = await axios.post(`${repoPath}/git/blobs`, {
+        content: Buffer.from(file.content).toString('base64'),
+        encoding: 'base64'
+      }, { headers });
+      
+      treeItems.push({
+        path: file.path,
+        mode: '100644',
+        type: 'blob',
+        sha: blobResp.data.sha
+      });
+    }
+    
+    // Create tree
+    const treePayload = { tree: treeItems };
+    if (baseTreeSha) {
+      treePayload.base_tree = baseTreeSha;
+    }
+    const treeResp = await axios.post(`${repoPath}/git/trees`, treePayload, { headers });
+    const newTreeSha = treeResp.data.sha;
+    
+    // Create commit
+    const commitPayload = {
+      message,
+      tree: newTreeSha,
+      parents: latestSha ? [latestSha] : []
+    };
+    const newCommitResp = await axios.post(`${repoPath}/git/commits`, commitPayload, { headers });
+    const newCommitSha = newCommitResp.data.sha;
+    
+    // Update or create ref
+    if (latestSha) {
+      await axios.patch(`${repoPath}/git/refs/heads/${branch}`, {
+        sha: newCommitSha
+      }, { headers });
+    } else {
+      await axios.post(`${repoPath}/git/refs`, {
+        ref: `refs/heads/${branch}`,
+        sha: newCommitSha
+      }, { headers });
+    }
+    
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        files_pushed: files.length,
+        commit_sha: newCommitSha,
+        branch,
+        repo: `${owner}/${repo}`
+      }, null, 2)
+    }];
+  } catch (error) {
+    throw new Error(`GitHub push failed: ${error.response?.data?.message || error.message}`);
+  }
+}
+
 const TOOL_EXECUTORS = {
   'brave_web_search': executeBraveSearch,
   'read_file': executeReadFile,
@@ -567,7 +777,9 @@ const TOOL_EXECUTORS = {
   'notion_create_database_item': executeNotionCreateDatabaseItem,
   'recraft_generate_image': executeRecraftGenerateImage,
   'puppeteer_navigate': executePuppeteerNavigate,
-  'puppeteer_screenshot': executePuppeteerScreenshot
+  'puppeteer_screenshot': executePuppeteerScreenshot,
+  'github_create_repo': executeGithubCreateRepo,
+  'github_push_files': executeGithubPushFiles
 };
 
 
@@ -672,6 +884,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  BRAVE_API_KEY:   ${process.env.BRAVE_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
   console.log(`  NOTION_API_KEY:  ${process.env.NOTION_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
   console.log(`  RECRAFT_API_KEY: ${process.env.RECRAFT_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  GITHUB_TOKEN:    ${process.env.GITHUB_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  GITHUB_ORG:      ${process.env.GITHUB_ORG || '(using personal account)'}`);
+  console.log(`  VERCEL_TOKEN:    ${process.env.VERCEL_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
   console.log(`\n${'='.repeat(60)}\n`);
 });
 

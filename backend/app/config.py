@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     GEMINI_PRO_MODEL: str = "gemini-3-pro-preview"
     GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
 
+    # GitHub Integration (for Vibe deploy)
+    GITHUB_TOKEN: str = ""
+    GITHUB_ORG: str = "alphawave-sites"  # Organization or username for repos
+
+    # Vercel Integration (for Vibe deploy)
+    VERCEL_TOKEN: str = ""
+    VERCEL_TEAM_ID: str = ""  # Optional team ID
+
     class Config:
         env_file = ".env" if os.path.exists(".env") else "/opt/nicole/.env"
         env_file_encoding = "utf-8"

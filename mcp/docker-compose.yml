@@ -11,6 +11,9 @@ services:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - NOTION_API_KEY=${NOTION_API_KEY}
       - RECRAFT_API_KEY=${RECRAFT_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_ORG=${GITHUB_ORG}
+      - VERCEL_TOKEN=${VERCEL_TOKEN}
       - PORT=3100
     ports:
       - "127.0.0.1:3100:3100"

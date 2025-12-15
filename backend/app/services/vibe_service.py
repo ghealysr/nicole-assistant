@@ -25,8 +25,10 @@ from functools import wraps
 from app.database import db
 from app.integrations.alphawave_claude import claude_client
 from app.integrations.alphawave_openai import openai_client
+from app.integrations.github_service import get_github_service, GitHubFile
+from app.integrations.vercel_service import get_vercel_service
 from app.services.vibe_agents import (
-    AGENT_DEFINITIONS, AgentRole, get_agent,
+    AGENT_DEFINITIONS, AgentRole, get_agent, get_agent_with_skills,
     ARCHITECT_AGENT_PROMPT, CODING_AGENT_PROMPT, QA_AGENT_PROMPT, REVIEW_AGENT_PROMPT
 )
 
@@ -995,6 +997,37 @@ def parse_files_from_response(response: str) -> List[ParsedFile]:
     # Pattern 7: File: path/to/file.tsx followed by code block
     for match in RE_FILE_LABEL.finditer(response):
         add_file(match.group(1), match.group(2))
+    
+    # Fallback: If no files parsed, try to extract ANY code blocks with reasonable filenames
+    if not files:
+        fallback_pattern = re.compile(
+            r'```(?:tsx?|jsx?|typescript|javascript|css|json|html|md|py)\n(.*?)```',
+            re.DOTALL
+        )
+        for i, match in enumerate(fallback_pattern.finditer(response)):
+            content = match.group(1).strip()
+            if len(content) > 50:  # Only substantial code blocks
+                # Try to guess filename from content
+                filename = None
+                # Check for component name
+                component_match = re.search(r'(?:export\s+(?:default\s+)?(?:function|const)\s+|const\s+)(\w+)', content)
+                if component_match:
+                    name = component_match.group(1)
+                    if name not in ('React', 'useState', 'useEffect', 'Component'):
+                        filename = f"components/{name}.tsx"
+                
+                if not filename:
+                    # Check for page-like content
+                    if 'export default function' in content and ('Page' in content or 'Home' in content):
+                        filename = "app/page.tsx"
+                    elif 'tailwind' in content.lower() or '@tailwind' in content:
+                        filename = "tailwind.config.ts"
+                    elif 'globals' in content.lower() or 'body' in content:
+                        filename = "app/globals.css"
+                    else:
+                        filename = f"generated/file_{i + 1}.tsx"
+                
+                add_file(filename, content)
     
     if not files:
         logger.warning("[VIBE] No files parsed from build response. Response preview: %s...", 
@@ -2953,9 +2986,13 @@ Generate COMPLETE code for each file. No abbreviations."""
                 user_id=user_id
             )
             
+            # Get enhanced prompt with frontend-design skill content
+            coding_agent = get_agent_with_skills(AgentRole.CODING)
+            enhanced_coding_prompt = coding_agent.system_prompt if coding_agent else CODING_AGENT_PROMPT
+            
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": build_prompt}],
-                system_prompt=CODING_AGENT_PROMPT,
+                system_prompt=enhanced_coding_prompt,
                 model=self.SONNET_MODEL,
                 max_tokens=16000,  # Large budget for code generation
                 temperature=0.3,   # Lower temperature for code
@@ -3634,9 +3671,15 @@ Output your comprehensive review as JSON."""
         production_url: Optional[str] = None
     ) -> OperationResult:
         """
-        Deploy the project. Currently a placeholder that sets URLs and status.
+        Deploy the project to GitHub and Vercel.
         
-        In production, this would integrate with GitHub and Vercel APIs.
+        Steps:
+        1. Create GitHub repository
+        2. Push generated files to repository
+        3. Create Vercel project linked to GitHub
+        4. Trigger deployment
+        5. Update project status and URLs
+        6. Capture lessons learned
         """
         try:
             project = await self._get_project_or_raise(project_id, user_id)
@@ -3653,18 +3696,130 @@ Output your comprehensive review as JSON."""
         except InvalidStatusTransitionError as e:
             return OperationResult(success=False, error=str(e))
         
-        # Generate URLs if not provided
-        final_preview = preview_url or f"https://preview.alphawave.ai/p/{project_id}"
-        final_production = production_url or f"https://sites.alphawave.ai/{project_id}"
+        # Get project files
+        files = await self.get_project_files(project_id)
+        if not files:
+            return OperationResult(success=False, error="No files to deploy")
+        
+        # Generate repo name from project name
+        project_name = project.get("name", f"vibe-project-{project_id}")
+        repo_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower())[:50]
         
         # Log deployment start
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.DEPLOYMENT_STARTED,
-            description="Deployment initiated",
+            description="Deployment initiated - creating GitHub repository",
             user_id=user_id,
-            metadata={"preview_url": final_preview}
+            agent_name="Orchestrator",
+            metadata={"repo_name": repo_name}
         )
+        
+        github = get_github_service()
+        vercel = get_vercel_service()
+        
+        github_url = None
+        vercel_url = None
+        
+        # Step 1: Create GitHub repository
+        if github.is_configured:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.DEPLOYMENT_STARTED,
+                description=f"📦 Creating GitHub repository: {repo_name}",
+                user_id=user_id,
+                agent_name="System"
+            )
+            
+            brief = project.get("brief", {})
+            if isinstance(brief, str):
+                try:
+                    brief = json.loads(brief)
+                except:
+                    brief = {}
+            
+            description = brief.get("description", f"Website for {project_name}")[:100]
+            
+            repo = await github.create_repository(
+                name=repo_name,
+                description=description,
+                private=True
+            )
+            
+            if repo:
+                github_url = repo.html_url
+                
+                # Step 2: Push files to repository
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.DEPLOYMENT_STARTED,
+                    description=f"📤 Pushing {len(files)} files to GitHub",
+                    user_id=user_id,
+                    agent_name="System"
+                )
+                
+                github_files = [
+                    GitHubFile(path=f["file_path"], content=f["content"])
+                    for f in files
+                ]
+                
+                await github.commit_files(
+                    repo_name=repo_name,
+                    files=github_files,
+                    message="Initial commit from AlphaWave Vibe"
+                )
+                
+                # Update project with GitHub URL
+                await db.execute(
+                    """
+                    UPDATE vibe_projects
+                    SET github_repo = $1, updated_at = NOW()
+                    WHERE project_id = $2
+                    """,
+                    github_url, project_id
+                )
+                
+                logger.info("[VIBE] Created GitHub repo: %s", github_url)
+            else:
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.ERROR,
+                    description="⚠️ GitHub repository creation failed, continuing with Vercel deploy",
+                    user_id=user_id,
+                    agent_name="System"
+                )
+        
+        # Step 3: Create Vercel project and deploy
+        if vercel.is_configured and github_url:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.DEPLOYMENT_STARTED,
+                description="🚀 Creating Vercel project and deploying",
+                user_id=user_id,
+                agent_name="System"
+            )
+            
+            vercel_project = await vercel.create_project(
+                name=repo_name,
+                github_repo=f"{github.org or 'user'}/{repo_name}",
+                framework="nextjs"
+            )
+            
+            if vercel_project:
+                # Trigger deployment
+                deployment = await vercel.trigger_deployment(repo_name)
+                if deployment:
+                    vercel_url = deployment.url
+                    logger.info("[VIBE] Deployed to Vercel: %s", vercel_url)
+                else:
+                    # Get existing production deployment
+                    deployment = await vercel.get_production_deployment(repo_name)
+                    if deployment:
+                        vercel_url = deployment.url
+        
+        # Generate fallback URLs if integrations not configured
+        final_preview = vercel_url or preview_url or f"https://preview.alphawave.ai/p/{project_id}"
+        final_production = vercel_url or production_url or f"https://sites.alphawave.ai/{project_id}"
         
         # Atomically update status with optimistic locking
         try:
@@ -3692,13 +3847,18 @@ Output your comprehensive review as JSON."""
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.DEPLOYMENT_COMPLETED,
-            description=f"Deployed to {final_production}",
+            description=f"✅ Deployed to {final_production}",
             user_id=user_id,
+            agent_name="System",
             metadata={
                 "preview_url": final_preview,
-                "production_url": final_production
+                "production_url": final_production,
+                "github_url": github_url
             }
         )
+        
+        # Step 6: Capture lesson learned from this project
+        await self._capture_deployment_lesson(project_id, project)
         
         return OperationResult(
             success=True,
@@ -3706,9 +3866,76 @@ Output your comprehensive review as JSON."""
                 "status": ProjectStatus.DEPLOYED.value,
                 "preview_url": final_preview,
                 "production_url": final_production,
+                "github_url": github_url,
                 "message": "Project deployed successfully"
             }
         )
+    
+    async def _capture_deployment_lesson(
+        self,
+        project_id: int,
+        project: Dict[str, Any]
+    ):
+        """Capture lessons learned after successful deployment."""
+        try:
+            brief = project.get("brief", {})
+            architecture = project.get("architecture", {})
+            
+            if isinstance(brief, str):
+                try:
+                    brief = json.loads(brief)
+                except:
+                    brief = {}
+            
+            if isinstance(architecture, str):
+                try:
+                    architecture = json.loads(architecture)
+                except:
+                    architecture = {}
+            
+            # Use Claude to extract a lesson from this project
+            project_summary = f"""
+Project: {project.get('name', 'Unknown')}
+Type: {project.get('project_type', 'website')}
+Business: {brief.get('business_name', 'Unknown')}
+Industry: {brief.get('business_type', 'Unknown')}
+Description: {brief.get('description', 'N/A')[:200]}
+Design System Used: {json.dumps(architecture.get('design_system', {}), indent=2)[:500]}
+"""
+            
+            lesson_prompt = f"""You just completed building a website project. Extract ONE key lesson learned.
+
+{project_summary}
+
+Output JSON with:
+- issue: What challenge or pattern emerged
+- solution: How it was addressed
+- impact: Why this matters for future projects
+- category: One of: design, content, seo, code, architecture, ux
+
+Keep each field under 100 words. Focus on actionable insights."""
+
+            response = await claude_client.generate_response(
+                messages=[{"role": "user", "content": lesson_prompt}],
+                system_prompt="You are a project analyst extracting lessons learned.",
+                max_tokens=500,
+                model_preference="fast"
+            )
+            
+            # Parse the lesson
+            lesson_data = self._extract_json_from_response(response)
+            if lesson_data and isinstance(lesson_data, dict):
+                await self.capture_lesson(
+                    project_id=project_id,
+                    category=lesson_data.get("category", "design"),
+                    issue=lesson_data.get("issue", ""),
+                    solution=lesson_data.get("solution", ""),
+                    impact=lesson_data.get("impact", "medium"),
+                    tags=[project.get("project_type", "website")]
+                )
+                logger.info("[VIBE] Captured lesson from project %d", project_id)
+        except Exception as e:
+            logger.warning("[VIBE] Failed to capture lesson: %s", e)
     
     # ========================================================================
     # FILE MANAGEMENT
