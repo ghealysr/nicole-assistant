@@ -1351,11 +1351,11 @@ export function useVibeProject(projectId?: number) {
     // Initial refresh when operation starts
     fetchActivities(projectId, 25);
     
-    // Periodic refresh during operations
+    // Periodic refresh during operations - faster for real-time feel
     const interval = window.setInterval(() => {
       fetchActivities(projectId, 25);
       fetchProject(projectId);
-    }, 4000);
+    }, 2000); // Reduced from 4s to 2s for faster updates
     
     return () => window.clearInterval(interval);
   }, [projectId, isAnyOperationLoading, fetchActivities, fetchProject]);

@@ -2721,6 +2721,15 @@ Style Notes: {design_system.inspiration_notes}
                     user_id=user_id
                 )
             
+            # Log that we're calling Claude now
+            await self._log_agent_message(
+                project_id=project_id,
+                agent_name="Architect Agent",
+                message_type="thinking",
+                content="Calling Claude Opus to generate architecture specification...",
+                user_id=user_id
+            )
+            
             response = await self._call_claude_with_retry(
                 messages=[{
                     "role": "user",
@@ -2734,6 +2743,15 @@ Style Notes: {design_system.inspiration_notes}
                 base_delay=2.0,
                 enable_extended_thinking=True,
                 thinking_budget=8000
+            )
+            
+            # Log that we got a response
+            await self._log_agent_message(
+                project_id=project_id,
+                agent_name="Architect Agent",
+                message_type="thinking",
+                content=f"Received response ({len(response)} chars). Parsing architecture...",
+                user_id=user_id
             )
             
             # Log response preview
@@ -2766,6 +2784,21 @@ Style Notes: {design_system.inspiration_notes}
         
         # Extract architecture JSON
         architecture = extract_json_from_response(response)
+        
+        # Log extraction result for debugging
+        if architecture:
+            logger.info("[VIBE] Successfully parsed architecture with %d pages", len(architecture.get("pages", [])))
+        else:
+            logger.warning("[VIBE] Failed to parse architecture from response (length=%d)", len(response))
+            logger.debug("[VIBE] Raw response (first 1000): %s", response[:1000])
+            # Log to agent console so user sees what happened
+            await self._log_agent_message(
+                project_id=project_id,
+                agent_name="Architect Agent",
+                message_type="error",
+                content=f"Could not parse architecture. Response preview: {response[:200]}...",
+                user_id=user_id
+            )
         
         # Merge Gemini's design system into the architecture (if available)
         if architecture and design_system:
