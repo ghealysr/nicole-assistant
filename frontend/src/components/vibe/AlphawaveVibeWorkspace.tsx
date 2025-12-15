@@ -390,6 +390,8 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
     agent: string;
     action: string;
     time: string;
+    messageType?: string;
+    meta?: Record<string, unknown>;
   }>>([]);
   
   // Hooks
