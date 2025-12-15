@@ -2741,7 +2741,7 @@ Style Notes: {design_system.inspiration_notes}
                 temperature=0.5,
                 max_retries=3,
                 base_delay=2.0,
-                enable_extended_thinking=True,
+                enable_extended_thinking=False,  # Disabled for fast iteration
                 thinking_budget=8000
             )
             
@@ -3053,7 +3053,7 @@ Generate COMPLETE code for each file. No abbreviations."""
                 temperature=0.3,   # Lower temperature for code
                 max_retries=3,
                 base_delay=2.0,     # Longer delay for large generations
-                enable_extended_thinking=True,
+                enable_extended_thinking=False,  # Disabled for fast iteration
                 thinking_budget=8000
             )
             
@@ -3272,7 +3272,7 @@ Perform a comprehensive QA review and output your findings as JSON."""
                 temperature=0.3,
                 max_retries=3,
                 base_delay=1.5,
-                enable_extended_thinking=True,
+                enable_extended_thinking=False,  # Disabled for fast iteration
                 thinking_budget=6000
             )
         except Exception as e:
@@ -3484,7 +3484,7 @@ Output your comprehensive review as JSON."""
                 temperature=0.3,
                 max_retries=3,
                 base_delay=2.0,
-                enable_extended_thinking=True,
+                enable_extended_thinking=False,  # Disabled for fast iteration
                 thinking_budget=6000
             )
         except Exception as e:
