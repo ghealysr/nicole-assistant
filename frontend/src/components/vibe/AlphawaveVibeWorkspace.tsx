@@ -352,8 +352,12 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [modelHealth, setModelHealth] = useState<Record<string, unknown>[] | null>(null);
+  interface ModelHealthItem {
+    model: string;
+    status: string;
+    cooldown_until?: string;
+  }
+  const [modelHealth, setModelHealth] = useState<ModelHealthItem[] | null>(null);
   const [modelHealthError, setModelHealthError] = useState<string | null>(null);
   
   // Lightbox state for screenshot viewing
