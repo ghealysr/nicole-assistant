@@ -2300,6 +2300,15 @@ class VibeService:
         # Feature flag for tool-enabled intake
         USE_INTAKE_TOOLS = True  # Enabled - Cloudinary + Brave Search configured
         
+        # Log that Nicole is processing the message
+        await self._log_agent_message(
+            project_id=project_id,
+            agent_name="Nicole",
+            message_type="thinking",
+            content=f"Analyzing your message: \"{user_message[:100]}{'...' if len(user_message) > 100 else ''}\"",
+            user_id=user_id
+        )
+        
         response = None
         tool_uses = []
         
@@ -2326,6 +2335,15 @@ class VibeService:
                     metadata={"tool": tool_name, "status": "started"}
                 )
                 
+                # Log tool call to agent console
+                await self._log_agent_message(
+                    project_id=project_id,
+                    agent_name="Nicole",
+                    message_type="tool_call",
+                    content=f"Using {tool_name}: {json.dumps(tool_input, default=str)[:200]}",
+                    user_id=user_id
+                )
+                
                 result = await self._execute_vibe_tool(tool_name, tool_input, project_id)
                 
                 # Log completion
@@ -2336,6 +2354,16 @@ class VibeService:
                     description=f"{'✅' if success else '⚠️'} {tool_name} complete",
                     agent_name="Nicole",
                     metadata={"tool": tool_name, "status": "complete", "success": success}
+                )
+                
+                # Log result summary to console
+                result_preview = json.dumps(result, default=str)[:200] if result else "No result"
+                await self._log_agent_message(
+                    project_id=project_id,
+                    agent_name="Nicole",
+                    message_type="tool_result",
+                    content=f"{tool_name} returned: {result_preview}{'...' if len(result_preview) >= 200 else ''}",
+                    user_id=user_id
                 )
                 
                 return json.dumps(result, default=str)
@@ -2365,6 +2393,15 @@ class VibeService:
                         agent_name="Nicole",
                         metadata={"tools_used": [t.get("name") for t in tool_uses]}
                     )
+                
+                # Log Nicole's response to console
+                await self._log_agent_message(
+                    project_id=project_id,
+                    agent_name="Nicole",
+                    message_type="response",
+                    content=f"Response: {response[:300]}{'...' if len(response) > 300 else ''}" if response else "Generating response...",
+                    user_id=user_id
+                )
                     
             except Exception as e:
                 logger.warning("[VIBE] Tool-enabled intake failed, falling back to simple: %s", e)
@@ -3068,6 +3105,15 @@ Perform a comprehensive QA review and output your findings as JSON."""
             agent_name="QA Agent"
         )
         
+        # Log detailed QA thinking to console
+        await self._log_agent_message(
+            project_id=project_id,
+            agent_name="QA Agent",
+            message_type="thinking",
+            content=f"Reviewing {len(files)} files for TypeScript errors, React issues, import problems, accessibility, and SEO...",
+            user_id=user_id
+        )
+        
         try:
             response = await self._call_claude_with_retry(
                 messages=[{"role": "user", "content": qa_prompt}],
@@ -3097,6 +3143,17 @@ Perform a comprehensive QA review and output your findings as JSON."""
                 "suggestions": ["Manual review recommended"],
                 "summary": "Automated extraction failed - manual review needed"
             }
+        
+        # Log QA findings to console
+        issues_count = len(qa_result.get("issues", []))
+        score = qa_result.get("score", 0)
+        await self._log_agent_message(
+            project_id=project_id,
+            agent_name="QA Agent",
+            message_type="response",
+            content=f"QA Complete:\n• Score: {score}/100\n• Issues found: {issues_count}\n• Summary: {qa_result.get('summary', 'Review complete')[:150]}",
+            user_id=user_id
+        )
         
         # Determine pass/fail
         passed = qa_result.get("passed", False)
@@ -3231,6 +3288,15 @@ Perform a comprehensive QA review and output your findings as JSON."""
             agent_name="Review Agent"
         )
         
+        # Log detailed review thinking to console
+        await self._log_agent_message(
+            project_id=project_id,
+            agent_name="Review Agent",
+            message_type="thinking",
+            content=f"Final review for {brief.get('business_name', 'project')}:\n• Checking if implementation matches {len(list(architecture.get('pages', [])))} planned pages\n• Verifying design system is applied correctly\n• Evaluating production readiness",
+            user_id=user_id
+        )
+        
         review_prompt = f"""Conduct a final comprehensive review of this AlphaWave project.
 
 ## Client Brief
@@ -3282,6 +3348,17 @@ Output your comprehensive review as JSON."""
         approved = review_result.get("approved", False)
         recommendation = review_result.get("recommendation", "revise")
         score = review_result.get("score", 0)
+        
+        # Log review findings to console
+        concerns = review_result.get("concerns", [])
+        strengths = review_result.get("strengths", [])
+        await self._log_agent_message(
+            project_id=project_id,
+            agent_name="Review Agent",
+            message_type="response",
+            content=f"Review Complete:\n• Score: {score}/100\n• Recommendation: {recommendation.upper()}\n• Approved: {'✅ Yes' if approved else '❌ Not yet'}\n• Strengths: {len(strengths)}, Concerns: {len(concerns)}\n• Summary: {review_result.get('summary', 'See full review')[:100]}",
+            user_id=user_id
+        )
         
         # Update status atomically with optimistic locking
         if approved or recommendation == "approve":
