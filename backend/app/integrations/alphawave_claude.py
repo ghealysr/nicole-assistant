@@ -104,16 +104,30 @@ class AlphawaveClaudeClient:
             if tools:
                 kwargs["tools"] = tools
 
-            if enable_extended_thinking:
+            # Try with extended thinking if enabled
+            use_thinking = enable_extended_thinking
+            if use_thinking:
                 kwargs["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": min(thinking_budget, max_tokens - 1) if max_tokens else thinking_budget
                 }
+                # Extended thinking requires temperature to not be set
+                del kwargs["temperature"]
             
-            logger.debug(f"[Claude] Calling {model} with {len(messages)} messages")
+            logger.debug(f"[Claude] Calling {model} with {len(messages)} messages, thinking={use_thinking}")
             
-            # Use async client for true async operation
-            response = await self.async_client.messages.create(**kwargs)
+            try:
+                # Use async client for true async operation
+                response = await self.async_client.messages.create(**kwargs)
+            except TypeError as e:
+                # Fallback if 'thinking' parameter not supported by library version
+                if "thinking" in str(e) and use_thinking:
+                    logger.warning("[Claude] Extended thinking not supported by library, falling back to standard mode")
+                    kwargs.pop("thinking", None)
+                    kwargs["temperature"] = temperature
+                    response = await self.async_client.messages.create(**kwargs)
+                else:
+                    raise
             
             # Extract text from response
             if response.content and len(response.content) > 0:
@@ -178,20 +192,44 @@ class AlphawaveClaudeClient:
         tool_calls_made = []
         iterations = 0
         
+        # Track if we should try extended thinking
+        use_thinking = enable_extended_thinking
+        
         while iterations < max_tool_iterations:
             iterations += 1
             
             try:
-                # Use async client for proper async operation
-                response = await self.async_client.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    system=system_prompt if system_prompt else "",
-                    messages=conversation,
-                    tools=tools,
-                    thinking={"type": "enabled", "budget_tokens": min(thinking_budget, max_tokens - 1) if max_tokens else thinking_budget} if enable_extended_thinking else None,
-                )
+                # Build kwargs dynamically to handle thinking fallback
+                create_kwargs = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "system": system_prompt if system_prompt else "",
+                    "messages": conversation,
+                    "tools": tools,
+                }
+                
+                if use_thinking:
+                    create_kwargs["thinking"] = {
+                        "type": "enabled", 
+                        "budget_tokens": min(thinking_budget, max_tokens - 1) if max_tokens else thinking_budget
+                    }
+                    # Extended thinking is incompatible with temperature
+                else:
+                    create_kwargs["temperature"] = temperature
+                
+                try:
+                    # Use async client for proper async operation
+                    response = await self.async_client.messages.create(**create_kwargs)
+                except TypeError as e:
+                    # Fallback if 'thinking' parameter not supported
+                    if "thinking" in str(e) and use_thinking:
+                        logger.warning("[Claude] Extended thinking not supported, falling back")
+                        use_thinking = False
+                        create_kwargs.pop("thinking", None)
+                        create_kwargs["temperature"] = temperature
+                        response = await self.async_client.messages.create(**create_kwargs)
+                    else:
+                        raise
                 
                 # Check stop reason
                 if response.stop_reason == "end_turn":
