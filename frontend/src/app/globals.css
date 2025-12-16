@@ -9455,3 +9455,90 @@ body.resizing * {
   color: var(--article-accent);
   font-weight: 500;
 }
+
+/* ==========================================
+   FAZ CODE DASHBOARD STYLES
+   ========================================== */
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #2E2E3E;
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #3E3E4E;
+  }
+  
+  .animate-in {
+    animation-name: animate-in;
+    animation-duration: 0.5s;
+    animation-fill-mode: forwards;
+    opacity: 0;
+  }
+  
+  .fade-in {
+    animation-name: fade-in;
+  }
+  
+  .slide-in-from-bottom-4 {
+    --tw-enter-translate-y: 1rem;
+  }
+}
+
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Syntax Highlighting overrides for Prism */
+code[class*="language-"],
+pre[class*="language-"] {
+  color: #ccc;
+  background: none;
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-size: 1em;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1.5;
+  tab-size: 4;
+  hyphens: none;
+}
+
+/* Faz Code Theme Variables (Scoped) */
+.faz-theme {
+  --background: #0A0A0F;
+  --card: #12121A;
+  --border: #1E1E2E;
+  --primary: #6366F1;
+  --primary-hover: #818CF8;
+  --accent: #22D3EE;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --text: #F1F5F9;
+  --text-muted: #64748B;
+}
