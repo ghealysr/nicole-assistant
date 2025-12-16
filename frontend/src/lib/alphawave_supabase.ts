@@ -1,10 +1,16 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-
 /**
- * Supabase client for the frontend application.
- * Configured for client-side operations with the provided environment variables.
+ * Legacy Supabase stub - Nicole now uses Google OAuth
+ * 
+ * This file exists for backwards compatibility with any legacy imports.
+ * All authentication is now handled via Google OAuth in alphawave_utils.ts
  */
-export const supabase = createClientComponentClient({
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-});
+
+// Stub supabase client that does nothing
+export const supabase = {
+  auth: {
+    getSession: async () => ({ data: { session: null }, error: null }),
+    getUser: async () => ({ data: { user: null }, error: null }),
+    signOut: async () => ({ error: null }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+  },
+};
