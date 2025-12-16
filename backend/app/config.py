@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_PRO_MODEL: str = "gemini-3-pro-preview"
     GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
+    
+    # PageSpeed Insights API (for Lighthouse scores)
+    PAGESPEED_API_KEY: str = "AIzaSyBCHN4ej7qDAwsGhLmZMs_wqd7fi5kSM6c"
 
     # GitHub Integration (for Vibe deploy)
     GITHUB_TOKEN: str = ""

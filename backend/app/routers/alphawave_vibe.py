@@ -44,6 +44,22 @@ from app.services.vibe_service import (
     InvalidStatusTransitionError,
     MissingPrerequisiteError,
 )
+from app.schemas.vibe_schemas import (
+    IntakeFormSchema,
+    FileUploadRequest,
+    CompetitorURLRequest,
+    ArchitectureApprovalRequest,
+    ArchitectureRevisionRequest,
+    FeedbackSchema,
+    IterationResolveRequest,
+    UploadResponse,
+    CompetitorResponse,
+    QAScoresResponse,
+    IterationResponse,
+    ProjectChatContext,
+    IterationListResponse,
+    QAScoresListResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1370,3 +1386,329 @@ async def get_agent_status(
             "agents": agents_info
         }
     )
+
+
+# ============================================================================
+# VIBE V3.0 ENDPOINTS - STRUCTURED INTAKE & ENHANCED WORKFLOW
+# ============================================================================
+
+@router.post("/projects/{project_id}/intake", response_model=APIResponse)
+async def submit_intake_form(
+    project_id: int,
+    intake_form: IntakeFormSchema,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Submit structured intake form for a project.
+    
+    Replaces free-form chat intake with guided form submission.
+    Validates all fields and stores as JSONB in vibe_projects.intake_form.
+    
+    Required project status: 'intake' or 'paused'
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/intake")
+    
+    try:
+        result = await vibe_service.save_intake_form(
+            project_id=project_id,
+            user_id=user.user_id,
+            intake_data=intake_form.model_dump()
+        )
+        
+        return APIResponse(
+            success=True,
+            data=result,
+            message="Intake form saved successfully"
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Intake form submission failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save intake form")
+
+
+@router.post("/projects/{project_id}/uploads", response_model=APIResponse)
+async def upload_file(
+    project_id: int,
+    file_type: str,
+    description: Optional[str] = None,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Upload file for a project (logo, brand asset, inspiration, etc.).
+    
+    This is a metadata endpoint. Frontend should:
+    1. Upload file directly to Cloudinary
+    2. Call this endpoint with the Cloudinary URL + metadata
+    
+    Returns: Upload record with ID
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/uploads")
+    
+    # Note: In a real implementation, this endpoint would accept multipart/form-data
+    # For now, this is a placeholder that expects Cloudinary URL in request body
+    raise HTTPException(
+        status_code=501,
+        detail="File upload implementation pending. Upload to Cloudinary first, then POST metadata here."
+    )
+
+
+@router.post("/projects/{project_id}/competitors", response_model=APIResponse)
+async def add_competitor_url(
+    project_id: int,
+    competitor: CompetitorURLRequest,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Add competitor URL for design research.
+    
+    Nicole's Design Agent will screenshot this URL via Puppeteer MCP
+    and analyze it for design patterns, color schemes, and layout inspiration.
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/competitors")
+    
+    try:
+        result = await vibe_service.add_competitor_site(
+            project_id=project_id,
+            user_id=user.user_id,
+            url=str(competitor.url),
+            notes=competitor.notes
+        )
+        
+        return APIResponse(
+            success=True,
+            data=result,
+            message="Competitor URL added. Nicole will analyze it during Planning phase."
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Add competitor failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add competitor URL")
+
+
+@router.get("/projects/{project_id}/competitors", response_model=APIResponse)
+async def get_competitor_urls(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """Get all competitor URLs for a project"""
+    enforce_rate_limit(user.user_id, "GET:/vibe/projects/{id}/competitors")
+    
+    try:
+        competitors = await vibe_service.get_competitor_sites(project_id, user.user_id)
+        
+        return APIResponse(
+            success=True,
+            data={"competitors": competitors}
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Get competitors failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve competitors")
+
+
+@router.post("/projects/{project_id}/architecture/approve", response_model=APIResponse)
+async def approve_architecture(
+    project_id: int,
+    approval: ArchitectureApprovalRequest,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Glen approves architecture.
+    
+    Sets architecture_approved_at and unblocks Build phase.
+    This is a quality gate - no build starts without Glen's approval.
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/architecture/approve")
+    
+    try:
+        result = await vibe_service.approve_architecture(
+            project_id=project_id,
+            user_id=user.user_id,
+            approved_by=approval.approved_by
+        )
+        
+        return APIResponse(
+            success=True,
+            data=result,
+            message="Architecture approved! Build phase can now begin."
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except MissingPrerequisiteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Architecture approval failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to approve architecture")
+
+
+@router.post("/projects/{project_id}/architecture/revise", response_model=APIResponse)
+async def request_architecture_revision(
+    project_id: int,
+    revision: ArchitectureRevisionRequest,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Glen requests architecture changes.
+    
+    Sends project back to Planning phase with feedback.
+    Nicole's Architect Agent will revise based on feedback.
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/architecture/revise")
+    
+    try:
+        result = await vibe_service.request_architecture_changes(
+            project_id=project_id,
+            user_id=user.user_id,
+            feedback=revision.feedback,
+            requested_by=revision.requested_by
+        )
+        
+        return APIResponse(
+            success=True,
+            data=result,
+            message="Architecture revision requested. Returning to Planning phase."
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Architecture revision failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to request revision")
+
+
+@router.post("/projects/{project_id}/feedback", response_model=APIResponse)
+async def submit_feedback(
+    project_id: int,
+    feedback: FeedbackSchema,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Glen submits feedback on preview.
+    
+    Creates a new iteration (vibe_iterations table).
+    Nicole processes the feedback and generates fixes.
+    Max 5 iterations per project (configurable).
+    """
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/feedback")
+    
+    try:
+        iteration = await vibe_service.create_iteration(
+            project_id=project_id,
+            user_id=user.user_id,
+            feedback_data=feedback.model_dump()
+        )
+        
+        # Start processing the iteration in background
+        asyncio.create_task(
+            vibe_service.process_iteration(
+                iteration_id=iteration["iteration_id"],
+                project_id=project_id
+            )
+        )
+        
+        return APIResponse(
+            success=True,
+            data=iteration,
+            message=f"Feedback received. Iteration #{iteration['iteration_number']} created."
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Feedback submission failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to submit feedback")
+
+
+@router.get("/projects/{project_id}/iterations", response_model=APIResponse)
+async def get_iterations(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """Get all iterations for a project"""
+    enforce_rate_limit(user.user_id, "GET:/vibe/projects/{id}/iterations")
+    
+    try:
+        iterations_data = await vibe_service.get_iterations(project_id, user.user_id)
+        
+        return APIResponse(
+            success=True,
+            data=iterations_data
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Get iterations failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve iterations")
+
+
+@router.get("/projects/{project_id}/qa", response_model=APIResponse)
+async def get_qa_scores(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get QA scores for a project.
+    
+    Returns latest Lighthouse scores, accessibility violations,
+    test results, and screenshots.
+    """
+    enforce_rate_limit(user.user_id, "GET:/vibe/projects/{id}/qa")
+    
+    try:
+        qa_data = await vibe_service.get_qa_scores(project_id, user.user_id)
+        
+        return APIResponse(
+            success=True,
+            data=qa_data
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Get QA scores failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve QA scores")
+
+
+@router.get("/projects/{project_id}/context", response_model=APIResponse)
+async def get_project_chat_context(
+    project_id: int,
+    user = Depends(get_current_user)
+) -> APIResponse:
+    """
+    Get complete project context for Nicole's main chat.
+    
+    When Glen clicks "Open in Chat", this endpoint provides Nicole
+    with full project history, files, QA scores, iterations, etc.
+    
+    Nicole can then answer questions like:
+    - "Why did we choose this color scheme?"
+    - "What were the issues in iteration 3?"
+    - "Show me the Lighthouse scores"
+    """
+    enforce_rate_limit(user.user_id, "GET:/vibe/projects/{id}/context")
+    
+    try:
+        context = await vibe_service.get_project_chat_context(project_id, user.user_id)
+        
+        return APIResponse(
+            success=True,
+            data=context
+        )
+    
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Get project context failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve project context")

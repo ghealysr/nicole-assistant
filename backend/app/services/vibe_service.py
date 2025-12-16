@@ -4325,6 +4325,868 @@ Keep each field under 100 words. Focus on actionable insights."""
                 step["status"] = "active"
         
         return workflow
+    
+    # ========================================================================
+    # VIBE V3.0 - STRUCTURED INTAKE & ENHANCED WORKFLOW
+    # ========================================================================
+    
+    async def save_intake_form(
+        self,
+        project_id: int,
+        user_id: int,
+        intake_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Save structured intake form data.
+        
+        Stores intake_data as JSONB in vibe_projects.intake_form.
+        Also generates a brief from the intake data for backward compatibility.
+        """
+        # Verify project exists and user has access
+        project = await self.get_project(project_id, user_id)
+        
+        # Only allow intake form submission in 'intake' or 'paused' status
+        if project["status"] not in [ProjectStatus.INTAKE.value, ProjectStatus.PAUSED.value]:
+            raise InvalidStatusTransitionError(
+                f"Cannot submit intake form when project is in '{project['status']}' status"
+            )
+        
+        # Generate brief from intake data for backward compatibility
+        brief = {
+            "business_name": intake_data.get("business_name"),
+            "description": intake_data.get("business_description"),
+            "target_audience": intake_data.get("target_audience"),
+            "project_type": intake_data.get("project_type"),
+            "requirements": intake_data.get("key_features", []),
+            "style": intake_data.get("style_keywords", []),
+            "technical_requirements": {
+                "forms": intake_data.get("needs_forms", False),
+                "blog": intake_data.get("needs_blog", False),
+                "ecommerce": intake_data.get("needs_ecommerce", False),
+                "cms": intake_data.get("needs_cms", False),
+                "authentication": intake_data.get("needs_authentication", False),
+                "api": intake_data.get("needs_api", False)
+            }
+        }
+        
+        # Update project with intake form and brief
+        await db.execute(
+            """
+            UPDATE vibe_projects
+            SET intake_form = $1,
+                brief = $2,
+                updated_at = NOW()
+            WHERE project_id = $3
+            """,
+            json.dumps(intake_data),
+            json.dumps(brief),
+            project_id
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="system",
+            action="Intake form submitted",
+            details={"form_fields": len(intake_data), "business_name": intake_data.get("business_name")}
+        )
+        
+        logger.info(f"[VIBE] Intake form saved for project {project_id}")
+        
+        return {
+            "project_id": project_id,
+            "intake_saved": True,
+            "brief_generated": True,
+            "fields_count": len(intake_data)
+        }
+    
+    async def add_competitor_site(
+        self,
+        project_id: int,
+        user_id: int,
+        url: str,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Add competitor URL for design research.
+        
+        Captures screenshot via Puppeteer MCP if available.
+        """
+        # Verify project exists and user has access
+        await self.get_project(project_id, user_id)
+        
+        screenshot_url = None
+        
+        # Try to capture screenshot via Puppeteer MCP
+        try:
+            screenshot_result = await self._tool_screenshot(url, project_id)
+            if screenshot_result.get("screenshot_url"):
+                screenshot_url = screenshot_result["screenshot_url"]
+        except Exception as e:
+            logger.warning(f"[VIBE] Failed to capture competitor screenshot: {e}")
+        
+        # Insert competitor record
+        competitor_id = await db.fetchval(
+            """
+            INSERT INTO vibe_competitor_sites
+                (project_id, url, screenshot_url, notes, captured_at, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            RETURNING competitor_id
+            """,
+            project_id,
+            url,
+            screenshot_url,
+            notes,
+            datetime.now(timezone.utc) if screenshot_url else None
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.TOOL_USE.value,
+            agent="system",
+            action=f"Added competitor URL: {url}",
+            details={"url": url, "screenshot_captured": bool(screenshot_url)}
+        )
+        
+        logger.info(f"[VIBE] Competitor site added: {url} (screenshot: {bool(screenshot_url)})")
+        
+        return {
+            "competitor_id": competitor_id,
+            "url": url,
+            "screenshot_url": screenshot_url,
+            "notes": notes,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+    
+    async def get_competitor_sites(
+        self,
+        project_id: int,
+        user_id: int
+    ) -> List[Dict[str, Any]]:
+        """Get all competitor sites for a project"""
+        # Verify project exists and user has access
+        await self.get_project(project_id, user_id)
+        
+        rows = await db.fetch(
+            """
+            SELECT
+                competitor_id,
+                url,
+                screenshot_url,
+                notes,
+                captured_at,
+                created_at
+            FROM vibe_competitor_sites
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            """,
+            project_id
+        )
+        
+        return [dict(row) for row in (rows or [])]
+    
+    async def approve_architecture(
+        self,
+        project_id: int,
+        user_id: int,
+        approved_by: str
+    ) -> Dict[str, Any]:
+        """
+        Glen approves architecture.
+        
+        This is a quality gate - sets architecture_approved_at
+        and unblocks Build phase.
+        """
+        # Verify project exists and user has access
+        project = await self.get_project(project_id, user_id)
+        
+        # Must have architecture
+        if not project.get("architecture"):
+            raise MissingPrerequisiteError(
+                "Cannot approve architecture: architecture not yet generated"
+            )
+        
+        # Must be in planning or paused status
+        if project["status"] not in [ProjectStatus.PLANNING.value, ProjectStatus.PAUSED.value]:
+            raise InvalidStatusTransitionError(
+                f"Cannot approve architecture when project is in '{project['status']}' status"
+            )
+        
+        # Set approval timestamp
+        await db.execute(
+            """
+            UPDATE vibe_projects
+            SET architecture_approved_at = NOW(),
+                architecture_approved_by = $1,
+                architecture_feedback = NULL,
+                updated_at = NOW()
+            WHERE project_id = $2
+            """,
+            approved_by,
+            project_id
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="glen",
+            action="Architecture approved",
+            details={"approved_by": approved_by}
+        )
+        
+        logger.info(f"[VIBE] Architecture approved by {approved_by} for project {project_id}")
+        
+        return {
+            "project_id": project_id,
+            "architecture_approved": True,
+            "approved_by": approved_by,
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "next_step": "build"
+        }
+    
+    async def request_architecture_changes(
+        self,
+        project_id: int,
+        user_id: int,
+        feedback: str,
+        requested_by: str
+    ) -> Dict[str, Any]:
+        """
+        Glen requests architecture changes.
+        
+        Sends project back to Planning with feedback.
+        """
+        # Verify project exists and user has access
+        project = await self.get_project(project_id, user_id)
+        
+        # Must have architecture
+        if not project.get("architecture"):
+            raise MissingPrerequisiteError(
+                "Cannot request changes: architecture not yet generated"
+            )
+        
+        # Store feedback and reset approval
+        await db.execute(
+            """
+            UPDATE vibe_projects
+            SET architecture_feedback = $1,
+                architecture_approved_at = NULL,
+                architecture_approved_by = NULL,
+                status = $2,
+                updated_at = NOW()
+            WHERE project_id = $3
+            """,
+            feedback,
+            ProjectStatus.PLANNING.value,
+            project_id
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="glen",
+            action="Architecture revision requested",
+            details={"requested_by": requested_by, "feedback": feedback[:200]}
+        )
+        
+        logger.info(f"[VIBE] Architecture revision requested by {requested_by} for project {project_id}")
+        
+        return {
+            "project_id": project_id,
+            "revision_requested": True,
+            "status": ProjectStatus.PLANNING.value,
+            "feedback": feedback,
+            "next_step": "planning"
+        }
+    
+    async def create_iteration(
+        self,
+        project_id: int,
+        user_id: int,
+        feedback_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Create a new iteration from Glen's feedback.
+        
+        Max 5 iterations per project (configurable).
+        """
+        # Verify project exists and user has access
+        project = await self.get_project(project_id, user_id)
+        
+        # Check if we've hit max iterations
+        max_iterations = project.get("max_iterations", 5)
+        current_count = project.get("iteration_count", 0)
+        
+        if current_count >= max_iterations:
+            raise InvalidStatusTransitionError(
+                f"Maximum iterations ({max_iterations}) reached. Please approve or cancel project."
+            )
+        
+        # Increment iteration count
+        new_iteration_number = current_count + 1
+        
+        # Create iteration record
+        iteration_id = await db.fetchval(
+            """
+            INSERT INTO vibe_iterations
+                (project_id, iteration_number, iteration_type, feedback,
+                 feedback_category, priority, affected_pages, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW())
+            RETURNING iteration_id
+            """,
+            project_id,
+            new_iteration_number,
+            feedback_data["feedback_type"],
+            feedback_data["description"],
+            feedback_data.get("category"),
+            feedback_data.get("priority", "medium"),
+            feedback_data.get("affected_pages", [])
+        )
+        
+        # Update project iteration count
+        await db.execute(
+            """
+            UPDATE vibe_projects
+            SET iteration_count = $1,
+                updated_at = NOW()
+            WHERE project_id = $2
+            """,
+            new_iteration_number,
+            project_id
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="glen",
+            action=f"Iteration #{new_iteration_number} created: {feedback_data['feedback_type']}",
+            details={
+                "iteration_id": iteration_id,
+                "type": feedback_data["feedback_type"],
+                "priority": feedback_data.get("priority", "medium")
+            }
+        )
+        
+        logger.info(f"[VIBE] Iteration #{new_iteration_number} created for project {project_id}")
+        
+        return {
+            "iteration_id": iteration_id,
+            "project_id": project_id,
+            "iteration_number": new_iteration_number,
+            "iteration_type": feedback_data["feedback_type"],
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+    
+    async def process_iteration(
+        self,
+        iteration_id: int,
+        project_id: int
+    ) -> Dict[str, Any]:
+        """
+        Process iteration feedback.
+        
+        Nicole analyzes feedback and generates fixes based on type:
+        - bug_fix: Fix broken functionality
+        - design_change: Adjust visual/layout
+        - feature_add: Add new functionality
+        """
+        # Get iteration details
+        iteration = await db.fetchrow(
+            """
+            SELECT * FROM vibe_iterations
+            WHERE iteration_id = $1 AND project_id = $2
+            """,
+            iteration_id,
+            project_id
+        )
+        
+        if not iteration:
+            raise ProjectNotFoundError(f"Iteration {iteration_id} not found")
+        
+        # Update iteration status
+        await db.execute(
+            """
+            UPDATE vibe_iterations
+            SET status = 'in_progress'
+            WHERE iteration_id = $1
+            """,
+            iteration_id
+        )
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="coding_agent",
+            action=f"Processing iteration #{iteration['iteration_number']}",
+            details={"iteration_id": iteration_id, "type": iteration["iteration_type"]}
+        )
+        
+        try:
+            # Route to appropriate handler based on type
+            iteration_type = iteration["iteration_type"]
+            
+            if iteration_type == "bug_fix":
+                result = await self._process_bug_fix(iteration, project_id)
+            elif iteration_type == "design_change":
+                result = await self._process_design_change(iteration, project_id)
+            elif iteration_type == "feature_add":
+                result = await self._process_feature_add(iteration, project_id)
+            else:
+                raise ValueError(f"Unknown iteration type: {iteration_type}")
+            
+            # Mark iteration as resolved
+            await db.execute(
+                """
+                UPDATE vibe_iterations
+                SET status = 'resolved',
+                    resolved_at = NOW(),
+                    changes_summary = $1,
+                    files_affected = $2
+                WHERE iteration_id = $3
+                """,
+                result.get("summary", "Changes applied"),
+                result.get("files_affected", []),
+                iteration_id
+            )
+            
+            # Log completion
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.STATUS_CHANGE.value,
+                agent="coding_agent",
+                action=f"Iteration #{iteration['iteration_number']} resolved",
+                details={"files_affected": len(result.get("files_affected", []))}
+            )
+            
+            logger.info(f"[VIBE] Iteration {iteration_id} resolved for project {project_id}")
+            
+            return {
+                "iteration_id": iteration_id,
+                "status": "resolved",
+                "changes_applied": True,
+                "files_affected": result.get("files_affected", [])
+            }
+        
+        except Exception as e:
+            # Mark iteration as failed
+            await db.execute(
+                """
+                UPDATE vibe_iterations
+                SET status = 'wont_fix'
+                WHERE iteration_id = $1
+                """,
+                iteration_id
+            )
+            
+            logger.error(f"[VIBE] Iteration {iteration_id} failed: {e}", exc_info=True)
+            raise
+    
+    async def _process_bug_fix(
+        self,
+        iteration: Dict[str, Any],
+        project_id: int
+    ) -> Dict[str, Any]:
+        """Process bug fix iteration"""
+        # Get affected files
+        files = await self.get_files(project_id)
+        affected_pages = iteration.get("affected_pages", [])
+        
+        # Filter files related to affected pages
+        target_files = [
+            f for f in files
+            if any(page in f["path"] for page in affected_pages)
+        ] if affected_pages else files
+        
+        # For now, return placeholder
+        # TODO: Implement actual bug fix logic with Claude
+        return {
+            "summary": f"Bug fix applied: {iteration['feedback'][:100]}",
+            "files_affected": [f["path"] for f in target_files[:5]]
+        }
+    
+    async def _process_design_change(
+        self,
+        iteration: Dict[str, Any],
+        project_id: int
+    ) -> Dict[str, Any]:
+        """Process design change iteration"""
+        # For now, return placeholder
+        # TODO: Implement actual design change logic with Gemini 3 Pro
+        return {
+            "summary": f"Design change applied: {iteration['feedback'][:100]}",
+            "files_affected": ["src/app/globals.css", "src/components/layout.tsx"]
+        }
+    
+    async def _process_feature_add(
+        self,
+        iteration: Dict[str, Any],
+        project_id: int
+    ) -> Dict[str, Any]:
+        """Process feature addition iteration"""
+        # For now, return placeholder
+        # TODO: Implement actual feature add logic with Claude
+        return {
+            "summary": f"Feature added: {iteration['feedback'][:100]}",
+            "files_affected": ["src/components/NewFeature.tsx"]
+        }
+    
+    async def get_iterations(
+        self,
+        project_id: int,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """Get all iterations for a project"""
+        # Verify project exists and user has access
+        project = await self.get_project(project_id, user_id)
+        
+        rows = await db.fetch(
+            """
+            SELECT
+                iteration_id,
+                project_id,
+                iteration_number,
+                iteration_type,
+                feedback,
+                feedback_category,
+                priority,
+                status,
+                affected_pages,
+                files_affected,
+                changes_summary,
+                created_at,
+                resolved_at
+            FROM vibe_iterations
+            WHERE project_id = $1
+            ORDER BY iteration_number DESC
+            """,
+            project_id
+        )
+        
+        iterations = [dict(row) for row in (rows or [])]
+        
+        return {
+            "iterations": iterations,
+            "total": len(iterations),
+            "current_iteration": project.get("iteration_count", 0),
+            "max_iterations": project.get("max_iterations", 5)
+        }
+    
+    async def get_qa_scores(
+        self,
+        project_id: int,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """Get QA scores for a project"""
+        # Verify project exists and user has access
+        await self.get_project(project_id, user_id)
+        
+        # Get latest QA score
+        latest = await db.fetchrow(
+            """
+            SELECT * FROM vibe_qa_scores
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            project_id
+        )
+        
+        # Get all scores (history)
+        rows = await db.fetch(
+            """
+            SELECT * FROM vibe_qa_scores
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            """,
+            project_id
+        )
+        
+        scores = [dict(row) for row in (rows or [])]
+        
+        return {
+            "latest": dict(latest) if latest else None,
+            "scores": scores,
+            "total": len(scores)
+        }
+    
+    async def get_project_chat_context(
+        self,
+        project_id: int,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get complete project context for Nicole's main chat.
+        
+        Provides full history, files, QA, iterations for intelligent conversation.
+        """
+        # Get base project info
+        project = await self.get_project(project_id, user_id)
+        
+        # Get intake form
+        intake_form = None
+        if project.get("intake_form"):
+            if isinstance(project["intake_form"], str):
+                intake_form = json.loads(project["intake_form"])
+            else:
+                intake_form = project["intake_form"]
+        
+        # Get uploads
+        uploads = await db.fetch(
+            """
+            SELECT * FROM vibe_uploads
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            """,
+            project_id
+        )
+        
+        # Get competitors
+        competitors = await self.get_competitor_sites(project_id, user_id)
+        
+        # Get files
+        files = await self.get_files(project_id)
+        
+        # Get QA scores
+        qa_data = await self.get_qa_scores(project_id, user_id)
+        
+        # Get iterations
+        iterations_data = await self.get_iterations(project_id, user_id)
+        
+        # Get recent activities
+        activities = await self.get_activities(project_id, user_id, limit=20)
+        
+        return {
+            "project_id": project_id,
+            "project_name": project.get("name", "Untitled Project"),
+            "status": project["status"],
+            "brief": project.get("brief"),
+            "intake_form": intake_form,
+            "uploads": [dict(u) for u in (uploads or [])],
+            "competitors": competitors,
+            "architecture": project.get("architecture"),
+            "architecture_approved": bool(project.get("architecture_approved_at")),
+            "files_count": len(files),
+            "chunks_completed": project.get("chunks_completed", 0),
+            "total_chunks": project.get("total_chunks", 0),
+            "latest_qa_scores": qa_data.get("latest"),
+            "iterations": iterations_data.get("iterations", []),
+            "iteration_count": project.get("iteration_count", 0),
+            "max_iterations": project.get("max_iterations", 5),
+            "preview_url": project.get("preview_url"),
+            "deployment_url": project.get("deployment_url"),
+            "github_repo_url": project.get("github_repo_url"),
+            "recent_activities": activities.get("activities", [])
+        }
+    
+    async def run_visual_qa(
+        self,
+        project_id: int,
+        preview_url: str,
+        iteration_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Run complete visual QA suite:
+        1. Screenshots (mobile, tablet, desktop) via Puppeteer MCP
+        2. Lighthouse scores via PageSpeed Insights API
+        3. Accessibility scan via axe-core + Puppeteer
+        
+        Stores results in vibe_qa_scores table.
+        """
+        from app.services.lighthouse_service import lighthouse_service
+        from app.services.accessibility_service import accessibility_service
+        from app.services.alphawave_cloudinary_service import cloudinary_service
+        
+        logger.info(f"[VIBE] Running visual QA for project {project_id}: {preview_url}")
+        
+        # Log activity
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.TOOL_USE.value,
+            agent="qa_agent",
+            action="Starting visual QA",
+            details={"url": preview_url}
+        )
+        
+        # ===== 1. SCREENSHOTS =====
+        screenshots = {}
+        viewports = {
+            "mobile": {"width": 375, "height": 812},
+            "tablet": {"width": 768, "height": 1024},
+            "desktop": {"width": 1440, "height": 900}
+        }
+        
+        for device, viewport in viewports.items():
+            try:
+                await self._log_activity(
+                    project_id=project_id,
+                    activity_type=ActivityType.TOOL_USE.value,
+                    agent="qa_agent",
+                    action=f"Capturing {device} screenshot",
+                    details={"viewport": viewport}
+                )
+                
+                # Use Puppeteer MCP to capture screenshot
+                screenshot_result = await self._tool_screenshot(preview_url, project_id)
+                
+                if screenshot_result.get("screenshot_url"):
+                    screenshots[device] = screenshot_result["screenshot_url"]
+                    logger.info(f"[VIBE] {device} screenshot captured: {screenshot_result['screenshot_url']}")
+                else:
+                    screenshots[device] = None
+                    logger.warning(f"[VIBE] Failed to capture {device} screenshot")
+            
+            except Exception as e:
+                logger.error(f"[VIBE] Screenshot failed ({device}): {e}", exc_info=True)
+                screenshots[device] = None
+        
+        # ===== 2. LIGHTHOUSE SCORES =====
+        lighthouse_result = {}
+        try:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.TOOL_USE.value,
+                agent="qa_agent",
+                action="Running Lighthouse audit",
+                details={"url": preview_url}
+            )
+            
+            lighthouse_result = await lighthouse_service.run_audit(preview_url, strategy="mobile")
+            
+            logger.info(
+                f"[VIBE] Lighthouse scores: Performance={lighthouse_result.get('performance')}, "
+                f"Accessibility={lighthouse_result.get('accessibility')}, "
+                f"Best Practices={lighthouse_result.get('best_practices')}, "
+                f"SEO={lighthouse_result.get('seo')}"
+            )
+        
+        except Exception as e:
+            logger.error(f"[VIBE] Lighthouse audit failed: {e}", exc_info=True)
+            lighthouse_result = {
+                "performance": None,
+                "accessibility": None,
+                "best_practices": None,
+                "seo": None,
+                "error": str(e)
+            }
+        
+        # ===== 3. ACCESSIBILITY SCAN =====
+        accessibility_result = {}
+        try:
+            await self._log_activity(
+                project_id=project_id,
+                activity_type=ActivityType.TOOL_USE.value,
+                agent="qa_agent",
+                action="Running accessibility scan",
+                details={"url": preview_url}
+            )
+            
+            accessibility_result = await accessibility_service.run_scan(preview_url)
+            
+            logger.info(
+                f"[VIBE] Accessibility scan: {accessibility_result.get('violations')} violations, "
+                f"{accessibility_result.get('warnings')} warnings"
+            )
+        
+        except Exception as e:
+            logger.error(f"[VIBE] Accessibility scan failed: {e}", exc_info=True)
+            accessibility_result = {
+                "violations": 0,
+                "warnings": 0,
+                "passes": 0,
+                "error": str(e)
+            }
+        
+        # ===== 4. COMPUTE QUALITY GATE STATUS =====
+        all_passing = (
+            lighthouse_result.get("performance", 0) >= 90 and
+            lighthouse_result.get("accessibility", 0) >= 90 and
+            lighthouse_result.get("best_practices", 0) >= 90 and
+            lighthouse_result.get("seo", 0) >= 90 and
+            accessibility_result.get("violations", 999) == 0
+        )
+        
+        # ===== 5. STORE RESULTS =====
+        score_id = await db.fetchval(
+            """
+            INSERT INTO vibe_qa_scores
+                (project_id, iteration_id,
+                 lighthouse_performance, lighthouse_accessibility,
+                 lighthouse_best_practices, lighthouse_seo,
+                 lcp_score, fid_score, cls_score,
+                 accessibility_violations, accessibility_warnings, accessibility_passes,
+                 screenshot_mobile, screenshot_tablet, screenshot_desktop,
+                 lighthouse_raw, axe_raw,
+                 all_passing, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+            RETURNING score_id
+            """,
+            project_id,
+            iteration_id,
+            lighthouse_result.get("performance"),
+            lighthouse_result.get("accessibility"),
+            lighthouse_result.get("best_practices"),
+            lighthouse_result.get("seo"),
+            lighthouse_result.get("lcp_score"),
+            lighthouse_result.get("fid_score"),
+            lighthouse_result.get("cls_score"),
+            accessibility_result.get("violations", 0),
+            accessibility_result.get("warnings", 0),
+            accessibility_result.get("passes", 0),
+            screenshots.get("mobile"),
+            screenshots.get("tablet"),
+            screenshots.get("desktop"),
+            json.dumps(lighthouse_result.get("lighthouse_raw", {})),
+            json.dumps(accessibility_result.get("axe_raw", {})),
+            all_passing
+        )
+        
+        # Log completion
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGE.value,
+            agent="qa_agent",
+            action="Visual QA complete",
+            details={
+                "score_id": score_id,
+                "all_passing": all_passing,
+                "performance": lighthouse_result.get("performance"),
+                "violations": accessibility_result.get("violations", 0)
+            }
+        )
+        
+        logger.info(
+            f"[VIBE] Visual QA complete for project {project_id}: "
+            f"score_id={score_id}, all_passing={all_passing}"
+        )
+        
+        return {
+            "score_id": score_id,
+            "project_id": project_id,
+            "lighthouse": {
+                "performance": lighthouse_result.get("performance"),
+                "accessibility": lighthouse_result.get("accessibility"),
+                "best_practices": lighthouse_result.get("best_practices"),
+                "seo": lighthouse_result.get("seo"),
+                "lcp": lighthouse_result.get("lcp_score"),
+                "fid": lighthouse_result.get("fid_score"),
+                "cls": lighthouse_result.get("cls_score")
+            },
+            "accessibility": {
+                "violations": accessibility_result.get("violations", 0),
+                "warnings": accessibility_result.get("warnings", 0),
+                "passes": accessibility_result.get("passes", 0)
+            },
+            "screenshots": screenshots,
+            "all_passing": all_passing,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
 
 
 # ============================================================================

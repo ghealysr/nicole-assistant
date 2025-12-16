@@ -267,6 +267,21 @@ const TOOLS = [
     server: 'puppeteer'
   },
   {
+    name: 'puppeteer_evaluate',
+    description: 'Execute JavaScript code in the browser context and return the result. Useful for scraping, running axe-core, or injecting scripts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        script: {
+          type: 'string',
+          description: 'JavaScript code to execute in browser context. Must return a Promise or value.'
+        }
+      },
+      required: ['script']
+    },
+    server: 'puppeteer'
+  },
+  {
     name: 'github_create_repo',
     description: 'Create a new GitHub repository. Returns the repository URL and clone URL.',
     inputSchema: {
@@ -615,6 +630,45 @@ async function executePuppeteerScreenshot(args) {
   }
 }
 
+async function executePuppeteerEvaluate(args) {
+  const { script } = args;
+  
+  try {
+    const page = await getPage();
+    
+    if (!page.url() || page.url() === 'about:blank') {
+      throw new Error('No page loaded. Use puppeteer_navigate first.');
+    }
+    
+    console.log(`[Puppeteer] Executing script in browser context`);
+    
+    // Execute the script in the page context
+    const result = await page.evaluate((scriptCode) => {
+      // Wrap in async function to handle Promises
+      return (async () => {
+        try {
+          // eslint-disable-next-line no-eval
+          const fn = eval(`(${scriptCode})`);
+          return await fn;
+        } catch (err) {
+          return { error: err.message, stack: err.stack };
+        }
+      })();
+    }, script);
+    
+    return [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        result,
+        url: page.url()
+      })
+    }];
+  } catch (error) {
+    throw new Error(`Script evaluation failed: ${error.message}`);
+  }
+}
+
 // GitHub helpers
 function githubHeaders() {
   const token = process.env.GITHUB_TOKEN;
@@ -778,6 +832,7 @@ const TOOL_EXECUTORS = {
   'recraft_generate_image': executeRecraftGenerateImage,
   'puppeteer_navigate': executePuppeteerNavigate,
   'puppeteer_screenshot': executePuppeteerScreenshot,
+  'puppeteer_evaluate': executePuppeteerEvaluate,
   'github_create_repo': executeGithubCreateRepo,
   'github_push_files': executeGithubPushFiles
 };
