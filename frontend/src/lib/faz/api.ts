@@ -4,22 +4,33 @@ import { FazProject, FazFile, FazActivity, ChatMessage, Architecture } from '@/t
 
 const FAZ_API_URL = `${API_URL}/faz`;
 
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (res.ok) return res.json();
+  let detail = '';
+  try {
+    const body = await res.json();
+    detail = body.detail || body.message || JSON.stringify(body);
+  } catch {
+    detail = await res.text();
+  }
+  const prefix = `Request failed (${res.status})`;
+  throw new Error(detail ? `${prefix}: ${detail}` : prefix);
+}
+
 export const fazApi = {
   // Projects
   async listProjects(limit = 20, offset = 0): Promise<{ projects: FazProject[], total: number }> {
     const res = await fetch(`${FAZ_API_URL}/projects?limit=${limit}&offset=${offset}`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to list projects');
-    return res.json();
+    return handleResponse(res);
   },
 
   async getProject(id: number): Promise<FazProject> {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get project');
-    return res.json();
+    return handleResponse(res);
   },
 
   async createProject(name: string, prompt: string, preferences?: Record<string, unknown>): Promise<FazProject> {
@@ -28,8 +39,7 @@ export const fazApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ name, prompt, design_preferences: preferences }),
     });
-    if (!res.ok) throw new Error('Failed to create project');
-    return res.json();
+    return handleResponse(res);
   },
 
   async deleteProject(id: number): Promise<void> {
@@ -37,7 +47,17 @@ export const fazApi = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to delete project');
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.detail || body.message || JSON.stringify(body);
+      } catch {
+        detail = await res.text();
+      }
+      const prefix = `Failed to delete project (${res.status})`;
+      throw new Error(detail ? `${prefix}: ${detail}` : prefix);
+    }
   },
 
   // Pipeline
@@ -47,7 +67,17 @@ export const fazApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ prompt, start_agent: startAgent }),
     });
-    if (!res.ok) throw new Error('Failed to run pipeline');
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.detail || body.message || JSON.stringify(body);
+      } catch {
+        detail = await res.text();
+      }
+      const prefix = `Failed to run pipeline (${res.status})`;
+      throw new Error(detail ? `${prefix}: ${detail}` : prefix);
+    }
   },
 
   async stopPipeline(id: number): Promise<void> {
@@ -55,7 +85,17 @@ export const fazApi = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to stop pipeline');
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.detail || body.message || JSON.stringify(body);
+      } catch {
+        detail = await res.text();
+      }
+      const prefix = `Failed to stop pipeline (${res.status})`;
+      throw new Error(detail ? `${prefix}: ${detail}` : prefix);
+    }
   },
 
   // Files
@@ -63,16 +103,14 @@ export const fazApi = {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/files`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get files');
-    return res.json();
+    return handleResponse(res);
   },
 
   async getFile(projectId: number, fileId: number): Promise<FazFile> {
     const res = await fetch(`${FAZ_API_URL}/projects/${projectId}/files/${fileId}`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get file');
-    return res.json();
+    return handleResponse(res);
   },
 
   // Activities
@@ -83,8 +121,7 @@ export const fazApi = {
     const res = await fetch(url, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get activities');
-    return res.json();
+    return handleResponse(res);
   },
 
   // Chat
@@ -92,8 +129,7 @@ export const fazApi = {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/chat?limit=${limit}`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get chat history');
-    return res.json();
+    return handleResponse(res);
   },
 
   async sendChatMessage(id: number, message: string): Promise<ChatMessage> {
@@ -102,8 +138,7 @@ export const fazApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ project_id: id, message }),
     });
-    if (!res.ok) throw new Error('Failed to send message');
-    return res.json();
+    return handleResponse(res);
   },
 
   // Architecture
@@ -111,8 +146,7 @@ export const fazApi = {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/architecture`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get architecture');
-    return res.json();
+    return handleResponse(res);
   },
 
   // Deploy
