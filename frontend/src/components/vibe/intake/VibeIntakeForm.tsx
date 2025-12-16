@@ -15,6 +15,30 @@ export function VibeIntakeForm({ projectId, onComplete, onStartPlanning }: VibeI
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fillTestData = () => {
+    setFormData({
+      business_name: 'Test Co',
+      business_description: 'Create a fake business to test the build pipeline quickly.',
+      target_audience: 'Product designers and founders',
+      project_type: 'business',
+      page_count_estimate: 5,
+      key_features: ['Contact form', 'Testimonials', 'Pricing'],
+      style_keywords: ['modern', 'minimal', 'dark mode'],
+      color_preferences: 'Indigo and teal',
+      avoid_colors: 'Neon green',
+      inspiration_notes: 'Clean, editorial layouts with bold typography.',
+      needs_forms: true,
+      needs_blog: true,
+      needs_ecommerce: false,
+      needs_cms: true,
+      needs_authentication: false,
+      needs_api: true,
+      deadline: 'ASAP',
+      budget_range: '$5k-$10k',
+      additional_notes: 'This is a test project to exercise the pipeline end-to-end.'
+    });
+  };
+
   // Form State
   const [formData, setFormData] = useState({
     business_name: '',
@@ -120,7 +144,16 @@ export function VibeIntakeForm({ projectId, onComplete, onStartPlanning }: VibeI
     <div className="vibe-intake-form max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-sm border border-gray-200">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">Project Intake</h2>
-        <p className="text-gray-500 mt-1">Provide the details to kickstart your project.</p>
+        <div className="flex items-center justify-between mt-1 flex-wrap gap-2">
+          <p className="text-gray-500">Provide the details to kickstart your project.</p>
+          <button
+            type="button"
+            onClick={fillTestData}
+            className="px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100"
+          >
+            Fill with Test Data
+          </button>
+        </div>
       </div>
 
       <div className="space-y-8">
