@@ -21,6 +21,7 @@ interface WebSocketMessage {
 }
 
 type ActivityContentType = FazActivity['content_type'];
+type ActivityStatus = FazActivity['status'];
 
 function normalizeContentType(value: unknown): ActivityContentType {
   switch (value) {
@@ -32,6 +33,18 @@ function normalizeContentType(value: unknown): ActivityContentType {
       return value;
     default:
       return 'status';
+  }
+}
+
+function normalizeActivityStatus(value: unknown): ActivityStatus {
+  switch (value) {
+    case 'running':
+    case 'complete':
+    case 'error':
+    case 'cancelled':
+      return value;
+    default:
+      return 'complete';
   }
 }
 
@@ -208,7 +221,7 @@ class FazWebSocket {
           content_type: normalizeContentType(data.content_type),
           // FazActivity.full_content is optional (undefined), so normalize null -> undefined
           full_content: ((data.full_content as string | null) ?? undefined),
-          status: data.status as string,
+          status: normalizeActivityStatus(data.status),
           started_at: data.timestamp as string,
         });
         break;
