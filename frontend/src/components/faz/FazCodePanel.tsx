@@ -62,7 +62,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     setLoading(true);
     try {
       const data = await fazApi.listProjects();
-      setProjects(data);
+      setProjects(data.projects);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
     } finally {
