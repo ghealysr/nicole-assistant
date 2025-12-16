@@ -39,7 +39,7 @@ export function ChatMessages() {
                 className="prose prose-invert prose-sm max-w-none"
                 components={{
                   p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-                  code: ({node, className, children, ...props}) => {
+                  code: ({className, children, ...props}) => {
                     const match = /language-(\w+)/.exec(className || '')
                     return match ? (
                       <code className="block bg-[#0A0A0F] p-2 rounded text-xs font-mono my-2 overflow-x-auto" {...props}>

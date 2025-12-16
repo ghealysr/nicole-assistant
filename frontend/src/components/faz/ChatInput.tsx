@@ -1,6 +1,5 @@
 import React from 'react';
-import { Send, Sparkles } from 'lucide-react';
-import { useFazStore } from '@/lib/faz/store';
+import { Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {

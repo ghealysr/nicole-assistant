@@ -1,11 +1,10 @@
 'use client';
 
 import React from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { WorkspaceLayout } from '@/components/faz/WorkspaceLayout';
 import { FileTree } from '@/components/faz/FileTree';
 import { CodeViewer } from '@/components/faz/CodeViewer';
-import { PreviewPane } from '@/components/faz/PreviewPane';
 import { AgentActivityFeed } from '@/components/faz/AgentActivityFeed';
 import { ChatMessages } from '@/components/faz/ChatMessages';
 import { ChatInput } from '@/components/faz/ChatInput';
@@ -21,15 +20,14 @@ import { cn } from '@/lib/utils';
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
-  const router = useRouter();
   const projectId = parseInt(params.id as string);
   
   const { 
     currentProject, setCurrentProject,
-    files, setFiles, selectedFile, fileMetadata,
+    files, setFiles, selectedFile,
     activeTab, setActiveTab,
     previewMode, setPreviewMode,
-    activities, setActivities,
+    setActivities,
     setMessages,
     isLoading, setLoading,
     error, setError, clearError,
@@ -38,6 +36,66 @@ export default function ProjectWorkspacePage() {
 
   const [pageLoading, setPageLoading] = React.useState(true);
   const [previewHtml, setPreviewHtml] = React.useState<string | null>(null);
+
+  // Helper to escape HTML
+  const escapeHtml = (str: string) => {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  // Generate preview HTML from project files
+  const generatePreviewFromFiles = React.useCallback((fileList: { path: string; content: string }[]) => {
+    const pageFile = fileList.find(f => f.path.includes('page.tsx') || f.path.includes('index.tsx'));
+    const globalsCss = fileList.find(f => f.path.includes('globals.css'));
+    
+    if (!pageFile) {
+      setPreviewHtml(null);
+      return;
+    }
+
+    const previewDoc = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    ${globalsCss?.content || ''}
+    body { background: #0a0a0f; color: white; min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="preview-root">
+    <div class="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#1a1a2e] p-8">
+      <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+          <h1 class="text-4xl font-bold text-white mb-4">Preview Mode</h1>
+          <p class="text-gray-400">
+            This is a static preview. Full interactivity requires deployment.
+          </p>
+        </div>
+        <div class="bg-[#12121a] rounded-xl p-6 border border-[#1e1e2e]">
+          <pre class="text-sm text-[#94a3b8] overflow-auto max-h-[60vh]"><code>${escapeHtml(pageFile.content)}</code></pre>
+        </div>
+        <div class="mt-6 text-center">
+          <p class="text-sm text-[#64748b]">
+            ${fileList.length} files generated • Deploy to see live preview
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+    
+    setPreviewHtml(previewDoc);
+  }, []);
 
   // Initialize workspace
   React.useEffect(() => {
@@ -79,71 +137,7 @@ export default function ProjectWorkspacePage() {
     return () => {
       fazWS.disconnect();
     };
-  }, [projectId, setCurrentProject, setFiles, setActivities, setMessages, setError]);
-
-  // Generate preview HTML from project files
-  const generatePreviewFromFiles = (fileList: { path: string; content: string }[]) => {
-    // Find the main page component
-    const pageFile = fileList.find(f => f.path.includes('page.tsx') || f.path.includes('index.tsx'));
-    const layoutFile = fileList.find(f => f.path.includes('layout.tsx'));
-    const globalsCss = fileList.find(f => f.path.includes('globals.css'));
-    
-    if (!pageFile) {
-      setPreviewHtml(null);
-      return;
-    }
-
-    // Extract and clean component code for preview
-    // This is a simplified preview - actual SSR would require more complex setup
-    const previewDoc = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    ${globalsCss?.content || ''}
-    body { background: #0a0a0f; color: white; min-height: 100vh; }
-  </style>
-</head>
-<body>
-  <div id="preview-root">
-    <div class="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#1a1a2e] p-8">
-      <div class="max-w-4xl mx-auto">
-        <div class="text-center mb-8">
-          <h1 class="text-4xl font-bold text-white mb-4">Preview Mode</h1>
-          <p class="text-gray-400">
-            This is a static preview. Full interactivity requires deployment.
-          </p>
-        </div>
-        <div class="bg-[#12121a] rounded-xl p-6 border border-[#1e1e2e]">
-          <pre class="text-sm text-[#94a3b8] overflow-auto max-h-[60vh]"><code>${escapeHtml(pageFile.content)}</code></pre>
-        </div>
-        <div class="mt-6 text-center">
-          <p class="text-sm text-[#64748b]">
-            ${fileList.length} files generated • Deploy to see live preview
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-    
-    setPreviewHtml(previewDoc);
-  };
-
-  // Helper to escape HTML
-  const escapeHtml = (str: string) => {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  };
+  }, [projectId, setCurrentProject, setFiles, setActivities, setMessages, setError, generatePreviewFromFiles]);
 
   // Handle chat message
   const handleSendMessage = async (content: string) => {

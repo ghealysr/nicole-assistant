@@ -1,5 +1,5 @@
 import React from 'react';
-import { Code2, Monitor, Columns, MessageSquare, Menu, X, ArrowLeft } from 'lucide-react';
+import { Code2, Monitor, Columns, Menu, X, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFazStore } from '@/lib/faz/store';
 import Link from 'next/link';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
-import { Bot, Code2, Search, PenTool, Bug, CheckCircle, BrainCircuit, MessageSquare, AlertCircle } from 'lucide-react';
+import { Bot, Code2, Search, PenTool, Bug, CheckCircle, BrainCircuit, AlertCircle } from 'lucide-react';
 import { FazActivity } from '@/types/faz';
 import { useFazStore } from '@/lib/faz/store';
 

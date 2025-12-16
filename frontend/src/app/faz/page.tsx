@@ -6,7 +6,7 @@ import { Plus, Search, Rocket, Grid, List as ListIcon } from 'lucide-react';
 import { ProjectCard } from '@/components/faz/ProjectCard';
 import { fazApi } from '@/lib/faz/api';
 import { useFazStore } from '@/lib/faz/store';
-import { FazProject } from '@/types/faz';
+// Types imported via useFazStore
 
 export default function FazDashboard() {
   const { projects, setProjects } = useFazStore();

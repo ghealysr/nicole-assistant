@@ -22,7 +22,7 @@ export const fazApi = {
     return res.json();
   },
 
-  async createProject(name: string, prompt: string, preferences?: any): Promise<FazProject> {
+  async createProject(name: string, prompt: string, preferences?: Record<string, unknown>): Promise<FazProject> {
     const res = await fetch(`${FAZ_API_URL}/projects`, {
       method: 'POST',
       headers: getAuthHeaders(),
