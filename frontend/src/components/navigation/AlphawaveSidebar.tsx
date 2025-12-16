@@ -1,10 +1,11 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 interface AlphawaveSidebarProps {
+  onFazCodeClick?: () => void;
+  isFazCodeOpen?: boolean;
   onMemoryClick?: () => void;
   isMemoryOpen?: boolean;
   onJournalClick?: () => void;
@@ -25,10 +26,12 @@ interface AlphawaveSidebarProps {
  * - Dark theme sidebar
  * - Alphawave logo at top (large size)
  * - Navigation items with icons
- * - Faz Code link to coding dashboard
+ * - Faz Code button to open coding workspace panel
  * - Active state highlighting
  */
 export function AlphawaveSidebar({ 
+  onFazCodeClick,
+  isFazCodeOpen,
   onMemoryClick, 
   isMemoryOpen,
   onJournalClick,
@@ -44,7 +47,6 @@ export function AlphawaveSidebar({
   const pathname = usePathname();
 
   const isOnChat = pathname === '/chat' || pathname?.startsWith('/chat/');
-  const isOnFaz = pathname === '/faz' || pathname?.startsWith('/faz/');
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
@@ -123,18 +125,17 @@ export function AlphawaveSidebar({
           Research
         </button>
 
-        {/* Faz Code - Link to AI coding dashboard */}
-        <Link
-          href="/faz"
-          className={`menu-item vibe-btn ${isOnFaz ? 'vibe-active' : ''}`}
+        {/* Faz Code Button - Opens AI coding workspace panel */}
+        <button
+          onClick={onFazCodeClick}
+          className={`menu-item vibe-btn ${isFazCodeOpen ? 'vibe-active' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
             <polyline points="16 18 22 12 16 6"/>
             <polyline points="8 6 2 12 8 18"/>
-            <line x1="12" y1="2" x2="12" y2="22" strokeDasharray="2 2"/>
           </svg>
           Faz Code
-        </Link>
+        </button>
 
         {/* Divider and Data Section */}
         <div className="h-px bg-[#333] my-2" />

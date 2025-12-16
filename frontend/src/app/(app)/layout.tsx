@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlphawaveSidebar } from '@/components/navigation/AlphawaveSidebar';
+import { FazCodePanel } from '@/components/faz/FazCodePanel';
 import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDashboard';
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
@@ -51,6 +52,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
  * Inner layout component that uses the conversation context
  */
 function AppLayoutInner({ children }: { children: React.ReactNode }) {
+  const [isFazCodeOpen, setIsFazCodeOpen] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isChatsOpen, setIsChatsOpen] = useState(false);
@@ -78,6 +80,7 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Close all panels helper
   const closeAllPanels = useCallback(() => {
+    setIsFazCodeOpen(false);
     setIsMemoryOpen(false);
     setIsJournalOpen(false);
     setIsChatsOpen(false);
@@ -109,6 +112,16 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       delete (window as unknown as { openResearch?: typeof openResearchWithQuery }).openResearch;
     };
   }, [openResearchWithQuery]);
+
+  // Toggle Faz Code - closes others if open
+  const toggleFazCode = useCallback(() => {
+    if (isFazCodeOpen) {
+      setIsFazCodeOpen(false);
+    } else {
+      closeAllPanels();
+      setIsFazCodeOpen(true);
+    }
+  }, [isFazCodeOpen, closeAllPanels]);
 
   // Toggle Memory - closes others if open
   const toggleMemory = useCallback(() => {
@@ -165,6 +178,8 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar: 240px fixed */}
       <AlphawaveSidebar 
+        onFazCodeClick={toggleFazCode}
+        isFazCodeOpen={isFazCodeOpen}
         onMemoryClick={toggleMemory}
         isMemoryOpen={isMemoryOpen}
         onJournalClick={toggleJournal}
@@ -182,6 +197,9 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       <main className="flex-1 min-w-0 overflow-hidden">
         {children}
       </main>
+
+      {/* Faz Code Panel - slides in from right */}
+      <FazCodePanel isOpen={isFazCodeOpen} onClose={() => setIsFazCodeOpen(false)} />
 
       {/* Memory Dashboard - slides in from right */}
       <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} authToken={token || undefined} />
