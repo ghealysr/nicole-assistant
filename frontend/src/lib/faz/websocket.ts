@@ -48,6 +48,15 @@ function normalizeActivityStatus(value: unknown): ActivityStatus {
   }
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 class FazWebSocket {
   private ws: WebSocket | null = null;
   private projectId: number | null = null;
@@ -223,6 +232,9 @@ class FazWebSocket {
           full_content: ((data.full_content as string | null) ?? undefined),
           status: normalizeActivityStatus(data.status),
           started_at: data.timestamp as string,
+          input_tokens: toNumber((data as { input_tokens?: unknown }).input_tokens, 0),
+          output_tokens: toNumber((data as { output_tokens?: unknown }).output_tokens, 0),
+          cost_cents: toNumber((data as { cost_cents?: unknown }).cost_cents, 0),
         });
         break;
         
