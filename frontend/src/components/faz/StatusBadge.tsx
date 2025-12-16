@@ -21,6 +21,7 @@ const statusConfig: Record<ProjectStatus, { color: string; label: string }> = {
   deploying: { color: 'bg-cyan-600 text-white', label: 'Deploying' },
   deployed: { color: 'bg-green-500 text-white', label: 'Live' },
   failed: { color: 'bg-red-500 text-white', label: 'Failed' },
+  paused: { color: 'bg-slate-600 text-white', label: 'Paused' },
   archived: { color: 'bg-gray-700 text-gray-300', label: 'Archived' },
 };
 
