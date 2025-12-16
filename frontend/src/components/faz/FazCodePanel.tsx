@@ -30,7 +30,9 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
   const [view, setView] = useState<'projects' | 'workspace'>('projects');
   const [projects, setProjects] = useState<FazProject[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectPrompt, setNewProjectPrompt] = useState('');
   
@@ -58,11 +60,13 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
 
   const fetchProjects = async () => {
     setLoading(true);
+    setLoadingError(null);
     try {
       const data = await fazApi.listProjects();
       setProjects(data.projects);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
+      setLoadingError('Failed to load projects. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -72,6 +76,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     if (!newProjectName.trim() || !newProjectPrompt.trim()) return;
     
     setCreating(true);
+    setCreateError(null);
     try {
       const project = await fazApi.createProject(newProjectName, newProjectPrompt);
       setProjects(prev => [project, ...prev]);
@@ -81,6 +86,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
       handleSelectProject(project);
     } catch (error) {
       console.error('Failed to create project:', error);
+      setCreateError('Could not create project. Check your connection or auth and try again.');
     } finally {
       setCreating(false);
     }
@@ -236,6 +242,11 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
             {/* New Project Form */}
             <div className="p-4 border-b border-[#1E1E2E] bg-[#0A0A0F]">
               <div className="space-y-3">
+                {createError && (
+                  <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                    {createError}
+                  </div>
+                )}
                 <input
                   type="text"
                   placeholder="Project name..."
@@ -271,36 +282,46 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={24} className="animate-spin text-purple-400" />
                 </div>
-              ) : projects.length === 0 ? (
-                <div className="text-center py-12 text-[#64748B]">
-                  <Folder size={40} className="mx-auto mb-3 opacity-50" />
-                  <p className="text-sm">No projects yet</p>
-                  <p className="text-xs mt-1">Create your first AI-powered project above</p>
-                </div>
               ) : (
-                <div className="space-y-2">
-                  {projects.map((project) => (
-                    <button
-                      key={project.project_id}
-                      onClick={() => handleSelectProject(project)}
-                      className="w-full p-4 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-left hover:border-purple-500/30 transition-colors group"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="font-medium text-white group-hover:text-purple-300 transition-colors">
-                          {project.name}
-                        </span>
-                        <StatusBadge status={project.status} />
-                      </div>
-                      <p className="text-xs text-[#64748B] line-clamp-2 mb-2">
-                        {project.original_prompt}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-[#475569]">
-                        <span>{project.file_count} files</span>
-                        <span>{project.total_tokens_used.toLocaleString()} tokens</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {loadingError && (
+                    <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                      {loadingError}
+                    </div>
+                  )}
+
+                  {projects.length === 0 ? (
+                    <div className="text-center py-12 text-[#64748B]">
+                      <Folder size={40} className="mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">No projects yet</p>
+                      <p className="text-xs mt-1">Create your first AI-powered project above</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {projects.map((project) => (
+                        <button
+                          key={project.project_id}
+                          onClick={() => handleSelectProject(project)}
+                          className="w-full p-4 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-left hover:border-purple-500/30 transition-colors group"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <span className="font-medium text-white group-hover:text-purple-300 transition-colors">
+                              {project.name}
+                            </span>
+                            <StatusBadge status={project.status} />
+                          </div>
+                          <p className="text-xs text-[#64748B] line-clamp-2 mb-2">
+                            {project.original_prompt}
+                          </p>
+                          <div className="flex items-center gap-4 text-xs text-[#475569]">
+                            <span>{project.file_count} files</span>
+                            <span>{project.total_tokens_used.toLocaleString()} tokens</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
