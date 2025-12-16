@@ -72,8 +72,9 @@ class IntakeFormSchema(BaseModel):
     
     # ========== Business Information ==========
     business_name: str = Field(..., min_length=1, max_length=200)
-    business_description: str = Field(..., min_length=10, max_length=2000)
-    target_audience: str = Field(..., min_length=5, max_length=500)
+    # Relaxed for faster testing in single-user mode
+    business_description: str = Field(..., min_length=3, max_length=2000)
+    target_audience: str = Field(..., min_length=2, max_length=500)
     
     # ========== Project Scope ==========
     project_type: ProjectType
