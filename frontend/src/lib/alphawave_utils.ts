@@ -14,9 +14,12 @@ export function getAuthHeaders(): HeadersInit {
     'Content-Type': 'application/json',
   };
 
-  // Check for auth token in localStorage (Nicole's auth system)
+  // Check for auth token in localStorage (Nicole's auth system + Google OAuth)
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('nicole_token') || localStorage.getItem('auth_token');
+    const token =
+      localStorage.getItem('nicole_token') ||
+      localStorage.getItem('auth_token') ||
+      localStorage.getItem('nicole_google_token'); // Google OAuth token
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
