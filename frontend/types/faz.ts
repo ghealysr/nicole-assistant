@@ -11,6 +11,7 @@ export type ProjectStatus =
   | 'deploying' 
   | 'deployed' 
   | 'failed' 
+  | 'paused'
   | 'archived';
 
 export interface FazProject {
@@ -19,15 +20,18 @@ export interface FazProject {
   slug: string;
   status: ProjectStatus;
   original_prompt: string;
-  current_agent?: string;
+  current_agent?: string | null;
   file_count: number;
   total_tokens_used: number;
   total_cost_cents: number;
   created_at: string;
   updated_at: string;
   preview_url?: string;
+  production_url?: string;
   github_repo?: string;
   vercel_project_id?: string;
+  architecture?: Architecture;
+  design_tokens?: DesignSystem;
 }
 
 export interface FazFile {

@@ -15,6 +15,7 @@ interface FazStore {
   selectFile: (path: string | null) => void;
   setFiles: (files: FazFile[]) => void;
   updateFile: (path: string, content: string) => void;
+  addFile: (file: FazFile) => void;
   
   // Activities
   activities: FazActivity[];
@@ -33,6 +34,19 @@ interface FazStore {
   toggleSidebar: () => void;
   activeTab: 'code' | 'preview' | 'split';
   setActiveTab: (tab: 'code' | 'preview' | 'split') => void;
+  
+  // Loading & Error State
+  isLoading: boolean;
+  setLoading: (loading: boolean) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
+  clearError: () => void;
+  
+  // Deploy State
+  isDeploying: boolean;
+  deployProgress: string | null;
+  setDeploying: (deploying: boolean) => void;
+  setDeployProgress: (progress: string | null) => void;
 }
 
 export const useFazStore = create<FazStore>((set) => ({
@@ -75,6 +89,13 @@ export const useFazStore = create<FazStore>((set) => ({
     newFiles.set(path, content);
     return { files: newFiles };
   }),
+  addFile: (file) => set((state) => {
+    const newFiles = new Map(state.files);
+    const newMetadata = new Map(state.fileMetadata);
+    newFiles.set(file.path, file.content);
+    newMetadata.set(file.path, file);
+    return { files: newFiles, fileMetadata: newMetadata };
+  }),
   
   // Activities
   activities: [],
@@ -101,5 +122,18 @@ export const useFazStore = create<FazStore>((set) => ({
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   activeTab: 'split',
   setActiveTab: (tab) => set({ activeTab: tab }),
+  
+  // Loading & Error State
+  isLoading: false,
+  setLoading: (loading) => set({ isLoading: loading }),
+  error: null,
+  setError: (error) => set({ error }),
+  clearError: () => set({ error: null }),
+  
+  // Deploy State
+  isDeploying: false,
+  deployProgress: null,
+  setDeploying: (deploying) => set({ isDeploying: deploying }),
+  setDeployProgress: (progress) => set({ deployProgress: progress }),
 }));
 

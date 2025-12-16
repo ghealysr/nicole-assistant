@@ -116,12 +116,21 @@ export const fazApi = {
   },
 
   // Deploy
-  async deployProject(id: number): Promise<{ success: boolean; message: string }> {
+  async deployProject(id: number): Promise<{ 
+    success: boolean; 
+    message?: string;
+    preview_url?: string;
+    production_url?: string;
+    github_repo?: string;
+  }> {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/deploy`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to deploy project');
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ message: 'Deployment failed' }));
+      throw new Error(error.detail || error.message || 'Failed to deploy project');
+    }
     return res.json();
   },
 };

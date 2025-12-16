@@ -2,9 +2,10 @@
 Faz Code Chat Router
 
 WebSocket and HTTP endpoints for real-time chat and activity streaming.
+Includes authentication for WebSocket connections.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 import logging
@@ -12,12 +13,106 @@ import json
 import asyncio
 from datetime import datetime
 
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 from app.database import db
 from app.middleware.alphawave_auth import get_current_user
+from app.config import settings
+from app.services.tiger_user_service import tiger_user_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/faz", tags=["Faz Code Chat"])
+
+
+# =============================================================================
+# WEBSOCKET AUTHENTICATION
+# =============================================================================
+
+async def verify_ws_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Verify Google OAuth ID token for WebSocket connections.
+    
+    Args:
+        token: Google OAuth ID token
+        
+    Returns:
+        User info dict if valid, None otherwise
+    """
+    if not token:
+        return None
+    
+    try:
+        google_client_id = settings.GOOGLE_CLIENT_ID
+        if not google_client_id:
+            logger.error("[Faz WS] GOOGLE_CLIENT_ID not configured")
+            return None
+        
+        # Verify ID token with Google
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            google_client_id
+        )
+        
+        # Verify issuer
+        if idinfo["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
+            logger.warning(f"[Faz WS] Invalid token issuer: {idinfo.get('iss')}")
+            return None
+        
+        # Extract user info
+        user_id = idinfo.get("sub")
+        user_email = idinfo.get("email")
+        email_verified = idinfo.get("email_verified", False)
+        
+        if not user_id or not email_verified:
+            return None
+        
+        # Get or create Tiger user (for database user_id)
+        tiger_user = await tiger_user_service.get_or_create_user(
+            google_id=user_id,
+            email=user_email,
+            name=idinfo.get("name", ""),
+            picture=idinfo.get("picture", "")
+        )
+        
+        if not tiger_user:
+            return None
+        
+        return {
+            "user_id": tiger_user.get("user_id"),
+            "google_id": user_id,
+            "email": user_email,
+            "name": idinfo.get("name", ""),
+        }
+        
+    except Exception as e:
+        logger.error(f"[Faz WS] Token verification failed: {e}")
+        return None
+
+
+async def verify_project_access(user_id: int, project_id: int) -> bool:
+    """
+    Verify user has access to the project.
+    
+    Args:
+        user_id: Tiger database user ID
+        project_id: Project ID to check
+        
+    Returns:
+        True if user owns the project, False otherwise
+    """
+    try:
+        result = await db.fetchval(
+            "SELECT 1 FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user_id
+        )
+        return result is not None
+    except Exception as e:
+        logger.error(f"[Faz WS] Project access check failed: {e}")
+        return False
 
 
 # =============================================================================
@@ -117,9 +212,13 @@ manager = ConnectionManager()
 async def websocket_endpoint(
     websocket: WebSocket,
     project_id: int,
+    token: Optional[str] = Query(None, description="Google OAuth ID token for authentication"),
 ):
     """
     WebSocket for real-time project updates.
+    
+    Authentication:
+    - Pass token as query parameter: /projects/{id}/ws?token=<google_id_token>
     
     Receives:
     - {"type": "chat", "message": "user message"} - Send chat message
@@ -133,10 +232,41 @@ async def websocket_endpoint(
     - {"type": "file", ...} - File generation events
     - {"type": "error", ...} - Error messages
     """
+    # =========================================================================
+    # AUTHENTICATION
+    # =========================================================================
+    
+    # Verify token
+    user_info = await verify_ws_token(token) if token else None
+    
+    if not user_info:
+        logger.warning(f"[Faz WS] Unauthorized connection attempt for project {project_id}")
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+    
+    user_id = user_info["user_id"]
+    
+    # Verify project access
+    has_access = await verify_project_access(user_id, project_id)
+    
+    if not has_access:
+        logger.warning(f"[Faz WS] User {user_id} denied access to project {project_id}")
+        await websocket.close(code=4003, reason="Access denied to this project")
+        return
+    
+    logger.info(f"[Faz WS] User {user_info['email']} authenticated for project {project_id}")
+    
+    # =========================================================================
+    # CONNECTION SETUP
+    # =========================================================================
+    
     await manager.connect(websocket, project_id)
     
     # Start activity watcher
     activity_task = asyncio.create_task(watch_activities(websocket, project_id))
+    
+    # Store user_id for message context
+    ws_user_id = user_id
     
     try:
         # Send initial state
@@ -151,6 +281,17 @@ async def websocket_endpoint(
                 "status": project["status"],
                 "current_agent": project["current_agent"],
                 "timestamp": datetime.utcnow().isoformat(),
+            })
+            
+            # Send auth confirmation
+            await manager.send_personal(websocket, {
+                "type": "auth",
+                "authenticated": True,
+                "user": {
+                    "user_id": user_info["user_id"],
+                    "email": user_info["email"],
+                    "name": user_info["name"],
+                },
             })
         
         # Listen for messages
@@ -167,12 +308,12 @@ async def websocket_endpoint(
                     # Handle chat message
                     message = data.get("message", "")
                     if message:
-                        await handle_chat_message(websocket, project_id, message)
+                        await handle_chat_message(websocket, project_id, message, ws_user_id)
                 
                 elif msg_type == "run":
                     # Start pipeline
                     start_agent = data.get("start_agent", "nicole")
-                    await handle_run_pipeline(websocket, project_id, start_agent)
+                    await handle_run_pipeline(websocket, project_id, start_agent, ws_user_id)
                 
                 else:
                     await manager.send_personal(websocket, {
@@ -255,18 +396,19 @@ async def watch_activities(websocket: WebSocket, project_id: int):
             await asyncio.sleep(2)
 
 
-async def handle_chat_message(websocket: WebSocket, project_id: int, message: str):
+async def handle_chat_message(websocket: WebSocket, project_id: int, message: str, user_id: int = None):
     """Handle incoming chat message."""
     try:
         # Store user message
         message_id = await db.fetchval(
             """
-            INSERT INTO faz_conversations (project_id, role, content)
-            VALUES ($1, 'user', $2)
+            INSERT INTO faz_conversations (project_id, role, content, user_id)
+            VALUES ($1, 'user', $2, $3)
             RETURNING message_id
             """,
             project_id,
             message,
+            user_id,
         )
         
         # Broadcast user message
@@ -340,19 +482,26 @@ async def handle_chat_message(websocket: WebSocket, project_id: int, message: st
         })
 
 
-async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent: str):
+async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent: str, user_id: int = None):
     """Handle pipeline run request via WebSocket."""
     try:
-        # Get project
-        project = await db.fetchrow(
-            "SELECT * FROM faz_projects WHERE project_id = $1",
-            project_id,
-        )
+        # Get project (with ownership check if user_id provided)
+        if user_id:
+            project = await db.fetchrow(
+                "SELECT * FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+                project_id,
+                user_id,
+            )
+        else:
+            project = await db.fetchrow(
+                "SELECT * FROM faz_projects WHERE project_id = $1",
+                project_id,
+            )
         
         if not project:
             await manager.send_personal(websocket, {
                 "type": "error",
-                "message": "Project not found",
+                "message": "Project not found or access denied",
             })
             return
         

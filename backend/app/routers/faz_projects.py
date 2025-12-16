@@ -374,6 +374,21 @@ async def stop_pipeline(
 ):
     """Stop a running pipeline."""
     try:
+        # Verify ownership
+        project = await db.fetchrow(
+            "SELECT project_id, status FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Cancel the running orchestrator if one exists
+        from app.services.faz_orchestrator import cancel_orchestrator
+        was_running = await cancel_orchestrator(project_id)
+        
+        # Update database status
         await db.execute(
             """
             UPDATE faz_projects 
@@ -386,7 +401,13 @@ async def stop_pipeline(
             user.user_id,
         )
         
-        return {"success": True, "message": "Pipeline stopped"}
+        logger.info(f"[Faz] Pipeline stopped for project {project_id}, was_running={was_running}")
+        
+        return {
+            "success": True, 
+            "message": "Pipeline stopped",
+            "was_running": was_running
+        }
         
     except Exception as e:
         logger.exception(f"[Faz] Failed to stop pipeline: {e}")

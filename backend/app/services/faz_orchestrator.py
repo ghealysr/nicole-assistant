@@ -26,10 +26,39 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 from enum import Enum
+from weakref import WeakValueDictionary
 
 from app.database import db
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# GLOBAL ORCHESTRATOR REGISTRY
+# =============================================================================
+
+# Track running orchestrators for cancellation support
+# WeakValueDictionary allows garbage collection when orchestrator completes
+_running_orchestrators: WeakValueDictionary[int, "FazOrchestrator"] = WeakValueDictionary()
+
+
+def get_running_orchestrator(project_id: int) -> Optional["FazOrchestrator"]:
+    """Get a running orchestrator for a project, if any."""
+    return _running_orchestrators.get(project_id)
+
+
+async def cancel_orchestrator(project_id: int) -> bool:
+    """
+    Cancel a running orchestrator for a project.
+    
+    Returns:
+        True if an orchestrator was found and cancelled, False otherwise.
+    """
+    orchestrator = _running_orchestrators.get(project_id)
+    if orchestrator:
+        await orchestrator.cancel()
+        return True
+    return False
 
 
 # =============================================================================
@@ -112,6 +141,10 @@ class FazOrchestrator:
         self._agents = {}
         self._activity_callback = None
         
+        # Cancellation support
+        self._cancelled = False
+        self._current_task: Optional[asyncio.Task] = None
+        
         # State
         self.state: ProjectState = {
             "project_id": project_id,
@@ -127,11 +160,45 @@ class FazOrchestrator:
             "error_history": [],
         }
         
+        # Register in global registry
+        _running_orchestrators[project_id] = self
+        
         logger.info(f"[Orchestrator] Initialized for project {project_id}")
     
     def set_activity_callback(self, callback):
         """Set callback for activity logging."""
         self._activity_callback = callback
+    
+    async def cancel(self):
+        """
+        Cancel the running pipeline.
+        
+        Sets cancellation flag and waits for current agent to complete.
+        """
+        if self._cancelled:
+            return
+        
+        logger.info(f"[Orchestrator] Cancellation requested for project {self.project_id}")
+        self._cancelled = True
+        self.state["pipeline_status"] = PipelineStatus.PAUSED
+        
+        # Log cancellation activity
+        await self._log_activity(
+            "orchestrator", "cancel",
+            "Pipeline cancellation requested",
+            content_type="status"
+        )
+        
+        # Update project status
+        await self._update_project_status("paused")
+        
+        # If we have a current task, try to cancel it
+        if self._current_task and not self._current_task.done():
+            self._current_task.cancel()
+    
+    def is_cancelled(self) -> bool:
+        """Check if pipeline has been cancelled."""
+        return self._cancelled
     
     async def _log_activity(
         self,
@@ -224,6 +291,16 @@ class FazOrchestrator:
         current_agent = start_agent
         
         while current_agent:
+            # Check for cancellation
+            if self._cancelled:
+                logger.info(f"[Orchestrator] Pipeline cancelled at {current_agent}")
+                await self._log_activity(
+                    "orchestrator", "cancel",
+                    f"Pipeline cancelled at {current_agent} agent",
+                    content_type="status"
+                )
+                break
+            
             # Check iteration limit
             if self.state["iteration_count"] >= self.state["max_iterations"]:
                 logger.warning(f"[Orchestrator] Max iterations ({self.state['max_iterations']}) reached")
@@ -255,6 +332,11 @@ class FazOrchestrator:
                 
                 if result.files:
                     self.state["files"].update(result.files)
+                    
+                    # Persist files immediately for real-time updates
+                    # (especially important for coding agent)
+                    if current_agent == "coding":
+                        await self._persist_files_incremental(result.files)
                 
                 if result.data:
                     # Merge data into state
@@ -400,9 +482,14 @@ class FazOrchestrator:
             logger.error(f"[Orchestrator] Failed to load memory context: {e}")
     
     async def _update_project_status(self, status: str):
-        """Update project status in database."""
+        """Update project status in database, including architecture and design tokens."""
         try:
-            # Also update status history
+            # Prepare architecture and design tokens as JSON
+            architecture_json = json.dumps(self.state.get("architecture") or {})
+            design_tokens_json = json.dumps(self.state.get("design_tokens") or {})
+            tech_stack_json = json.dumps(self.state.get("tech_stack") or {})
+            
+            # Update project with all relevant data
             await db.execute(
                 """
                 UPDATE faz_projects
@@ -411,8 +498,11 @@ class FazOrchestrator:
                     status_history = status_history || $3::jsonb,
                     total_tokens_used = $4,
                     total_cost_cents = $5,
+                    architecture = $6::jsonb,
+                    design_tokens = $7::jsonb,
+                    tech_stack = $8::jsonb,
                     updated_at = NOW()
-                WHERE project_id = $6
+                WHERE project_id = $9
                 """,
                 status,
                 self.state.get("current_agent"),
@@ -423,8 +513,18 @@ class FazOrchestrator:
                 }]),
                 self.state.get("total_tokens", 0),
                 int(self.state.get("total_cost_cents", 0)),
+                architecture_json,
+                design_tokens_json,
+                tech_stack_json,
                 self.project_id,
             )
+            
+            logger.info(
+                f"[Orchestrator] Updated project {self.project_id}: status={status}, "
+                f"architecture={bool(self.state.get('architecture'))}, "
+                f"design_tokens={bool(self.state.get('design_tokens'))}"
+            )
+            
         except Exception as e:
             logger.error(f"[Orchestrator] Failed to update project status: {e}")
     
@@ -445,7 +545,7 @@ class FazOrchestrator:
         await self._update_project_status(status)
     
     async def _persist_files(self):
-        """Save generated files to database."""
+        """Save generated files to database and broadcast to WebSocket clients."""
         try:
             files = self.state.get("files", {})
             
@@ -453,8 +553,11 @@ class FazOrchestrator:
                 # Determine file type
                 extension = path.split(".")[-1] if "." in path else ""
                 file_type = "component" if "components/" in path else "page" if "page.tsx" in path else "config"
+                language = "typescript" if extension in ["ts", "tsx"] else "javascript" if extension in ["js", "jsx"] else extension
+                line_count = content.count("\n") + 1
                 
-                await db.execute(
+                # Insert or update file in database
+                file_id = await db.fetchval(
                     """
                     INSERT INTO faz_files
                         (project_id, path, filename, extension, content, file_type, 
@@ -462,6 +565,7 @@ class FazOrchestrator:
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'generated')
                     ON CONFLICT (project_id, path, version) 
                     DO UPDATE SET content = $5, updated_at = NOW()
+                    RETURNING file_id
                     """,
                     self.project_id,
                     path,
@@ -469,15 +573,87 @@ class FazOrchestrator:
                     extension,
                     content,
                     file_type,
-                    "typescript" if extension in ["ts", "tsx"] else extension,
-                    content.count("\n") + 1,
+                    language,
+                    line_count,
                     self.state.get("current_agent", "coding"),
                 )
+                
+                # Broadcast file event for real-time updates
+                if self._activity_callback:
+                    await self._activity_callback({
+                        "type": "file",
+                        "file_id": file_id,
+                        "path": path,
+                        "filename": path.split("/")[-1],
+                        "extension": extension,
+                        "content": content,
+                        "file_type": file_type,
+                        "language": language,
+                        "line_count": line_count,
+                        "agent": self.state.get("current_agent", "coding"),
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
             
-            logger.info(f"[Orchestrator] Persisted {len(files)} files")
+            logger.info(f"[Orchestrator] Persisted and broadcast {len(files)} files")
             
         except Exception as e:
             logger.error(f"[Orchestrator] Failed to persist files: {e}")
+    
+    async def _persist_files_incremental(self, files: Dict[str, str]):
+        """
+        Persist files immediately during coding phase for real-time updates.
+        
+        Called after each coding iteration to provide live file tree updates.
+        """
+        try:
+            for path, content in files.items():
+                extension = path.split(".")[-1] if "." in path else ""
+                file_type = "component" if "components/" in path else "page" if "page.tsx" in path else "config"
+                language = "typescript" if extension in ["ts", "tsx"] else "javascript" if extension in ["js", "jsx"] else extension
+                line_count = content.count("\n") + 1
+                
+                # Upsert file
+                file_id = await db.fetchval(
+                    """
+                    INSERT INTO faz_files
+                        (project_id, path, filename, extension, content, file_type, 
+                         language, line_count, generated_by, status)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'generated')
+                    ON CONFLICT (project_id, path, version) 
+                    DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
+                    RETURNING file_id
+                    """,
+                    self.project_id,
+                    path,
+                    path.split("/")[-1],
+                    extension,
+                    content,
+                    file_type,
+                    language,
+                    line_count,
+                    "coding",
+                )
+                
+                # Broadcast file event
+                if self._activity_callback:
+                    await self._activity_callback({
+                        "type": "file",
+                        "file_id": file_id,
+                        "path": path,
+                        "filename": path.split("/")[-1],
+                        "extension": extension,
+                        "content": content,
+                        "file_type": file_type,
+                        "language": language,
+                        "line_count": line_count,
+                        "agent": "coding",
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    
+                logger.debug(f"[Orchestrator] Incremental persist: {path}")
+                
+        except Exception as e:
+            logger.error(f"[Orchestrator] Incremental file persist failed: {e}")
     
     async def _store_learnings(self, learnings_data: Dict[str, Any]):
         """Store extracted learnings to database."""
