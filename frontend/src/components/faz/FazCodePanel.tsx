@@ -324,7 +324,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                 <CodeViewer
                   code={selectedFileContent}
                   language={selectedFile.split('.').pop() || 'typescript'}
-                  filename={selectedFile}
+                  path={selectedFile}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center text-[#64748B]">
