@@ -6,6 +6,11 @@ import { openInStackBlitz } from '@/lib/stackblitz';
 import { API_URL } from '@/lib/alphawave_config';
 import { getStoredToken } from '@/lib/google_auth';
 
+// Phase 1 Components
+import { VibeIntakeForm } from './intake/VibeIntakeForm';
+import { VibeArchitectureReview } from './review/VibeArchitectureReview';
+import { VibeGlenReview } from './review/VibeGlenReview';
+
 // ============================================================================
 // IMAGE LIGHTBOX - For viewing screenshots full-size
 // ============================================================================
@@ -384,6 +389,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
   // Preview HTML state (fetched from backend)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showStructuredIntake, setShowStructuredIntake] = useState(false);
   
   // Local activity state for immediate UI feedback (will be replaced by API activities)
   const [localActivities, setLocalActivities] = useState<Array<{
@@ -553,6 +559,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
       setNewClientEmail('');
       setSelectedProjectId(newProject.project_id);
       setViewMode('workspace');
+      setShowStructuredIntake(true); // Default to structured intake for new projects
       addActivity('System', `Created project "${newProject.name}"`);
     }
   };
@@ -1373,15 +1380,32 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
           </div>
         </div>
 
-        {/* Preview Panel - Show Intake Chat or Preview */}
+        {/* Preview Panel - Show Intake, Architecture Review, Review/QA, or Preview */}
         <div className={`vibe-preview-panel ${currentView === 'code' ? 'hidden' : ''} ${currentView === 'split' ? 'split-view' : ''}`}>
           {project?.status === 'intake' ? (
-            // Intake Chat Interface
-            <div className="vibe-intake-chat">
-              <div className="vibe-intake-header">
-                <h3>📋 Project Intake</h3>
-                <p>Tell me about the project. I&apos;ll gather requirements and create a brief.</p>
-              </div>
+            showStructuredIntake ? (
+              <VibeIntakeForm 
+                projectId={project.project_id} 
+                onComplete={() => {
+                  fetchProject(project.project_id);
+                  setShowStructuredIntake(false);
+                }} 
+              />
+            ) : (
+              // Intake Chat Interface
+              <div className="vibe-intake-chat">
+                <div className="vibe-intake-header flex justify-between items-start">
+                  <div>
+                    <h3>📋 Project Intake</h3>
+                    <p>Tell me about the project. I&apos;ll gather requirements and create a brief.</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowStructuredIntake(true)}
+                    className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors"
+                  >
+                    Switch to Form Mode
+                  </button>
+                </div>
               
               <div className="vibe-intake-messages">
                 {intakeHistory.map((msg, i) => (
@@ -1423,49 +1447,26 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                 </button>
               </div>
             </div>
+            )
+          ) : project?.status === 'review' ? (
+            // Review / QA Interface
+            <div className="vibe-preview-container bg-gray-50 h-full">
+              <VibeGlenReview projectId={project.project_id} />
+            </div>
           ) : (
             // Preview Frame
             <div className="vibe-preview-container">
               {/* Planning Artifacts */}
-              {project?.architecture && (
-                <div className="vibe-architecture-card">
-                  <div className="vibe-architecture-header">
-                    <div>
-                      <h4>Architecture Plan</h4>
-                      <p>{(() => {
-                        const arch = project.architecture as Record<string, unknown> | undefined;
-                        const pages = arch?.pages;
-                        return Array.isArray(pages) ? `${pages.length} pages` : 'Structured spec';
-                      })()}</p>
-                    </div>
-                    {(() => {
-                      const arch = project.architecture as Record<string, unknown> | undefined;
-                      const designSystem = arch?.design_system as Record<string, unknown> | undefined;
-                      const colors = designSystem?.colors as Record<string, string> | undefined;
-                      const typography = designSystem?.typography as Record<string, string> | undefined;
-                      
-                      if (!designSystem) return null;
-                      
-                      return (
-                        <div className="vibe-design-tokens">
-                          <span className="vibe-token-title">Design Tokens</span>
-                          <div className="vibe-token-row">
-                            <span className="vibe-token-swatch" style={{ background: colors?.primary || '#8B5CF6' }} />
-                            <span>{colors?.primary || 'Primary'}</span>
-                          </div>
-                          {typography?.heading_font && (
-                            <div className="vibe-token-row">
-                              <span className="vibe-token-label">Heading</span>
-                              <span>{typography.heading_font}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <pre className="vibe-architecture-json">
-                    {JSON.stringify(project.architecture, null, 2).slice(0, 2000)}
-                  </pre>
+              {project?.architecture && project.status === 'planning' && (
+                <div className="mb-4">
+                  <VibeArchitectureReview 
+                    projectId={project.project_id}
+                    architecture={project.architecture}
+                    onApprove={() => {
+                      fetchProject(project.project_id);
+                      // Optionally auto-start build
+                    }}
+                  />
                 </div>
               )}
 

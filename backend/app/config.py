@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     UPLOADTHING_APP_ID: str = ""
     UPLOADTHING_SECRET: str = ""
 
+    # Cloudinary (Images, Screenshots, Uploads)
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     # Frontend URL
     FRONTEND_URL: str = ""
 

@@ -41,6 +41,7 @@ export interface VibeProject {
   client_email?: string;
   status: ProjectStatus;
   brief?: Record<string, unknown>;
+  intake_form?: Record<string, unknown>; // New
   architecture?: Record<string, unknown>;
   config?: Record<string, unknown>;
   preview_url?: string;
@@ -48,6 +49,8 @@ export interface VibeProject {
   github_repo?: string;
   estimated_price?: number;
   api_cost?: number;
+  iteration_count?: number; // New
+  max_iterations?: number; // New
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -1385,6 +1388,208 @@ export function useVibeProject(projectId?: number) {
     [project, isAnyOperationLoading]
   );
 
+  // Submit structured intake form
+  const submitIntakeForm = useCallback(async (id: number, formData: Record<string, unknown>): Promise<boolean> => {
+    setOperationState('intake', { loading: true, error: null });
+    
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/intake/form`,
+        'POST',
+        formData,
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        const errMsg = response.error || 'Failed to submit intake form';
+        setOperationState('intake', { loading: false, error: errMsg });
+        setError(errMsg);
+        return false;
+      }
+      
+      await fetchProject(id);
+      setOperationState('intake', { loading: false, error: null });
+      return true;
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Intake submission failed';
+      const friendlyMessage = getFriendlyErrorMessage(rawMessage, 'intake');
+      setOperationState('intake', { loading: false, error: friendlyMessage });
+      setError(friendlyMessage);
+      console.error('[useVibeProject] Intake form error:', err);
+      return false;
+    }
+  }, [fetchProject, setOperationState]);
+
+  // Upload file metadata
+  const uploadFileMetadata = useCallback(async (id: number, metadata: Record<string, unknown>): Promise<boolean> => {
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/uploads`,
+        'POST',
+        metadata,
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        setError(response.error || 'Failed to save file metadata');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[useVibeProject] Upload metadata error:', err);
+      return false;
+    }
+  }, []);
+
+  // Add competitor URL
+  const addCompetitorURL = useCallback(async (id: number, url: string, notes?: string): Promise<boolean> => {
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/competitors`,
+        'POST',
+        { url, notes },
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        setError(response.error || 'Failed to add competitor');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[useVibeProject] Add competitor error:', err);
+      return false;
+    }
+  }, []);
+
+  // Get competitor URLs
+  const getCompetitorURLs = useCallback(async (id: number): Promise<Array<{ url: string; screenshot_url?: string; notes?: string }>> => {
+    try {
+      const response = await apiClient.request<{ competitors: Array<{ url: string; screenshot_url?: string; notes?: string }> }>(
+        `/projects/${id}/competitors`,
+        'GET',
+        undefined,
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        console.error('Failed to get competitors:', response.error);
+        return [];
+      }
+      return response.data?.competitors || [];
+    } catch (err) {
+      console.error('[useVibeProject] Get competitors error:', err);
+      return [];
+    }
+  }, []);
+
+  // Approve architecture
+  const approveArchitecture = useCallback(async (id: number, approvedBy: string): Promise<boolean> => {
+    setOperationState('approve', { loading: true, error: null });
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/architecture/approve`,
+        'POST',
+        { approved_by: approvedBy },
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        const errMsg = response.error || 'Failed to approve architecture';
+        setOperationState('approve', { loading: false, error: errMsg });
+        setError(errMsg);
+        return false;
+      }
+      
+      await fetchProject(id);
+      setOperationState('approve', { loading: false, error: null });
+      return true;
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Architecture approval failed';
+      setOperationState('approve', { loading: false, error: rawMessage });
+      setError(rawMessage);
+      return false;
+    }
+  }, [fetchProject, setOperationState]);
+
+  // Request architecture revision
+  const requestArchitectureRevision = useCallback(async (id: number, feedback: string, requestedBy: string): Promise<boolean> => {
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/architecture/revise`,
+        'POST',
+        { feedback, requested_by: requestedBy },
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        setError(response.error || 'Failed to request revision');
+        return false;
+      }
+      
+      await fetchProject(id);
+      return true;
+    } catch (err) {
+      console.error('[useVibeProject] Revision request error:', err);
+      return false;
+    }
+  }, [fetchProject]);
+
+  // Submit feedback (create iteration)
+  const submitFeedback = useCallback(async (id: number, feedbackData: Record<string, unknown>): Promise<boolean> => {
+    try {
+      const response = await apiClient.request(
+        `/projects/${id}/feedback`,
+        'POST',
+        feedbackData,
+        abortControllerRef.current?.signal
+      );
+      
+      if (!response.success) {
+        setError(response.error || 'Failed to submit feedback');
+        return false;
+      }
+      
+      await fetchProject(id);
+      return true;
+    } catch (err) {
+      console.error('[useVibeProject] Submit feedback error:', err);
+      return false;
+    }
+  }, [fetchProject]);
+
+  // Get iterations
+  const getIterations = useCallback(async (id: number): Promise<Array<Record<string, unknown>>> => {
+    try {
+      const response = await apiClient.request<{ iterations: Array<Record<string, unknown>> }>(
+        `/projects/${id}/iterations`,
+        'GET',
+        undefined,
+        abortControllerRef.current?.signal
+      );
+      return response.data?.iterations || [];
+    } catch (err) {
+      console.error('[useVibeProject] Get iterations error:', err);
+      return [];
+    }
+  }, []);
+
+  // Get QA scores
+  const getQAScores = useCallback(async (id: number): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await apiClient.request<{ latest: Record<string, unknown> | null }>(
+        `/projects/${id}/qa`,
+        'GET',
+        undefined,
+        abortControllerRef.current?.signal
+      );
+      return response.data?.latest || null;
+    } catch (err) {
+      console.error('[useVibeProject] Get QA scores error:', err);
+      return null;
+    }
+  }, []);
+
   return {
     // Data
     project,
@@ -1431,6 +1636,15 @@ export function useVibeProject(projectId?: number) {
     deployProject,
     runPipeline,
     retryPhase,
+    submitIntakeForm,
+    uploadFileMetadata,
+    addCompetitorURL,
+    getCompetitorURLs,
+    approveArchitecture,
+    requestArchitectureRevision,
+    submitFeedback,
+    getIterations,
+    getQAScores,
     
     // Helpers
     clearIntakeHistory: useCallback(() => setIntakeHistory([]), []),
