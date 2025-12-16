@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlphawaveSidebar } from '@/components/navigation/AlphawaveSidebar';
-import { AlphawaveVibeWorkspace } from '@/components/vibe/AlphawaveVibeWorkspace';
 import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDashboard';
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
@@ -52,8 +51,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
  * Inner layout component that uses the conversation context
  */
 function AppLayoutInner({ children }: { children: React.ReactNode }) {
-  const [isVibeOpen, setIsVibeOpen] = useState(false);
-  const [isVibeExpanded, setIsVibeExpanded] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isChatsOpen, setIsChatsOpen] = useState(false);
@@ -81,7 +78,6 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Close all panels helper
   const closeAllPanels = useCallback(() => {
-    setIsVibeOpen(false);
     setIsMemoryOpen(false);
     setIsJournalOpen(false);
     setIsChatsOpen(false);
@@ -113,16 +109,6 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
       delete (window as unknown as { openResearch?: typeof openResearchWithQuery }).openResearch;
     };
   }, [openResearchWithQuery]);
-
-  // Toggle Vibe - closes others if open
-  const toggleVibe = useCallback(() => {
-    if (isVibeOpen) {
-      setIsVibeOpen(false);
-    } else {
-      closeAllPanels();
-      setIsVibeOpen(true);
-    }
-  }, [isVibeOpen, closeAllPanels]);
 
   // Toggle Memory - closes others if open
   const toggleMemory = useCallback(() => {
@@ -179,8 +165,6 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar: 240px fixed */}
       <AlphawaveSidebar 
-        onVibeClick={toggleVibe} 
-        isVibeOpen={isVibeOpen}
         onMemoryClick={toggleMemory}
         isMemoryOpen={isMemoryOpen}
         onJournalClick={toggleJournal}
@@ -194,17 +178,10 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         onNewChat={clearConversation}
       />
 
-      {/* Main content area - hidden when Vibe is expanded */}
-      <main className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${isVibeExpanded ? 'w-0 opacity-0 pointer-events-none' : ''}`}>
+      {/* Main content area */}
+      <main className="flex-1 min-w-0 overflow-hidden">
         {children}
       </main>
-
-      {/* Vibe Workspace - slides in from right, can expand to full width */}
-      <AlphawaveVibeWorkspace 
-        isOpen={isVibeOpen} 
-        onClose={() => setIsVibeOpen(false)}
-        onExpandChange={setIsVibeExpanded}
-      />
 
       {/* Memory Dashboard - slides in from right */}
       <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} authToken={token || undefined} />
@@ -264,7 +241,8 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
  * - Sidebar: 240px fixed width (dark theme)
  * - Main content area fills remaining space
  * - All slide-out panels are MUTUALLY EXCLUSIVE:
- *   Vibe, Memory, Journal, and Chats (only one open at a time)
+ *   Memory, Journal, Chats, Research (only one open at a time)
+ * - Faz Code is a separate route (/faz) not a slide-out
  * - Header is managed per-page (e.g., chat has its own header)
  * - Used for all authenticated routes (chat, dashboard, journal, etc.)
  * - Conversation state managed via context for cross-component access

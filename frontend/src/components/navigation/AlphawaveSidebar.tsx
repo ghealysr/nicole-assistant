@@ -1,11 +1,10 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 interface AlphawaveSidebarProps {
-  onVibeClick?: () => void;
-  isVibeOpen?: boolean;
   onMemoryClick?: () => void;
   isMemoryOpen?: boolean;
   onJournalClick?: () => void;
@@ -26,12 +25,10 @@ interface AlphawaveSidebarProps {
  * - Dark theme sidebar
  * - Alphawave logo at top (large size)
  * - Navigation items with icons
- * - Vibe button to open coding workspace
+ * - Faz Code link to coding dashboard
  * - Active state highlighting
  */
 export function AlphawaveSidebar({ 
-  onVibeClick, 
-  isVibeOpen, 
   onMemoryClick, 
   isMemoryOpen,
   onJournalClick,
@@ -47,6 +44,7 @@ export function AlphawaveSidebar({
   const pathname = usePathname();
 
   const isOnChat = pathname === '/chat' || pathname?.startsWith('/chat/');
+  const isOnFaz = pathname === '/faz' || pathname?.startsWith('/faz/');
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
@@ -125,18 +123,18 @@ export function AlphawaveSidebar({
           Research
         </button>
 
-        {/* Vibe Button - Special styling, opens workspace */}
-        <button
-          onClick={onVibeClick}
-          className={`menu-item vibe-btn ${isVibeOpen ? 'vibe-active' : ''}`}
+        {/* Faz Code - Link to AI coding dashboard */}
+        <Link
+          href="/faz"
+          className={`menu-item vibe-btn ${isOnFaz ? 'vibe-active' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
-            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-            <polyline points="2 17 12 22 22 17"/>
-            <polyline points="2 12 12 17 22 12"/>
+            <polyline points="16 18 22 12 16 6"/>
+            <polyline points="8 6 2 12 8 18"/>
+            <line x1="12" y1="2" x2="12" y2="22" strokeDasharray="2 2"/>
           </svg>
-          Vibe
-        </button>
+          Faz Code
+        </Link>
 
         {/* Divider and Data Section */}
         <div className="h-px bg-[#333] my-2" />
