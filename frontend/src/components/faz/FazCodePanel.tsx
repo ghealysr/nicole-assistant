@@ -48,7 +48,6 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     fileMetadata,
     activities, 
     selectedFile,
-    selectFile,
   } = useFazStore();
 
   // Fetch projects on open
