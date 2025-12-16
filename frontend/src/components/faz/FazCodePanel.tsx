@@ -94,7 +94,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     
     // Fetch project files
     try {
-      const projectFiles = await fazApi.getProjectFiles(project.project_id);
+      const projectFiles = await fazApi.getFiles(project.project_id);
       useFazStore.getState().setFiles(projectFiles);
     } catch (error) {
       console.error('Failed to fetch project files:', error);
