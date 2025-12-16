@@ -9,7 +9,6 @@ import { StatusBadge } from './StatusBadge';
 import { FileTree } from './FileTree';
 import { CodeViewer } from './CodeViewer';
 import { AgentActivityFeed } from './AgentActivityFeed';
-import { PreviewPane } from './PreviewPane';
 
 interface FazCodePanelProps {
   isOpen: boolean;
@@ -45,11 +44,11 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
   const { 
     currentProject, 
     setCurrentProject, 
-    files, 
+    files,
+    fileMetadata,
     activities, 
     selectedFile,
-    setSelectedFile,
-    previewHtml,
+    selectFile,
   } = useFazStore();
 
   // Fetch projects on open
@@ -156,9 +155,13 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     };
   }, [isResizing]);
 
+  // Get selected file content from the Map
   const selectedFileContent = selectedFile 
-    ? files.find(f => f.path === selectedFile)?.content || ''
+    ? files.get(selectedFile) || ''
     : '';
+
+  // Convert files Map to array for FileTree
+  const filesArray = Array.from(fileMetadata.values());
 
   const isPipelineRunning = currentProject?.status && 
     ['planning', 'researching', 'designing', 'building', 'qa'].includes(currentProject.status);
@@ -312,9 +315,9 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                 <span className="text-xs font-medium text-[#64748B] uppercase tracking-wider">Files</span>
               </div>
               <FileTree 
-                files={files} 
+                files={filesArray} 
                 selectedFile={selectedFile}
-                onSelectFile={setSelectedFile}
+                onSelectFile={selectFile}
               />
             </div>
 
@@ -326,8 +329,6 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                   language={selectedFile.split('.').pop() || 'typescript'}
                   filename={selectedFile}
                 />
-              ) : previewHtml ? (
-                <PreviewPane html={previewHtml} />
               ) : (
                 <div className="flex-1 flex items-center justify-center text-[#64748B]">
                   <div className="text-center">
