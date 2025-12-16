@@ -160,8 +160,8 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     ? files.get(selectedFile) || ''
     : '';
 
-  // Convert files Map to array for FileTree
-  const filesArray = Array.from(fileMetadata.values());
+  // Convert files Map to array of paths for FileTree
+  const filePaths = Array.from(fileMetadata.keys());
 
   const isPipelineRunning = currentProject?.status && 
     ['planning', 'researching', 'designing', 'building', 'qa'].includes(currentProject.status);
@@ -315,9 +315,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                 <span className="text-xs font-medium text-[#64748B] uppercase tracking-wider">Files</span>
               </div>
               <FileTree 
-                files={filesArray} 
-                selectedFile={selectedFile}
-                onSelectFile={selectFile}
+                files={filePaths} 
               />
             </div>
 
