@@ -13,10 +13,26 @@
 import { useFazStore } from './store';
 import { API_URL } from '@/lib/alphawave_config';
 import { getAuthToken } from '@/lib/alphawave_utils';
+import type { FazActivity } from '@/types/faz';
 
 interface WebSocketMessage {
   type: string;
   [key: string]: unknown;
+}
+
+type ActivityContentType = FazActivity['content_type'];
+
+function normalizeContentType(value: unknown): ActivityContentType {
+  switch (value) {
+    case 'status':
+    case 'thinking':
+    case 'response':
+    case 'tool_call':
+    case 'error':
+      return value;
+    default:
+      return 'status';
+  }
 }
 
 class FazWebSocket {
@@ -189,7 +205,7 @@ class FazWebSocket {
           agent_model: data.model as string,
           activity_type: data.activity_type as string,
           message: data.message as string,
-          content_type: data.content_type as string,
+          content_type: normalizeContentType(data.content_type),
           full_content: data.full_content as string | null,
           status: data.status as string,
           started_at: data.timestamp as string,
