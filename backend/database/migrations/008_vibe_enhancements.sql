@@ -47,10 +47,10 @@ CREATE TABLE IF NOT EXISTS vibe_iterations (
     CONSTRAINT unique_iteration_number UNIQUE (project_id, iteration_number)
 );
 
--- Indexes for performance
-CREATE INDEX idx_vibe_iterations_project ON vibe_iterations(project_id);
-CREATE INDEX idx_vibe_iterations_status ON vibe_iterations(status);
-CREATE INDEX idx_vibe_iterations_created ON vibe_iterations(created_at DESC);
+-- Indexes for performance (idempotent)
+CREATE INDEX IF NOT EXISTS idx_vibe_iterations_project ON vibe_iterations(project_id);
+CREATE INDEX IF NOT EXISTS idx_vibe_iterations_status ON vibe_iterations(status);
+CREATE INDEX IF NOT EXISTS idx_vibe_iterations_created ON vibe_iterations(created_at DESC);
 
 COMMENT ON TABLE vibe_iterations IS 'Tracks feedback/fix cycles for Vibe projects';
 COMMENT ON COLUMN vibe_iterations.iteration_type IS 'bug_fix: Fix broken functionality, design_change: Visual/layout changes, feature_add: New functionality';
@@ -105,11 +105,11 @@ CREATE TABLE IF NOT EXISTS vibe_qa_scores (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes for performance
-CREATE INDEX idx_vibe_qa_scores_project ON vibe_qa_scores(project_id);
-CREATE INDEX idx_vibe_qa_scores_iteration ON vibe_qa_scores(iteration_id);
-CREATE INDEX idx_vibe_qa_scores_created ON vibe_qa_scores(created_at DESC);
-CREATE INDEX idx_vibe_qa_scores_passing ON vibe_qa_scores(all_passing);
+-- Indexes for performance (idempotent)
+CREATE INDEX IF NOT EXISTS idx_vibe_qa_scores_project ON vibe_qa_scores(project_id);
+CREATE INDEX IF NOT EXISTS idx_vibe_qa_scores_iteration ON vibe_qa_scores(iteration_id);
+CREATE INDEX IF NOT EXISTS idx_vibe_qa_scores_created ON vibe_qa_scores(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vibe_qa_scores_passing ON vibe_qa_scores(all_passing);
 
 COMMENT ON TABLE vibe_qa_scores IS 'Quality metrics from Lighthouse, axe-core, and tests';
 COMMENT ON COLUMN vibe_qa_scores.lighthouse_performance IS 'PageSpeed Insights performance score (0-100)';
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS vibe_uploads (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes for performance
-CREATE INDEX idx_vibe_uploads_project ON vibe_uploads(project_id);
-CREATE INDEX idx_vibe_uploads_type ON vibe_uploads(file_type);
+-- Indexes for performance (idempotent)
+CREATE INDEX IF NOT EXISTS idx_vibe_uploads_project ON vibe_uploads(project_id);
+CREATE INDEX IF NOT EXISTS idx_vibe_uploads_type ON vibe_uploads(file_type);
 
 COMMENT ON TABLE vibe_uploads IS 'Files uploaded during intake (logos, brand assets, reference docs)';
 
@@ -165,8 +165,8 @@ CREATE TABLE IF NOT EXISTS vibe_competitor_sites (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes for performance
-CREATE INDEX idx_vibe_competitors_project ON vibe_competitor_sites(project_id);
+-- Indexes for performance (idempotent)
+CREATE INDEX IF NOT EXISTS idx_vibe_competitors_project ON vibe_competitor_sites(project_id);
 
 COMMENT ON TABLE vibe_competitor_sites IS 'Competitor URLs analyzed during intake for design inspiration';
 

@@ -67,16 +67,13 @@ class LighthouseService:
         if categories is None:
             categories = ["performance", "accessibility", "best-practices", "seo"]
         
-        # Build request params
-        params = {
-            "url": url,
-            "key": self.api_key,
-            "strategy": strategy,
-        }
-        
-        # Add categories
-        for category in categories:
-            params[f"category"] = category
+        # Build request params. PageSpeed expects repeated `category` params.
+        params = [
+            ("url", url),
+            ("key", self.api_key),
+            ("strategy", strategy),
+        ]
+        params.extend([("category", c) for c in categories])
         
         logger.info(f"[LIGHTHOUSE] Running audit for {url} ({strategy})")
         

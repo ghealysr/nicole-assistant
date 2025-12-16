@@ -642,18 +642,15 @@ async function executePuppeteerEvaluate(args) {
     
     console.log(`[Puppeteer] Executing script in browser context`);
     
-    // Execute the script in the page context
-    const result = await page.evaluate((scriptCode) => {
-      // Wrap in async function to handle Promises
-      return (async () => {
-        try {
-          // eslint-disable-next-line no-eval
-          const fn = eval(`(${scriptCode})`);
-          return await fn;
-        } catch (err) {
-          return { error: err.message, stack: err.stack };
-        }
-      })();
+    // Execute script as a raw JS expression (can return a Promise).
+    // This intentionally supports passing strings like: "new Promise((resolve)=>{...})"
+    const result = await page.evaluate(async (scriptCode) => {
+      try {
+        // eslint-disable-next-line no-eval
+        return await eval(scriptCode);
+      } catch (err) {
+        return { error: err.message, stack: err.stack };
+      }
     }, script);
     
     return [{

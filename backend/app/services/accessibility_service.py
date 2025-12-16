@@ -34,8 +34,9 @@ class AccessibilityService:
     async def _get_mcp_client(self):
         """Lazy-load MCP client"""
         if self.mcp_client is None:
-            from app.integrations.alphawave_mcp_client import mcp_client
-            self.mcp_client = mcp_client
+            # Prefer Docker MCP Gateway client (consistent with vibe_service usage)
+            from app.mcp.docker_mcp_client import get_mcp_client
+            self.mcp_client = await get_mcp_client()
         return self.mcp_client
     
     async def run_scan(
@@ -64,62 +65,59 @@ class AccessibilityService:
         logger.info(f"[ACCESSIBILITY] Running axe-core scan on {url}")
         
         try:
+            if not getattr(mcp, "is_connected", False):
+                raise Exception("Docker MCP client is not connected")
+
             # Navigate to page with Puppeteer
-            nav_result = await mcp.call_tool(
-                "puppeteer_navigate",
-                {"url": url, "waitUntil": "networkidle2"}
-            )
-            
-            if not nav_result.get("success"):
-                raise Exception(f"Failed to navigate to {url}: {nav_result.get('error')}")
+            nav_result = await mcp.call_tool("puppeteer_navigate", {"url": url, "waitUntil": "networkidle2"})
+            if nav_result.is_error:
+                raise Exception(f"Failed to navigate to {url}")
             
             # Inject axe-core script
-            inject_result = await mcp.call_tool(
-                "puppeteer_evaluate",
-                {
-                    "script": f"""
-                        new Promise((resolve, reject) => {{
-                            const script = document.createElement('script');
-                            script.src = '{AXE_CORE_CDN}';
-                            script.onload = () => resolve(true);
-                            script.onerror = () => reject(new Error('Failed to load axe-core'));
-                            document.head.appendChild(script);
-                        }})
-                    """
-                }
-            )
-            
-            if not inject_result.get("success"):
+            inject_script = f"""
+                new Promise((resolve, reject) => {{
+                    if (window.axe) return resolve(true);
+                    const script = document.createElement('script');
+                    script.src = '{AXE_CORE_CDN}';
+                    script.onload = () => resolve(true);
+                    script.onerror = () => reject(new Error('Failed to load axe-core'));
+                    document.head.appendChild(script);
+                }})
+            """
+            inject_result = await mcp.call_tool("puppeteer_evaluate", {"script": inject_script})
+            if inject_result.is_error:
                 raise Exception("Failed to inject axe-core")
             
             # Run axe-core scan
-            scan_result = await mcp.call_tool(
-                "puppeteer_evaluate",
-                {
-                    "script": """
-                        new Promise((resolve) => {
-                            axe.run({
-                                runOnly: {
-                                    type: 'tag',
-                                    values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
-                                }
-                            }, (err, results) => {
-                                if (err) {
-                                    resolve({error: err.message});
-                                } else {
-                                    resolve(results);
-                                }
-                            });
-                        })
-                    """
-                }
-            )
-            
-            if not scan_result.get("success"):
-                raise Exception(f"Failed to run axe-core: {scan_result.get('error')}")
+            scan_script = """
+                new Promise((resolve) => {
+                    if (!window.axe) return resolve({error: 'axe not loaded'});
+                    axe.run({
+                        runOnly: {
+                            type: 'tag',
+                            values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+                        }
+                    }, (err, results) => {
+                        if (err) resolve({error: err.message});
+                        else resolve(results);
+                    });
+                })
+            """
+            scan_result = await mcp.call_tool("puppeteer_evaluate", {"script": scan_script})
+            if scan_result.is_error:
+                raise Exception("Failed to run axe-core")
             
             # Parse results
-            axe_results = scan_result.get("result", {})
+            # docker MCP returns content blocks; parse JSON from first text block
+            axe_results = {}
+            try:
+                content_blocks = scan_result.content or []
+                raw = content_blocks[0].text if content_blocks and hasattr(content_blocks[0], "text") else None
+                if raw:
+                    parsed = json.loads(raw)
+                    axe_results = parsed.get("result") if isinstance(parsed, dict) else {}
+            except Exception:
+                axe_results = {}
             
             if "error" in axe_results:
                 raise Exception(f"axe-core error: {axe_results['error']}")

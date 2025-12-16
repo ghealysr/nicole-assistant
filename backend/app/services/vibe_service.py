@@ -17,7 +17,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Tuple, TypeVar, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from functools import wraps
@@ -4344,6 +4344,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         """
         # Verify project exists and user has access
         project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         # Only allow intake form submission in 'intake' or 'paused' status
         if project["status"] not in [ProjectStatus.INTAKE.value, ProjectStatus.PAUSED.value]:
@@ -4386,10 +4388,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="system",
-            action="Intake form submitted",
-            details={"form_fields": len(intake_data), "business_name": intake_data.get("business_name")}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Structured intake form submitted",
+            user_id=user_id,
+            agent_name="system",
+            metadata={"form_fields": len(intake_data), "business_name": intake_data.get("business_name")}
         )
         
         logger.info(f"[VIBE] Intake form saved for project {project_id}")
@@ -4400,6 +4403,55 @@ Keep each field under 100 words. Focus on actionable insights."""
             "brief_generated": True,
             "fields_count": len(intake_data)
         }
+
+    async def save_upload_metadata(
+        self,
+        project_id: int,
+        user_id: int,
+        upload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Save upload metadata after the frontend uploads the file to Cloudinary.
+
+        Expected upload keys (from FileUploadRequest):
+        - file_type, storage_url, original_filename, file_size_bytes, mime_type, description
+        """
+        project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
+
+        upload_id = await db.fetchval(
+            """
+            INSERT INTO vibe_uploads (
+                project_id, file_type, original_filename, storage_url,
+                file_size_bytes, mime_type, description, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING upload_id
+            """,
+            project_id,
+            str(upload.get("file_type")),
+            upload.get("original_filename"),
+            str(upload.get("storage_url")),
+            upload.get("file_size_bytes"),
+            upload.get("mime_type"),
+            upload.get("description"),
+        )
+
+        await self._log_activity(
+            project_id=project_id,
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Upload metadata saved",
+            user_id=user_id,
+            agent_name="system",
+            metadata={
+                "upload_id": upload_id,
+                "file_type": upload.get("file_type"),
+                "original_filename": upload.get("original_filename"),
+            },
+        )
+
+        return {"upload_id": upload_id, "project_id": project_id}
     
     async def add_competitor_site(
         self,
@@ -4414,13 +4466,15 @@ Keep each field under 100 words. Focus on actionable insights."""
         Captures screenshot via Puppeteer MCP if available.
         """
         # Verify project exists and user has access
-        await self.get_project(project_id, user_id)
+        project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         screenshot_url = None
         
-        # Try to capture screenshot via Puppeteer MCP
+        # Try to capture screenshot via Puppeteer/Playwright MCP
         try:
-            screenshot_result = await self._tool_screenshot(url, project_id)
+            screenshot_result = await self._tool_screenshot(url=url, description="competitor_site", project_id=project_id)
             if screenshot_result.get("screenshot_url"):
                 screenshot_url = screenshot_result["screenshot_url"]
         except Exception as e:
@@ -4444,10 +4498,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.TOOL_USE.value,
-            agent="system",
-            action=f"Added competitor URL: {url}",
-            details={"url": url, "screenshot_captured": bool(screenshot_url)}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description=f"Competitor URL added: {url}",
+            user_id=user_id,
+            agent_name="system",
+            metadata={"url": url, "screenshot_captured": bool(screenshot_url)}
         )
         
         logger.info(f"[VIBE] Competitor site added: {url} (screenshot: {bool(screenshot_url)})")
@@ -4467,7 +4522,9 @@ Keep each field under 100 words. Focus on actionable insights."""
     ) -> List[Dict[str, Any]]:
         """Get all competitor sites for a project"""
         # Verify project exists and user has access
-        await self.get_project(project_id, user_id)
+        project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         rows = await db.fetch(
             """
@@ -4501,6 +4558,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         """
         # Verify project exists and user has access
         project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         # Must have architecture
         if not project.get("architecture"):
@@ -4531,10 +4590,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="glen",
-            action="Architecture approved",
-            details={"approved_by": approved_by}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Architecture approved",
+            user_id=user_id,
+            agent_name="glen",
+            metadata={"approved_by": approved_by}
         )
         
         logger.info(f"[VIBE] Architecture approved by {approved_by} for project {project_id}")
@@ -4561,6 +4621,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         """
         # Verify project exists and user has access
         project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         # Must have architecture
         if not project.get("architecture"):
@@ -4587,10 +4649,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="glen",
-            action="Architecture revision requested",
-            details={"requested_by": requested_by, "feedback": feedback[:200]}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Architecture revision requested",
+            user_id=user_id,
+            agent_name="glen",
+            metadata={"requested_by": requested_by, "feedback": feedback[:200]}
         )
         
         logger.info(f"[VIBE] Architecture revision requested by {requested_by} for project {project_id}")
@@ -4616,6 +4679,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         """
         # Verify project exists and user has access
         project = await self.get_project(project_id, user_id)
+        if not project:
+            raise ProjectNotFoundError(f"Project {project_id} not found")
         
         # Check if we've hit max iterations
         max_iterations = project.get("max_iterations", 5)
@@ -4662,10 +4727,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="glen",
-            action=f"Iteration #{new_iteration_number} created: {feedback_data['feedback_type']}",
-            details={
+            activity_type=ActivityType.STATUS_CHANGED,
+            description=f"Iteration #{new_iteration_number} created: {feedback_data['feedback_type']}",
+            user_id=user_id,
+            agent_name="glen",
+            metadata={
                 "iteration_id": iteration_id,
                 "type": feedback_data["feedback_type"],
                 "priority": feedback_data.get("priority", "medium")
@@ -4722,10 +4788,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="coding_agent",
-            action=f"Processing iteration #{iteration['iteration_number']}",
-            details={"iteration_id": iteration_id, "type": iteration["iteration_type"]}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description=f"Processing iteration #{iteration['iteration_number']}",
+            user_id=None,
+            agent_name="coding_agent",
+            metadata={"iteration_id": iteration_id, "type": iteration["iteration_type"]}
         )
         
         try:
@@ -4759,10 +4826,11 @@ Keep each field under 100 words. Focus on actionable insights."""
             # Log completion
             await self._log_activity(
                 project_id=project_id,
-                activity_type=ActivityType.STATUS_CHANGE.value,
-                agent="coding_agent",
-                action=f"Iteration #{iteration['iteration_number']} resolved",
-                details={"files_affected": len(result.get("files_affected", []))}
+                activity_type=ActivityType.STATUS_CHANGED,
+                description=f"Iteration #{iteration['iteration_number']} resolved",
+                user_id=None,
+                agent_name="coding_agent",
+                metadata={"files_affected": len(result.get('files_affected', []))}
             )
             
             logger.info(f"[VIBE] Iteration {iteration_id} resolved for project {project_id}")
@@ -4794,8 +4862,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         project_id: int
     ) -> Dict[str, Any]:
         """Process bug fix iteration"""
-        # Get affected files
-        files = await self.get_files(project_id)
+        # Get affected files (no user check here; iteration runs server-side)
+        files = await self.get_project_files(project_id)
         affected_pages = iteration.get("affected_pages", [])
         
         # Filter files related to affected pages
@@ -4951,7 +5019,7 @@ Keep each field under 100 words. Focus on actionable insights."""
         competitors = await self.get_competitor_sites(project_id, user_id)
         
         # Get files
-        files = await self.get_files(project_id)
+        files = await self.get_project_files(project_id)
         
         # Get QA scores
         qa_data = await self.get_qa_scores(project_id, user_id)
@@ -4960,7 +5028,7 @@ Keep each field under 100 words. Focus on actionable insights."""
         iterations_data = await self.get_iterations(project_id, user_id)
         
         # Get recent activities
-        activities = await self.get_activities(project_id, user_id, limit=20)
+        activities = await self.get_project_activities(project_id, user_id, limit=20)
         
         return {
             "project_id": project_id,
@@ -4982,7 +5050,7 @@ Keep each field under 100 words. Focus on actionable insights."""
             "preview_url": project.get("preview_url"),
             "deployment_url": project.get("deployment_url"),
             "github_repo_url": project.get("github_repo_url"),
-            "recent_activities": activities.get("activities", [])
+            "recent_activities": activities
         }
     
     async def run_visual_qa(
@@ -5008,10 +5076,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log activity
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.TOOL_USE.value,
-            agent="qa_agent",
-            action="Starting visual QA",
-            details={"url": preview_url}
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Starting visual QA",
+            user_id=None,
+            agent_name="qa_agent",
+            metadata={"url": preview_url}
         )
         
         # ===== 1. SCREENSHOTS =====
@@ -5026,14 +5095,19 @@ Keep each field under 100 words. Focus on actionable insights."""
             try:
                 await self._log_activity(
                     project_id=project_id,
-                    activity_type=ActivityType.TOOL_USE.value,
-                    agent="qa_agent",
-                    action=f"Capturing {device} screenshot",
-                    details={"viewport": viewport}
+                    activity_type=ActivityType.STATUS_CHANGED,
+                    description=f"Capturing {device} screenshot",
+                    user_id=None,
+                    agent_name="qa_agent",
+                    metadata={"viewport": viewport}
                 )
                 
                 # Use Puppeteer MCP to capture screenshot
-                screenshot_result = await self._tool_screenshot(preview_url, project_id)
+                screenshot_result = await self._tool_screenshot(
+                    url=preview_url,
+                    description=f"qa_screenshot_{device}",
+                    project_id=project_id
+                )
                 
                 if screenshot_result.get("screenshot_url"):
                     screenshots[device] = screenshot_result["screenshot_url"]
@@ -5051,10 +5125,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         try:
             await self._log_activity(
                 project_id=project_id,
-                activity_type=ActivityType.TOOL_USE.value,
-                agent="qa_agent",
-                action="Running Lighthouse audit",
-                details={"url": preview_url}
+                activity_type=ActivityType.STATUS_CHANGED,
+                description="Running Lighthouse audit",
+                user_id=None,
+                agent_name="qa_agent",
+                metadata={"url": preview_url}
             )
             
             lighthouse_result = await lighthouse_service.run_audit(preview_url, strategy="mobile")
@@ -5081,10 +5156,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         try:
             await self._log_activity(
                 project_id=project_id,
-                activity_type=ActivityType.TOOL_USE.value,
-                agent="qa_agent",
-                action="Running accessibility scan",
-                details={"url": preview_url}
+                activity_type=ActivityType.STATUS_CHANGED,
+                description="Running accessibility scan",
+                user_id=None,
+                agent_name="qa_agent",
+                metadata={"url": preview_url}
             )
             
             accessibility_result = await accessibility_service.run_scan(preview_url)
@@ -5150,10 +5226,11 @@ Keep each field under 100 words. Focus on actionable insights."""
         # Log completion
         await self._log_activity(
             project_id=project_id,
-            activity_type=ActivityType.STATUS_CHANGE.value,
-            agent="qa_agent",
-            action="Visual QA complete",
-            details={
+            activity_type=ActivityType.STATUS_CHANGED,
+            description="Visual QA complete",
+            user_id=None,
+            agent_name="qa_agent",
+            metadata={
                 "score_id": score_id,
                 "all_passing": all_passing,
                 "performance": lighthouse_result.get("performance"),

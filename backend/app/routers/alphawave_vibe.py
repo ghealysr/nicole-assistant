@@ -199,6 +199,7 @@ class APIResponse(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
 
 
 # ============================================================================
@@ -1392,7 +1393,7 @@ async def get_agent_status(
 # VIBE V3.0 ENDPOINTS - STRUCTURED INTAKE & ENHANCED WORKFLOW
 # ============================================================================
 
-@router.post("/projects/{project_id}/intake", response_model=APIResponse)
+@router.post("/projects/{project_id}/intake/form", response_model=APIResponse)
 async def submit_intake_form(
     project_id: int,
     intake_form: IntakeFormSchema,
@@ -1406,7 +1407,7 @@ async def submit_intake_form(
     
     Required project status: 'intake' or 'paused'
     """
-    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/intake")
+    enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/intake/form")
     
     try:
         result = await vibe_service.save_intake_form(
@@ -1433,8 +1434,7 @@ async def submit_intake_form(
 @router.post("/projects/{project_id}/uploads", response_model=APIResponse)
 async def upload_file(
     project_id: int,
-    file_type: str,
-    description: Optional[str] = None,
+    upload: FileUploadRequest,
     user = Depends(get_current_user)
 ) -> APIResponse:
     """
@@ -1447,13 +1447,18 @@ async def upload_file(
     Returns: Upload record with ID
     """
     enforce_rate_limit(user.user_id, "POST:/vibe/projects/{id}/uploads")
-    
-    # Note: In a real implementation, this endpoint would accept multipart/form-data
-    # For now, this is a placeholder that expects Cloudinary URL in request body
-    raise HTTPException(
-        status_code=501,
-        detail="File upload implementation pending. Upload to Cloudinary first, then POST metadata here."
-    )
+    try:
+        result = await vibe_service.save_upload_metadata(
+            project_id=project_id,
+            user_id=user.user_id,
+            upload=upload.model_dump()
+        )
+        return APIResponse(success=True, data=result, message="Upload metadata saved")
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[VIBE] Upload metadata failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save upload metadata")
 
 
 @router.post("/projects/{project_id}/competitors", response_model=APIResponse)

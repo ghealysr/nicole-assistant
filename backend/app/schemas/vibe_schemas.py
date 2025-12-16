@@ -133,6 +133,10 @@ class IntakeFormSchema(BaseModel):
 class FileUploadRequest(BaseModel):
     """Metadata for file upload"""
     file_type: FileType
+    storage_url: HttpUrl
+    original_filename: str = Field(..., min_length=1, max_length=512)
+    file_size_bytes: Optional[int] = Field(None, ge=0)
+    mime_type: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=500)
 
 
