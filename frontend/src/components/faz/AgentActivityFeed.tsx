@@ -42,7 +42,7 @@ export function AgentActivityFeed() {
       case 'tool_call':
         return (
           <div className="text-xs text-[#94A3B8] bg-[#12121A] p-2 rounded my-1 font-mono">
-            🛠️ Using tool: {activity.details?.tool_name || 'unknown'}
+            🛠️ Using tool: {String(activity.details?.tool_name || 'unknown')}
           </div>
         );
       case 'error':
