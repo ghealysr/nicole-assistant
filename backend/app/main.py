@@ -46,6 +46,8 @@ from app.routers import (
     alphawave_claude_skills,
     alphawave_vibe,
     alphawave_research,
+    faz_projects,
+    faz_chat,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,6 +237,10 @@ app.include_router(alphawave_dashboard.router, prefix="/dashboard", tags=["Dashb
 app.include_router(alphawave_claude_skills.router, prefix="/claude-skills", tags=["Claude Skills"])
 app.include_router(alphawave_vibe.router, tags=["Vibe Dashboard"])
 app.include_router(alphawave_research.router, tags=["Research"])
+
+# Faz Code Dashboard
+app.include_router(faz_projects.router, tags=["Faz Code"])
+app.include_router(faz_chat.router, tags=["Faz Code Chat"])
 
 
 @app.get("/healthz")
