@@ -46,7 +46,6 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
     setCurrentProject, 
     files,
     fileMetadata,
-    activities, 
     selectedFile,
   } = useFazStore();
 
@@ -343,7 +342,7 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
                 <span className="text-xs font-medium text-[#64748B] uppercase tracking-wider">Activity</span>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <AgentActivityFeed activities={activities} />
+                <AgentActivityFeed />
               </div>
             </div>
           </div>
