@@ -1389,7 +1389,11 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                 onComplete={() => {
                   fetchProject(project.project_id);
                   setShowStructuredIntake(false);
-                }} 
+                }}
+                onStartPlanning={() => {
+                  console.log('[Workspace] Starting planning after intake...');
+                  runPlanning(project.project_id);
+                }}
               />
             ) : (
               // Intake Chat Interface

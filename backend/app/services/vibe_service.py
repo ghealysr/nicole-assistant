@@ -4371,17 +4371,19 @@ Keep each field under 100 words. Focus on actionable insights."""
             }
         }
         
-        # Update project with intake form and brief
+        # Update project with intake form, brief, and transition to PLANNING status
         await db.execute(
             """
             UPDATE vibe_projects
             SET intake_form = $1,
                 brief = $2,
+                status = $3,
                 updated_at = NOW()
-            WHERE project_id = $3
+            WHERE project_id = $4
             """,
             json.dumps(intake_data),
             json.dumps(brief),
+            ProjectStatus.PLANNING.value,
             project_id
         )
         
@@ -4389,19 +4391,20 @@ Keep each field under 100 words. Focus on actionable insights."""
         await self._log_activity(
             project_id=project_id,
             activity_type=ActivityType.STATUS_CHANGED,
-            description="Structured intake form submitted",
+            description="Structured intake form submitted - ready for planning",
             user_id=user_id,
             agent_name="system",
-            metadata={"form_fields": len(intake_data), "business_name": intake_data.get("business_name")}
+            metadata={"form_fields": len(intake_data), "business_name": intake_data.get("business_name"), "new_status": "planning"}
         )
         
-        logger.info(f"[VIBE] Intake form saved for project {project_id}")
+        logger.info(f"[VIBE] Intake form saved for project {project_id}, status → planning")
         
         return {
             "project_id": project_id,
             "intake_saved": True,
             "brief_generated": True,
-            "fields_count": len(intake_data)
+            "fields_count": len(intake_data),
+            "status": "planning"
         }
 
     async def save_upload_metadata(

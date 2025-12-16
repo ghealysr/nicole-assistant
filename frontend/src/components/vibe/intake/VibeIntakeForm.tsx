@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import { useVibeProject } from '@/lib/hooks/useVibeProject';
 import { VibeFileUploader } from './VibeFileUploader';
 import { VibeCompetitorInput } from './VibeCompetitorInput';
-import { Loader2, ArrowRight, Save } from 'lucide-react';
+import { Loader2, ArrowRight, Save, AlertCircle } from 'lucide-react';
 
 interface VibeIntakeFormProps {
   projectId: number;
   onComplete: () => void;
+  onStartPlanning?: () => void;
 }
 
-export function VibeIntakeForm({ projectId, onComplete }: VibeIntakeFormProps) {
+export function VibeIntakeForm({ projectId, onComplete, onStartPlanning }: VibeIntakeFormProps) {
   const { submitIntakeForm, uploadFileMetadata, addCompetitorURL } = useVibeProject();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -79,18 +81,36 @@ export function VibeIntakeForm({ projectId, onComplete }: VibeIntakeFormProps) {
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    setError(null);
+    
     try {
-      // 1. Submit competitors
+      // 1. Submit competitors (if any)
       for (const comp of competitors) {
-        await addCompetitorURL(projectId, comp.url, comp.notes);
+        const compSuccess = await addCompetitorURL(projectId, comp.url, comp.notes);
+        if (!compSuccess) {
+          console.warn('[VibeIntakeForm] Failed to add competitor:', comp.url);
+        }
       }
 
       // 2. Submit main form
+      console.log('[VibeIntakeForm] Submitting form data:', formData);
       const success = await submitIntakeForm(projectId, formData);
       
       if (success) {
+        console.log('[VibeIntakeForm] Form submitted successfully');
         onComplete();
+        
+        // Automatically start planning if callback provided
+        if (onStartPlanning) {
+          console.log('[VibeIntakeForm] Starting planning phase...');
+          onStartPlanning();
+        }
+      } else {
+        setError('Failed to submit intake form. Please check your connection and try again.');
       }
+    } catch (err) {
+      console.error('[VibeIntakeForm] Error:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -301,6 +321,20 @@ export function VibeIntakeForm({ projectId, onComplete }: VibeIntakeFormProps) {
             </div>
           </div>
         </section>
+
+        {/* Error Display */}
+        {error && (
+          <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            <AlertCircle size={20} />
+            <span>{error}</span>
+            <button 
+              onClick={() => setError(null)} 
+              className="ml-auto text-red-500 hover:text-red-700"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <div className="flex justify-end pt-6 border-t border-gray-100">
           <button
