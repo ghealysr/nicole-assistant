@@ -27,7 +27,8 @@
     "react-resizable-panels": "^2.0.19",
     "sonner": "^1.4.41",
     "react-hot-toast": "^2.4.1",
-    "react-dropzone": "^14.2.3"
+    "react-dropzone": "^14.2.3",
+    "use-debounce": "^10.0.6"
   },
   "devDependencies": {
     "@types/node": "^20",
