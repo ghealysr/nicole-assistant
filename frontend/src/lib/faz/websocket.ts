@@ -57,6 +57,46 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+type ChatRole = 'user' | 'assistant' | 'system';
+
+function normalizeRole(value: unknown): ChatRole {
+  switch (value) {
+    case 'user':
+    case 'assistant':
+    case 'system':
+      return value;
+    default:
+      return 'assistant';
+  }
+}
+
+type ProjectStatus = 
+  | 'intake' | 'planning' | 'researching' | 'designing' | 'building'
+  | 'processing' | 'qa' | 'review' | 'approved' | 'deploying'
+  | 'deployed' | 'failed' | 'paused' | 'archived';
+
+function normalizeProjectStatus(value: unknown): ProjectStatus {
+  const validStatuses: ProjectStatus[] = [
+    'intake', 'planning', 'researching', 'designing', 'building',
+    'processing', 'qa', 'review', 'approved', 'deploying',
+    'deployed', 'failed', 'paused', 'archived'
+  ];
+  if (typeof value === 'string' && validStatuses.includes(value as ProjectStatus)) {
+    return value as ProjectStatus;
+  }
+  return 'intake';
+}
+
+type FileType = 'component' | 'page' | 'config' | 'style' | 'asset' | 'unknown';
+
+function normalizeFileType(value: unknown): FileType {
+  const validTypes: FileType[] = ['component', 'page', 'config', 'style', 'asset', 'unknown'];
+  if (typeof value === 'string' && validTypes.includes(value as FileType)) {
+    return value as FileType;
+  }
+  return 'unknown';
+}
+
 class FazWebSocket {
   private ws: WebSocket | null = null;
   private projectId: number | null = null;
@@ -241,7 +281,7 @@ class FazWebSocket {
       case 'chat':
         store.addMessage({
           message_id: data.message_id as number,
-          role: data.role as string,
+          role: normalizeRole(data.role),
           content: data.content as string,
           agent_name: data.agent as string | undefined,
           created_at: data.timestamp as string,
@@ -252,7 +292,7 @@ class FazWebSocket {
         if (store.currentProject) {
           store.setCurrentProject({
             ...store.currentProject,
-            status: data.status as string,
+            status: normalizeProjectStatus(data.status),
             current_agent: data.current_agent as string | null,
           });
         }
@@ -262,7 +302,7 @@ class FazWebSocket {
         if (store.currentProject) {
           store.setCurrentProject({
             ...store.currentProject,
-            status: data.status as string,
+            status: normalizeProjectStatus(data.status),
             file_count: data.file_count as number,
             total_tokens_used: data.total_tokens as number,
             total_cost_cents: data.total_cost_cents as number,
@@ -281,7 +321,7 @@ class FazWebSocket {
             filename: (data.path as string).split('/').pop() || '',
             content: data.content as string,
             extension: (data.path as string).split('.').pop() || '',
-            file_type: data.file_type as string,
+            file_type: normalizeFileType(data.file_type),
             line_count: (data.content as string).split('\n').length,
             generated_by: data.agent as string,
             version: 1,
