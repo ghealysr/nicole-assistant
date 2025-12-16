@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useVibeProject } from '@/lib/hooks/useVibeProject';
-import { VibeQAScores } from './VibeQAScores';
+import { VibeQAScores, QAScores, transformToQAScores } from './VibeQAScores';
 import { VibeFeedbackInput } from './VibeFeedbackInput';
 import { VibeIterationHistory } from './VibeIterationHistory';
 import { VibeScreenshots } from './VibeScreenshots';
@@ -13,9 +13,12 @@ interface VibeGlenReviewProps {
 export function VibeGlenReview({ projectId }: VibeGlenReviewProps) {
   const { project, getIterations, getQAScores } = useVibeProject();
   const [iterations, setIterations] = useState<Array<Record<string, unknown>>>([]);
-  const [qaScores, setQaScores] = useState<Record<string, unknown> | null>(null);
+  const [rawQAData, setRawQAData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  
+  // Transform raw data to typed QAScores
+  const qaScores: QAScores | null = transformToQAScores(rawQAData);
 
   // Fetch data
   useEffect(() => {
@@ -26,7 +29,7 @@ export function VibeGlenReview({ projectId }: VibeGlenReviewProps) {
         getQAScores(projectId)
       ]);
       setIterations(iterData);
-      setQaScores(qaData);
+      setRawQAData(qaData);
       setLoading(false);
     };
     loadData();
@@ -83,9 +86,9 @@ export function VibeGlenReview({ projectId }: VibeGlenReviewProps) {
             <h3 className="text-lg font-semibold text-gray-800 mb-3">Device Preview</h3>
             <VibeScreenshots 
               screenshots={{
-                mobile: qaScores?.screenshot_mobile as string | undefined,
-                tablet: qaScores?.screenshot_tablet as string | undefined,
-                desktop: qaScores?.screenshot_desktop as string | undefined
+                mobile: rawQAData?.screenshot_mobile as string | undefined,
+                tablet: rawQAData?.screenshot_tablet as string | undefined,
+                desktop: rawQAData?.screenshot_desktop as string | undefined
               }}
               onOpenLightbox={handleLightbox}
             />

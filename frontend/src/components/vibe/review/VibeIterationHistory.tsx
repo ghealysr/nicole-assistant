@@ -1,7 +1,7 @@
 import React from 'react';
 import { Clock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
-interface Iteration {
+export interface Iteration {
   iteration_id: number;
   iteration_number: number;
   iteration_type: string;
@@ -13,8 +13,24 @@ interface Iteration {
 }
 
 interface VibeIterationHistoryProps {
-  iterations: Iteration[];
+  iterations: Array<Record<string, unknown>>;
   currentIteration: number;
+}
+
+/**
+ * Transforms raw API data to typed Iteration
+ */
+function toIteration(data: Record<string, unknown>): Iteration {
+  return {
+    iteration_id: (data.iteration_id as number) || 0,
+    iteration_number: (data.iteration_number as number) || 0,
+    iteration_type: (data.iteration_type as string) || 'bug_fix',
+    feedback: (data.feedback as string) || '',
+    status: (data.status as string) || 'pending',
+    created_at: (data.created_at as string) || new Date().toISOString(),
+    resolved_at: data.resolved_at as string | undefined,
+    changes_summary: data.changes_summary as string | undefined,
+  };
 }
 
 function IterationItem({ iteration, isCurrent }: { iteration: Iteration; isCurrent: boolean }) {
@@ -61,12 +77,15 @@ function IterationItem({ iteration, isCurrent }: { iteration: Iteration; isCurre
 
 export function VibeIterationHistory({ iterations, currentIteration }: VibeIterationHistoryProps) {
   if (!iterations.length) return null;
+  
+  // Transform raw data to typed iterations
+  const typedIterations = iterations.map(toIteration);
 
   return (
     <div className="vibe-iteration-history">
       <h3 className="text-sm font-semibold text-gray-900 mb-4">Iteration History</h3>
       <div className="vibe-timeline">
-        {iterations.map(iter => (
+        {typedIterations.map(iter => (
           <IterationItem 
             key={iter.iteration_id} 
             iteration={iter} 

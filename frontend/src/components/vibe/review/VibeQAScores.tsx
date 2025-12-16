@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
 
-interface QAScores {
+export interface QAScores {
   lighthouse: {
     performance: number;
     accessibility: number;
@@ -19,6 +19,28 @@ interface QAScores {
 interface VibeQAScoresProps {
   scores: QAScores | null;
   loading?: boolean;
+}
+
+/**
+ * Transforms raw API data to QAScores format
+ */
+export function transformToQAScores(data: Record<string, unknown> | null): QAScores | null {
+  if (!data) return null;
+  
+  return {
+    lighthouse: {
+      performance: (data.lighthouse_performance as number) || 0,
+      accessibility: (data.lighthouse_accessibility as number) || 0,
+      best_practices: (data.lighthouse_best_practices as number) || 0,
+      seo: (data.lighthouse_seo as number) || 0,
+    },
+    accessibility: {
+      violations: (data.accessibility_violations as number) || 0,
+      warnings: (data.accessibility_warnings as number) || 0,
+      passes: (data.accessibility_passes as number) || 0,
+    },
+    all_passing: (data.all_passing as boolean) || false,
+  };
 }
 
 function ScoreCircle({ score, label }: { score: number; label: string }) {
