@@ -66,7 +66,8 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
       setProjects(data.projects);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
-      setLoadingError('Failed to load projects. Please retry.');
+      const message = error instanceof Error ? error.message : 'Failed to load projects. Please retry.';
+      setLoadingError(message);
     } finally {
       setLoading(false);
     }
@@ -86,7 +87,8 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
       handleSelectProject(project);
     } catch (error) {
       console.error('Failed to create project:', error);
-      setCreateError('Could not create project. Check your connection or auth and try again.');
+      const message = error instanceof Error ? error.message : 'Could not create project. Check your connection or auth and try again.';
+      setCreateError(message);
     } finally {
       setCreating(false);
     }
