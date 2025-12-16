@@ -206,7 +206,8 @@ class FazWebSocket {
           activity_type: data.activity_type as string,
           message: data.message as string,
           content_type: normalizeContentType(data.content_type),
-          full_content: data.full_content as string | null,
+          // FazActivity.full_content is optional (undefined), so normalize null -> undefined
+          full_content: ((data.full_content as string | null) ?? undefined),
           status: data.status as string,
           started_at: data.timestamp as string,
         });
