@@ -4347,8 +4347,8 @@ Keep each field under 100 words. Focus on actionable insights."""
         if not project:
             raise ProjectNotFoundError(f"Project {project_id} not found")
         
-        # Only allow intake form submission in 'intake' or 'paused' status
-        if project["status"] not in [ProjectStatus.INTAKE.value, ProjectStatus.PAUSED.value]:
+        # Only allow intake form submission in 'intake' status
+        if project["status"] != ProjectStatus.INTAKE.value:
             raise InvalidStatusTransitionError(
                 f"Cannot submit intake form when project is in '{project['status']}' status"
             )
