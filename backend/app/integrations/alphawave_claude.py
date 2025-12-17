@@ -699,12 +699,21 @@ class AlphawaveClaudeClient:
                         return
                 
                 # Build assistant message with all content (text, thinking, tool_use)
+                # NOTE: Anthropic API now requires 'signature' field for thinking blocks
                 assistant_content = []
                 for block in final_message.content:
                     if block.type == "text":
                         assistant_content.append({"type": "text", "text": block.text})
                     elif block.type == "thinking":
-                        assistant_content.append({"type": "thinking", "thinking": block.thinking})
+                        # Include signature - required by Anthropic API for multi-turn thinking
+                        thinking_block = {
+                            "type": "thinking", 
+                            "thinking": block.thinking
+                        }
+                        # Add signature if present (required for conversation continuity)
+                        if hasattr(block, 'signature') and block.signature:
+                            thinking_block["signature"] = block.signature
+                        assistant_content.append(thinking_block)
                     elif block.type == "tool_use":
                         assistant_content.append({
                             "type": "tool_use",
