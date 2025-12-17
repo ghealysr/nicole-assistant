@@ -82,7 +82,7 @@ body {
 }
 
 .animate-spin-slow {
-  animation: spin 8s linear infinite;
+  animation: spin 3s linear infinite;
 }
 
 /* Fast spin for thinking indicators */

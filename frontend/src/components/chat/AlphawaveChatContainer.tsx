@@ -385,15 +385,19 @@ export function AlphawaveChatContainer() {
                 
                 // For the last assistant message, show thinking BEFORE the message
                 // This creates the Claude-style flow: think → collapse → respond
-                if (isLastMessage && isAssistantMessage && (
+                const showThinkingWithMessage = isLastMessage && isAssistantMessage && (
+                  activityStatus.isActive ||
                   activityStatus.extendedThinking?.isThinking || 
                   activityStatus.extendedThinking?.content ||
+                  activityStatus.extendedThinking?.isStreaming ||
                   activityStatus.toolUses?.length > 0
-                )) {
+                );
+                
+                if (showThinkingWithMessage) {
                   return (
                     <div key={message.id}>
                       {/* Thinking block appears FIRST */}
-                      <div className="py-3 px-6">
+                      <div className="py-2 px-6">
                         <div className="max-w-[800px] mx-auto">
                           <NicoleActivityStatus status={activityStatus} />
                         </div>
@@ -408,11 +412,11 @@ export function AlphawaveChatContainer() {
               })}
               
               {/* Show thinking block when waiting for response (no assistant message yet) */}
-              {(activityStatus.extendedThinking?.isThinking || 
-                activityStatus.extendedThinking?.content ||
-                activityStatus.toolUses?.length > 0) && 
+              {(activityStatus.isActive ||
+                activityStatus.extendedThinking?.isThinking || 
+                activityStatus.extendedThinking?.isStreaming) && 
                 (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && (
-                <div className="py-3 px-6">
+                <div className="py-2 px-6">
                   <div className="max-w-[800px] mx-auto">
                     <NicoleActivityStatus status={activityStatus} />
                   </div>

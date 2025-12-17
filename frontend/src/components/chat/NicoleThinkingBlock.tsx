@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, memo } from 'react';
+import Image from 'next/image';
 
 // Subtle color palette - blends with tan background
 const colors = {
@@ -24,11 +25,11 @@ const ThinkingDots = memo(function ThinkingDots() {
       {[0, 1, 2].map((i) => (
         <span 
           key={i}
-          className="w-1 h-1 rounded-full"
+          className="w-1 h-1 rounded-full animate-pulse"
           style={{ 
             backgroundColor: colors.lavender,
             opacity: 0.6,
-            animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+            animationDelay: `${i * 200}ms`,
           }}
         />
       ))}
@@ -119,6 +120,8 @@ export interface ThinkingBlockProps {
   isComplete: boolean;
   /** Active and completed tool uses */
   toolUses?: ToolUse[];
+  /** Whether streaming is active (spinner should spin) */
+  isStreaming?: boolean;
 }
 
 export function NicoleThinkingBlock({ 
@@ -127,6 +130,7 @@ export function NicoleThinkingBlock({
   duration,
   isComplete,
   toolUses = [],
+  isStreaming = false,
 }: ThinkingBlockProps) {
   // Auto-collapse when thinking completes
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -141,32 +145,33 @@ export function NicoleThinkingBlock({
     }
   }, [content, isCollapsed]);
   
-  // Fade in when content starts
+  // Fade in smoothly when component mounts or becomes active
   useEffect(() => {
-    if (content.length > 0 || isThinking || toolUses.length > 0) {
+    // Small delay for smooth animation
+    const timer = setTimeout(() => {
       setIsVisible(true);
-    }
-  }, [content, isThinking, toolUses.length]);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
   
   // Auto-collapse when thinking completes (Claude behavior)
   useEffect(() => {
-    if (isComplete && !wasCompleteRef.current) {
+    if (isComplete && !wasCompleteRef.current && content.length > 0) {
       // Delay collapse slightly so user sees it's done
       const timer = setTimeout(() => {
         setIsCollapsed(true);
-      }, 500);
+      }, 600);
       wasCompleteRef.current = true;
       return () => clearTimeout(timer);
     }
-  }, [isComplete]);
-  
-  if (!isVisible && !isThinking && toolUses.length === 0) {
-    return null;
-  }
+  }, [isComplete, content.length]);
   
   const hasContent = content.length > 0;
   const hasToolUses = toolUses.length > 0;
   const activeToolUse = toolUses.find(t => t.isActive);
+  
+  // Determine if spinner should be active
+  const shouldSpin = isStreaming || isThinking || !!activeToolUse;
   
   // Calculate header text
   const getHeaderText = () => {
@@ -185,34 +190,41 @@ export function NicoleThinkingBlock({
   return (
     <div 
       className={`
-        rounded-lg overflow-hidden transition-all duration-300 ease-out
-        ${isVisible ? 'opacity-100' : 'opacity-0'}
+        rounded-lg overflow-hidden
+        transition-all duration-300 ease-out
+        ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}
       `}
       style={{
         backgroundColor: colors.bgThinking,
-        border: `1px solid ${isThinking || activeToolUse ? colors.borderActive : colors.borderLight}`,
+        border: `1px solid ${shouldSpin ? colors.borderActive : colors.borderLight}`,
       }}
     >
-      {/* Header - Claude style, subtle */}
+      {/* Header - Claude style with Nicole's avatar */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/[0.02] transition-colors"
       >
-        <div className="flex items-center gap-2">
-          {/* Subtle icon */}
+        <div className="flex items-center gap-2.5">
+          {/* Nicole's avatar - spins while processing */}
           <div 
             className={`
-              w-5 h-5 rounded-full flex items-center justify-center
-              ${isThinking || activeToolUse ? 'animate-pulse' : ''}
+              w-6 h-6 rounded-full overflow-hidden flex-shrink-0
+              transition-all duration-300
+              ${shouldSpin ? 'animate-spin-slow' : ''}
             `}
-            style={{ 
-              backgroundColor: colors.lavenderLight,
-              border: `1px solid ${colors.borderLight}`,
+            style={{
+              boxShadow: shouldSpin 
+                ? `0 0 8px ${colors.lavender}50` 
+                : 'none',
             }}
           >
-            <span className="text-[10px]">
-              {isComplete ? '💭' : '✨'}
-            </span>
+            <Image 
+              src="/images/nicole-thinking-avatar.png" 
+              alt="Nicole" 
+              width={24} 
+              height={24}
+              className="w-full h-full object-cover"
+            />
           </div>
           
           {/* Label */}
@@ -221,11 +233,11 @@ export function NicoleThinkingBlock({
             style={{ color: colors.textSecondary }}
           >
             {getHeaderText()}
-            {(isThinking || activeToolUse) && <ThinkingDots />}
+            {shouldSpin && <ThinkingDots />}
           </span>
           
           {/* Duration badge - subtle */}
-          {isComplete && duration && (
+          {isComplete && duration && duration > 0 && (
             <span 
               className="text-[10px] px-1.5 py-0.5 rounded"
               style={{ 
@@ -312,8 +324,22 @@ export function NicoleThinkingBlock({
           </div>
         )}
         
+        {/* Empty state when actively thinking but no content yet */}
+        {!hasContent && isThinking && (
+          <div 
+            className="px-3 py-3 text-xs flex items-center gap-2"
+            style={{ 
+              color: colors.textMuted,
+              borderTop: `1px solid ${colors.borderLight}`,
+            }}
+          >
+            <span className="animate-pulse">●</span>
+            <span>Nicole is thinking...</span>
+          </div>
+        )}
+        
         {/* Empty state when only tools are shown */}
-        {!hasContent && hasToolUses && !isThinking && (
+        {!hasContent && hasToolUses && !isThinking && isComplete && (
           <div 
             className="px-3 pb-2 text-xs"
             style={{ color: colors.textMuted }}

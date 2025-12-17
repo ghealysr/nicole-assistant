@@ -40,12 +40,14 @@ export interface ThinkingContent {
  * - content: accumulated thinking text (streaming)
  * - isComplete: thinking phase has ended
  * - duration: how long thinking took (seconds)
+ * - isStreaming: response is actively streaming (spinner should spin)
  */
 export interface ExtendedThinking {
   isThinking: boolean;
   content: string;
   isComplete: boolean;
   duration?: number;
+  isStreaming?: boolean;  // True while any streaming is happening
 }
 
 /**
@@ -273,7 +275,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setIsLoading(true);
     setIsPendingAssistant(true);
     
-    // Start activity status - clear previous thinking
+    // Start activity status - show thinking block immediately
+    // This ensures the thinking box appears BEFORE Nicole's response
     setActivityStatus({
       isActive: true,
       type: 'thinking',
@@ -283,9 +286,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       shouldShow: true,
       completedAt: null,
       extendedThinking: {
-        isThinking: false,
+        isThinking: true,  // Start as thinking immediately
         content: '',
         isComplete: false,
+        isStreaming: true,  // Spinner should spin
       },
       toolUses: [],
     });
@@ -395,6 +399,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     isThinking: true,
                     content: '',
                     isComplete: false,
+                    isStreaming: true,
                   },
                 }));
               } else if (data.type === 'thinking_delta') {
@@ -409,10 +414,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     ...prev.extendedThinking,
                     isThinking: true,
                     content: prev.extendedThinking.content + thinkingContent,
+                    isStreaming: true,
                   },
                 }));
               } else if (data.type === 'thinking_stop') {
-                // Thinking complete - mark with duration
+                // Thinking complete - mark with duration, but keep streaming (response coming)
                 const duration = data.duration || 0;
                 setActivityStatus(prev => ({
                   ...prev,
@@ -423,6 +429,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     isThinking: false,
                     isComplete: true,
                     duration,
+                    isStreaming: true,  // Still streaming - response is coming
                   },
                 }));
               } else if (data.type === 'status') {
@@ -484,25 +491,27 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
                 
-                // First token - keep thinking block visible but mark as complete
+                // First token - keep thinking block visible but mark thinking as complete
+                // Keep isStreaming TRUE - spinner should keep spinning during response
                 setActivityStatus(prev => {
                   // Skip if already responding (prevents re-triggering on each token)
                   if (prev.type === 'responding') return prev;
                   
                   return {
                     ...prev,
-                    isActive: false,
+                    isActive: true,  // Still active during response
                     type: 'responding',
                     displayText: '',
                     thinkingSteps: [],
                     currentThinking: null,
                     // Keep shouldShow true if we have thinking content to display
                     shouldShow: prev.extendedThinking.content.length > 0,
-                    completedAt: Date.now(),
+                    completedAt: null,  // Not completed yet - still streaming
                     extendedThinking: {
                       ...prev.extendedThinking,
                       isThinking: false,
                       isComplete: true,
+                      isStreaming: true,  // Keep spinning during response!
                     },
                   };
                 });
@@ -573,19 +582,20 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
       setIsPendingAssistant(false);
-      // Finalize activity status - keep thinking content for display
+      // Finalize activity status - STOP streaming, keep thinking content for display
       setActivityStatus(prev => ({
         ...prev,
         isActive: false,
         type: 'idle',
         displayText: '',
         currentThinking: null,
-        completedAt: prev.completedAt || Date.now(),
-        // Keep thinking content visible (collapsed)
+        completedAt: Date.now(),
+        // Keep thinking content visible (collapsed) but STOP streaming
         extendedThinking: {
           ...prev.extendedThinking,
           isThinking: false,
           isComplete: true,
+          isStreaming: false,  // Stop the spinner!
         },
       }));
     }
