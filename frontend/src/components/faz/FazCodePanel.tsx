@@ -3,14 +3,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, Plus, Folder, Play, Square, Loader2, Code2, ChevronRight,
-  Send, Bot, Terminal, Eye, Rocket, RefreshCw, Sparkles,
+  Send, Bot, Terminal, Rocket, RefreshCw, Sparkles,
   BrainCircuit, Search, PenTool, Bug, CheckCircle, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFazStore } from '@/lib/faz/store';
 import { fazApi } from '@/lib/faz/api';
 import { fazWS } from '@/lib/faz/websocket';
-import { FazProject, FazActivity } from '@/types/faz';
+import { FazProject } from '@/types/faz';
 import { StatusBadge } from './StatusBadge';
 import { FileTree } from './FileTree';
 import { CodeViewer } from './CodeViewer';
@@ -91,9 +91,9 @@ export function FazCodePanel({ isOpen, onClose }: FazCodePanelProps) {
   // Store
   const { 
     currentProject, setCurrentProject,
-    files, fileMetadata, selectedFile, selectFile, setFiles,
-    activities, setActivities, addActivity,
-    messages, addMessage, setMessages
+    files, fileMetadata, selectedFile, setFiles,
+    activities, setActivities,
+    setMessages
   } = useFazStore();
 
   // ===== FETCH DATA =====
