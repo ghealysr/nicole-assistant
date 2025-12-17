@@ -607,11 +607,12 @@ class AlphawaveClaudeClient:
                         "type": "enabled",
                         "budget_tokens": thinking_budget
                     }
-                elif not enable_thinking:
-                    # Only set temperature when thinking is disabled
+                else:
+                    # Set temperature for non-thinking iterations
+                    # (either thinking disabled OR iterations > 1)
                     kwargs["temperature"] = temperature
                 
-                logger.info(f"[CLAUDE] Iteration {iterations} - calling Claude API")
+                logger.info(f"[CLAUDE] Iteration {iterations} - calling Claude API (thinking={'thinking' in kwargs}, temp={kwargs.get('temperature', 'not set')})")
                 
                 # Stream to capture thinking + tool decisions
                 thinking_start_time = None
