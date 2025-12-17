@@ -2,31 +2,33 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 
-// Color palette matching the app aesthetic
+// Subtle color palette - blends with tan background
 const colors = {
-  lavender: '#B8A8D4',
-  lavenderLight: '#F8F6FB',
-  lavenderMid: '#E8E0F0',
-  lavenderDark: '#9B8AB8',
-  textPrimary: '#374151',
+  // Main background is #F5F4ED (tan)
+  bgThinking: '#EFEDE5',      // Slightly darker tan for thinking box
+  borderLight: 'rgba(184, 168, 212, 0.3)', // Very light purple stroke
+  borderActive: 'rgba(184, 168, 212, 0.5)', // Slightly more visible when active
+  textPrimary: '#4b5563',
   textSecondary: '#6b7280',
   textMuted: '#9ca3af',
-  white: '#FFFFFF',
+  lavender: '#B8A8D4',
+  lavenderLight: 'rgba(184, 168, 212, 0.15)',
   sage: '#7A9B93',
-  sageLight: '#E8F0ED',
+  sageLight: 'rgba(122, 155, 147, 0.15)',
 } as const;
 
-// Animated thinking dots
+// Animated thinking dots - subtle
 const ThinkingDots = memo(function ThinkingDots() {
   return (
     <span className="inline-flex items-center gap-0.5 ml-1">
       {[0, 1, 2].map((i) => (
         <span 
           key={i}
-          className="w-1 h-1 rounded-full animate-pulse"
+          className="w-1 h-1 rounded-full"
           style={{ 
             backgroundColor: colors.lavender,
-            animationDelay: `${i * 200}ms`,
+            opacity: 0.6,
+            animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
           }}
         />
       ))}
@@ -34,11 +36,10 @@ const ThinkingDots = memo(function ThinkingDots() {
   );
 });
 
-// Tool use indicator with icon
+// Tool use indicator - minimal style
 interface ToolIndicatorProps {
   toolName: string;
   isActive: boolean;
-  result?: string;
   success?: boolean;
 }
 
@@ -67,6 +68,7 @@ const ToolIndicator = memo(function ToolIndicator({ toolName, isActive, success 
       'notion_search': 'Searching Notion',
       'recraftgenerateimage': 'Generating image',
       'skills_library': 'Checking skills',
+      'search_tools': 'Finding tools',
       'dashboard_status': 'System status',
       'mcp_status': 'MCP status',
     };
@@ -76,25 +78,23 @@ const ToolIndicator = memo(function ToolIndicator({ toolName, isActive, success 
   return (
     <div 
       className={`
-        flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
+        inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs
         transition-all duration-200
-        ${isActive ? 'animate-pulse' : ''}
       `}
       style={{
-        backgroundColor: isActive ? colors.lavenderMid : (success === false ? '#FEE2E2' : colors.sageLight),
-        border: `1px solid ${isActive ? colors.lavender : (success === false ? '#FECACA' : colors.sage)}`,
+        backgroundColor: isActive ? colors.lavenderLight : (success === false ? 'rgba(239, 68, 68, 0.1)' : colors.sageLight),
+        border: `1px solid ${isActive ? colors.borderActive : (success === false ? 'rgba(239, 68, 68, 0.3)' : 'rgba(122, 155, 147, 0.3)')}`,
+        color: colors.textSecondary,
       }}
     >
-      <span>{getToolIcon(toolName)}</span>
-      <span style={{ color: colors.textPrimary }}>
-        {getToolDisplayName(toolName)}
-      </span>
+      <span className="text-xs">{getToolIcon(toolName)}</span>
+      <span>{getToolDisplayName(toolName)}</span>
       {isActive && <ThinkingDots />}
       {!isActive && success !== false && (
-        <span className="text-xs" style={{ color: colors.sage }}>✓</span>
+        <span style={{ color: colors.sage }}>✓</span>
       )}
       {!isActive && success === false && (
-        <span className="text-xs text-red-500">✗</span>
+        <span className="text-red-400">✗</span>
       )}
     </div>
   );
@@ -128,9 +128,11 @@ export function NicoleThinkingBlock({
   isComplete,
   toolUses = [],
 }: ThinkingBlockProps) {
+  // Auto-collapse when thinking completes
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const wasCompleteRef = useRef(false);
   
   // Auto-scroll thinking content as it streams
   useEffect(() => {
@@ -145,6 +147,18 @@ export function NicoleThinkingBlock({
       setIsVisible(true);
     }
   }, [content, isThinking, toolUses.length]);
+  
+  // Auto-collapse when thinking completes (Claude behavior)
+  useEffect(() => {
+    if (isComplete && !wasCompleteRef.current) {
+      // Delay collapse slightly so user sees it's done
+      const timer = setTimeout(() => {
+        setIsCollapsed(true);
+      }, 500);
+      wasCompleteRef.current = true;
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete]);
   
   if (!isVisible && !isThinking && toolUses.length === 0) {
     return null;
@@ -171,77 +185,78 @@ export function NicoleThinkingBlock({
   return (
     <div 
       className={`
-        rounded-xl overflow-hidden transition-all duration-300 ease-out
-        ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}
+        rounded-lg overflow-hidden transition-all duration-300 ease-out
+        ${isVisible ? 'opacity-100' : 'opacity-0'}
       `}
       style={{
-        backgroundColor: colors.lavenderLight,
-        border: `1px solid ${colors.lavenderMid}`,
-        boxShadow: '0 2px 12px rgba(184, 168, 212, 0.2)',
+        backgroundColor: colors.bgThinking,
+        border: `1px solid ${isThinking || activeToolUse ? colors.borderActive : colors.borderLight}`,
       }}
     >
-      {/* Header - Claude style */}
+      {/* Header - Claude style, subtle */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-opacity-50 transition-colors"
-        style={{ backgroundColor: isCollapsed ? colors.lavenderMid : 'transparent' }}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/[0.02] transition-colors"
       >
-        <div className="flex items-center gap-3">
-          {/* Animated sparkle icon */}
+        <div className="flex items-center gap-2">
+          {/* Subtle icon */}
           <div 
             className={`
-              w-6 h-6 rounded-full flex items-center justify-center
+              w-5 h-5 rounded-full flex items-center justify-center
               ${isThinking || activeToolUse ? 'animate-pulse' : ''}
             `}
-            style={{ backgroundColor: colors.lavender }}
+            style={{ 
+              backgroundColor: colors.lavenderLight,
+              border: `1px solid ${colors.borderLight}`,
+            }}
           >
-            <span className="text-white text-xs">
+            <span className="text-[10px]">
               {isComplete ? '💭' : '✨'}
             </span>
           </div>
           
           {/* Label */}
           <span 
-            className="text-sm font-medium"
-            style={{ color: colors.textPrimary }}
+            className="text-xs font-medium"
+            style={{ color: colors.textSecondary }}
           >
             {getHeaderText()}
             {(isThinking || activeToolUse) && <ThinkingDots />}
           </span>
           
-          {/* Duration badge */}
+          {/* Duration badge - subtle */}
           {isComplete && duration && (
             <span 
-              className="text-xs px-2 py-0.5 rounded-full"
+              className="text-[10px] px-1.5 py-0.5 rounded"
               style={{ 
-                backgroundColor: colors.lavenderMid,
-                color: colors.textSecondary 
+                backgroundColor: colors.lavenderLight,
+                color: colors.textMuted,
               }}
             >
               {duration.toFixed(1)}s
             </span>
           )}
           
-          {/* Tool count badge */}
+          {/* Tool count badge - subtle */}
           {hasToolUses && (
             <span 
-              className="text-xs px-2 py-0.5 rounded-full"
+              className="text-[10px] px-1.5 py-0.5 rounded"
               style={{ 
                 backgroundColor: colors.sageLight,
-                color: colors.sage 
+                color: colors.textMuted,
               }}
             >
-              {toolUses.length} tool{toolUses.length !== 1 ? 's' : ''} used
+              {toolUses.length} tool{toolUses.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
         
         {/* Collapse toggle */}
         <svg 
-          className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
           fill="none" 
           viewBox="0 0 24 24" 
-          stroke={colors.textSecondary}
+          stroke={colors.textMuted}
           strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -252,46 +267,45 @@ export function NicoleThinkingBlock({
       <div 
         className={`
           transition-all duration-300 ease-out overflow-hidden
-          ${isCollapsed ? 'max-h-0' : 'max-h-[500px]'}
+          ${isCollapsed ? 'max-h-0' : 'max-h-[400px]'}
         `}
       >
         {/* Tool uses section */}
         {hasToolUses && (
           <div 
-            className="px-4 py-2 flex flex-wrap gap-2"
-            style={{ borderTop: `1px solid ${colors.lavenderMid}` }}
+            className="px-3 py-2 flex flex-wrap gap-1.5"
+            style={{ borderTop: `1px solid ${colors.borderLight}` }}
           >
             {toolUses.map((tool) => (
               <ToolIndicator 
                 key={tool.id}
                 toolName={tool.name}
                 isActive={tool.isActive}
-                result={tool.result}
                 success={tool.success}
               />
             ))}
           </div>
         )}
         
-        {/* Thinking content */}
+        {/* Thinking content - streams fast */}
         {hasContent && (
           <div 
             ref={contentRef}
-            className="px-4 pb-4 overflow-y-auto"
+            className="px-3 pb-3 overflow-y-auto"
             style={{ 
-              maxHeight: '350px',
-              borderTop: hasToolUses ? `1px solid ${colors.lavenderMid}` : 'none',
+              maxHeight: '300px',
+              borderTop: hasToolUses ? `1px solid ${colors.borderLight}` : 'none',
             }}
           >
             <pre 
-              className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed pt-3"
-              style={{ color: colors.textSecondary }}
+              className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed pt-2"
+              style={{ color: colors.textMuted }}
             >
               {content}
               {!isComplete && (
                 <span 
-                  className="inline-block w-2 h-4 ml-0.5 animate-pulse"
-                  style={{ backgroundColor: colors.lavender }}
+                  className="inline-block w-1.5 h-3 ml-0.5 animate-pulse"
+                  style={{ backgroundColor: colors.lavender, opacity: 0.5 }}
                 />
               )}
             </pre>
@@ -301,10 +315,10 @@ export function NicoleThinkingBlock({
         {/* Empty state when only tools are shown */}
         {!hasContent && hasToolUses && !isThinking && (
           <div 
-            className="px-4 pb-3 text-sm"
+            className="px-3 pb-2 text-xs"
             style={{ color: colors.textMuted }}
           >
-            Nicole used {toolUses.length} tool{toolUses.length !== 1 ? 's' : ''} to help with this response.
+            Used {toolUses.length} tool{toolUses.length !== 1 ? 's' : ''} to help with this response.
           </div>
         )}
       </div>

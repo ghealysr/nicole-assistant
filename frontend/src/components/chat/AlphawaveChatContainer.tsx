@@ -379,11 +379,45 @@ export function AlphawaveChatContainer() {
           {/* Messages area */}
           {hasMessages ? (
             <div className="flex-1 overflow-y-auto py-4">
-              {messages.map((message) => (
-                <MessageBubble key={message.id} message={message as Message} />
-              ))}
-              {/* Real-time activity status box - manages its own visibility */}
-              <NicoleActivityStatus status={activityStatus} />
+              {messages.map((message, index) => {
+                const isLastMessage = index === messages.length - 1;
+                const isAssistantMessage = message.role === 'assistant';
+                
+                // For the last assistant message, show thinking BEFORE the message
+                // This creates the Claude-style flow: think → collapse → respond
+                if (isLastMessage && isAssistantMessage && (
+                  activityStatus.extendedThinking?.isThinking || 
+                  activityStatus.extendedThinking?.content ||
+                  activityStatus.toolUses?.length > 0
+                )) {
+                  return (
+                    <div key={message.id}>
+                      {/* Thinking block appears FIRST */}
+                      <div className="py-3 px-6">
+                        <div className="max-w-[800px] mx-auto">
+                          <NicoleActivityStatus status={activityStatus} />
+                        </div>
+                      </div>
+                      {/* Then Nicole's response streams below */}
+                      <MessageBubble message={message as Message} />
+                    </div>
+                  );
+                }
+                
+                return <MessageBubble key={message.id} message={message as Message} />;
+              })}
+              
+              {/* Show thinking block when waiting for response (no assistant message yet) */}
+              {(activityStatus.extendedThinking?.isThinking || 
+                activityStatus.extendedThinking?.content ||
+                activityStatus.toolUses?.length > 0) && 
+                (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && (
+                <div className="py-3 px-6">
+                  <div className="max-w-[800px] mx-auto">
+                    <NicoleActivityStatus status={activityStatus} />
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />
