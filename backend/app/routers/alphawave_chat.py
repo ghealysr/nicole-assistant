@@ -552,7 +552,7 @@ async def send_message(
             #
             
             history_rows = await db.fetch(
-                """
+                f"""
                 SELECT message_role, content, created_at
                 FROM messages
                 WHERE conversation_id = $1
