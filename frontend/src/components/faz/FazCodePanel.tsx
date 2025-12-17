@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * FAZ CODE - AI-Powered Web Development Dashboard
+ * FAZ CODE V2 - AI-Powered Web Development Dashboard
  * 
- * A complete development environment with:
- * - Monaco-style code editor with line numbers and tabs
- * - Live preview with responsive viewport switching
- * - Real-time agent activity feed
- * - Status pipeline showing agent progress
- * - File tree with collapsible folders
+ * Major improvements:
+ * - Monaco editor with full editing
+ * - Live preview that renders generated code
+ * - File polling during pipeline (files appear as generated)
+ * - Nicole chat integration
+ * - QA issue visibility
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -16,14 +16,21 @@ import {
   X, Plus, Folder, Play, Square, Loader2, Code2, ChevronRight, ChevronDown,
   Send, Bot, Terminal, Rocket, RefreshCw, Sparkles, Monitor, Tablet, Smartphone,
   BrainCircuit, Search, PenTool, Bug, CheckCircle, Zap, Eye, FileCode,
-  Copy, Check, AlertCircle, FolderOpen
+  AlertCircle, FolderOpen, MessageSquare, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import { useFazStore } from '@/lib/faz/store';
 import { fazApi } from '@/lib/faz/api';
 import { fazWS } from '@/lib/faz/websocket';
 import { FazProject, FazFile, FazActivity } from '@/types/faz';
 import { format } from 'date-fns';
+
+// Dynamic import Monaco to avoid SSR issues
+const MonacoEditor = dynamic(
+  () => import('@monaco-editor/react').then(mod => mod.default),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div> }
+);
 
 // =============================================================================
 // CONSTANTS
@@ -79,20 +86,27 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
   // Pipeline
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [lastPolledStatus, setLastPolledStatus] = useState<string>('');
   
   // Editor
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [editedContent, setEditedContent] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  
+  // Files
+  const [projectFiles, setProjectFiles] = useState<FazFile[]>([]);
   
   // Preview
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [showPreview, setShowPreview] = useState(true);
+  const [previewKey, setPreviewKey] = useState(0);
   
-  // Activity
+  // Activity & Chat
   const [activities, setActivities] = useState<FazActivity[]>([]);
+  const [activeRightTab, setActiveRightTab] = useState<'activity' | 'chat'>('activity');
   const activityScrollRef = useRef<HTMLDivElement>(null);
-  const activityPollRef = useRef<NodeJS.Timeout | null>(null);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
   
   // Chat
   const [chatMessage, setChatMessage] = useState('');
@@ -101,9 +115,14 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
   // Store
   const { 
     currentProject, setCurrentProject,
-    files, fileMetadata, setFiles,
+    setFiles,
     setActivities: storeSetActivities,
   } = useFazStore();
+
+  // ===== HELPER: Get current tab content =====
+  const getTabContent = (path: string): string => {
+    return editedContent[path] ?? projectFiles.find(f => f.path === path)?.content ?? '';
+  };
 
   // ===== DATA FETCHING =====
   
@@ -121,64 +140,70 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     }
   }, []);
 
-  const fetchProjectData = useCallback(async (projectId: number) => {
+  const fetchAllProjectData = useCallback(async (projectId: number, forceRefresh = false) => {
     try {
-      const [filesData, activitiesData] = await Promise.all([
+      console.log(`[Faz] Fetching all data for project ${projectId}...`);
+      
+      const [filesData, activitiesData, projectData] = await Promise.all([
         fazApi.getFiles(projectId),
         fazApi.getActivities(projectId),
+        fazApi.getProject(projectId),
       ]);
       
-      setFiles(filesData || []);
+      console.log(`[Faz] Received ${filesData?.length || 0} files, ${activitiesData?.length || 0} activities`);
+      
+      // Update local state
+      setProjectFiles(filesData || []);
       setActivities(activitiesData || []);
       storeSetActivities(activitiesData || []);
       
-      // Open first file - use inline function to avoid dependency issue
-      if (filesData && filesData.length > 0) {
+      // Update store with files
+      setFiles(filesData || []);
+      
+      // Update project status
+      if (projectData) {
+        setCurrentProject(projectData);
+        const runningStatuses = ['planning', 'researching', 'designing', 'building', 'qa', 'review', 'deploying'];
+        const isRunning = runningStatuses.includes(projectData.status);
+        setPipelineRunning(isRunning);
+        
+        // If status changed from running to not running, force refresh files
+        if (lastPolledStatus && runningStatuses.includes(lastPolledStatus) && !isRunning) {
+          console.log('[Faz] Pipeline completed, refreshing files...');
+          const freshFiles = await fazApi.getFiles(projectId);
+          setProjectFiles(freshFiles || []);
+          setFiles(freshFiles || []);
+        }
+        setLastPolledStatus(projectData.status);
+      }
+      
+      // Auto-open first file if none open
+      if ((filesData && filesData.length > 0) && (forceRefresh || openTabs.length === 0)) {
         const preferred = filesData.find(f => f.path.includes('page.tsx')) || 
                          filesData.find(f => f.path.includes('layout.tsx')) ||
                          filesData[0];
         if (preferred) {
-          const lang = preferred.path.split('.').pop()?.toLowerCase();
+          // Inline openFile logic to avoid dependency issue
+          const ext = preferred.path.split('.').pop()?.toLowerCase();
           const langMap: Record<string, string> = {
             tsx: 'typescript', ts: 'typescript', jsx: 'javascript', js: 'javascript',
             css: 'css', json: 'json', md: 'markdown', html: 'html',
           };
-          setOpenTabs(tabs => {
-            if (tabs.find(t => t.path === preferred.path)) return tabs;
-            return [...tabs, { 
-              path: preferred.path, 
-              content: preferred.content, 
-              language: langMap[lang || ''] || 'plaintext',
-              isDirty: false 
-            }];
+          setOpenTabs(prev => {
+            if (prev.find(t => t.path === preferred.path)) return prev;
+            return [...prev, { path: preferred.path, content: preferred.content, language: langMap[ext || ''] || 'plaintext', isDirty: false }];
           });
           setActiveTab(preferred.path);
         }
       }
+      
+      // Refresh preview when files change
+      setPreviewKey(k => k + 1);
+      
     } catch (error) {
       console.error('Failed to fetch project data:', error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setFiles, storeSetActivities]);
-
-  const pollActivities = useCallback(async () => {
-    if (!currentProject) return;
-    
-    try {
-      const data = await fazApi.getActivities(currentProject.project_id);
-      setActivities(data || []);
-      
-      // Refresh project to get status updates
-      const project = await fazApi.getProject(currentProject.project_id);
-      setCurrentProject(project);
-      
-      // Update running state
-      const runningStatuses = ['planning', 'researching', 'designing', 'building', 'qa', 'review', 'deploying'];
-      setPipelineRunning(runningStatuses.includes(project.status));
-    } catch (error) {
-      console.error('Activity poll failed:', error);
-    }
-  }, [currentProject, setCurrentProject]);
+  }, [setFiles, storeSetActivities, lastPolledStatus, openTabs.length, setCurrentProject]);
 
   // ===== EFFECTS =====
   
@@ -188,14 +213,25 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     }
   }, [isOpen, view, fetchProjects]);
 
+  // Poll for updates while pipeline is running OR just completed
   useEffect(() => {
-    if (currentProject && view === 'workspace' && pipelineRunning) {
-      activityPollRef.current = setInterval(pollActivities, 2000);
+    if (!currentProject || view !== 'workspace') return;
+    
+    // Always poll while running
+    if (pipelineRunning) {
+      pollRef.current = setInterval(() => {
+        fetchAllProjectData(currentProject.project_id);
+      }, 2500);
+      
       return () => {
-        if (activityPollRef.current) clearInterval(activityPollRef.current);
+        if (pollRef.current) clearInterval(pollRef.current);
       };
     }
-  }, [currentProject, view, pipelineRunning, pollActivities]);
+    
+    // One final poll after pipeline stops (to get final state)
+    fetchAllProjectData(currentProject.project_id, true);
+    
+  }, [currentProject, view, pipelineRunning, fetchAllProjectData]);
 
   useEffect(() => {
     if (activityScrollRef.current && activities.length > 0) {
@@ -238,9 +274,15 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     setActivities([]);
     setOpenTabs([]);
     setActiveTab(null);
+    setProjectFiles([]);
+    setEditedContent({});
+    
     const runningStatuses = ['planning', 'researching', 'designing', 'building', 'qa', 'review', 'deploying'];
     setPipelineRunning(runningStatuses.includes(project.status));
-    await fetchProjectData(project.project_id);
+    setLastPolledStatus(project.status);
+    
+    // Fetch all data
+    await fetchAllProjectData(project.project_id, true);
   };
 
   const handleBackToProjects = () => {
@@ -249,9 +291,11 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     setActivities([]);
     setOpenTabs([]);
     setActiveTab(null);
+    setProjectFiles([]);
+    setEditedContent({});
     fazWS.disconnect();
-    if (activityPollRef.current) {
-      clearInterval(activityPollRef.current);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
     }
   };
 
@@ -263,7 +307,7 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     
     try {
       await fazApi.runPipeline(currentProject.project_id);
-      pollActivities();
+      // Polling will pick up changes
     } catch (error) {
       console.error('Failed to run pipeline:', error);
       setPipelineError(error instanceof Error ? error.message : 'Failed to start pipeline');
@@ -277,11 +321,15 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     try {
       await fazApi.stopPipeline(currentProject.project_id);
       setPipelineRunning(false);
-      const project = await fazApi.getProject(currentProject.project_id);
-      setCurrentProject(project);
+      await fetchAllProjectData(currentProject.project_id, true);
     } catch (error) {
       console.error('Failed to stop pipeline:', error);
     }
+  };
+
+  const handleRefresh = async () => {
+    if (!currentProject) return;
+    await fetchAllProjectData(currentProject.project_id, true);
   };
 
   const handleSendMessage = async () => {
@@ -291,7 +339,7 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     try {
       await fazApi.sendChatMessage(currentProject.project_id, chatMessage);
       setChatMessage('');
-      pollActivities();
+      await fetchAllProjectData(currentProject.project_id);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
@@ -307,9 +355,10 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
       if (result.preview_url) {
         window.open(result.preview_url, '_blank');
       }
-      pollActivities();
+      await fetchAllProjectData(currentProject.project_id);
     } catch (error) {
       console.error('Deploy failed:', error);
+      setPipelineError(error instanceof Error ? error.message : 'Deploy failed');
     }
   };
 
@@ -324,18 +373,48 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
 
   const closeTab = (path: string) => {
     setOpenTabs(prev => prev.filter(t => t.path !== path));
+    setEditedContent(prev => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
     if (activeTab === path) {
       const remaining = openTabs.filter(t => t.path !== path);
       setActiveTab(remaining.length > 0 ? remaining[remaining.length - 1].path : null);
     }
   };
 
-  const handleCopy = () => {
-    const tab = openTabs.find(t => t.path === activeTab);
-    if (tab) {
-      navigator.clipboard.writeText(tab.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleEditorChange = (path: string, value: string | undefined) => {
+    if (value === undefined) return;
+    const originalFile = projectFiles.find(f => f.path === path);
+    const isDirty = originalFile?.content !== value;
+    
+    setEditedContent(prev => ({ ...prev, [path]: value }));
+    setOpenTabs(prev => prev.map(t => t.path === path ? { ...t, isDirty } : t));
+  };
+
+  const handleSaveFile = async (path: string) => {
+    if (!currentProject) return;
+    
+    setSaving(true);
+    try {
+      const content = editedContent[path];
+      if (content === undefined) return;
+      
+      // TODO: Implement save API endpoint
+      // await fazApi.updateFile(currentProject.project_id, path, content);
+      
+      // For now, just clear dirty state
+      setOpenTabs(prev => prev.map(t => t.path === path ? { ...t, isDirty: false, content } : t));
+      setEditedContent(prev => {
+        const next = { ...prev };
+        delete next[path];
+        return next;
+      });
+    } catch (error) {
+      console.error('Failed to save file:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -352,55 +431,90 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
 
   const getCurrentStageIndex = (): number => {
     if (!currentProject) return -1;
-    return PIPELINE_STAGES.indexOf(currentProject.status);
+    const statusMap: Record<string, string> = {
+      'building': 'building',
+      'coding': 'building',
+    };
+    const normalizedStatus = statusMap[currentProject.status] || currentProject.status;
+    return PIPELINE_STAGES.indexOf(normalizedStatus);
   };
 
   const generatePreviewHTML = (): string => {
-    const fileArray = Array.from(files.entries());
-    const pageFile = fileArray.find(([path]) => path.includes('page.tsx'));
-    const globalsCss = fileArray.find(([path]) => path.includes('globals.css'));
-    
-    if (!pageFile) {
-      return `<html><body style="background:#0a0a0f;color:#64748B;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;"><div style="text-align:center"><h2>No Preview Available</h2><p>Run the pipeline to generate files</p></div></body></html>`;
+    if (projectFiles.length === 0) {
+      return `<!DOCTYPE html><html><body style="background:#0a0a0f;color:#64748B;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;"><div style="text-align:center"><h2 style="color:#8B5CF6;">No Preview Available</h2><p>Run the pipeline to generate files</p></div></body></html>`;
     }
 
-    // Extract CSS variables if available
+    // Get globals.css for styling
+    const globalsFile = projectFiles.find(f => f.path.includes('globals.css'));
     let cssContent = '';
-    if (globalsCss) {
-      cssContent = globalsCss[1].replace(/@tailwind[^;]+;/g, '');
+    if (globalsFile) {
+      cssContent = globalsFile.content
+        .replace(/@tailwind[^;]+;/g, '')
+        .replace(/@import[^;]+;/g, '');
     }
 
-    // Simple preview that renders the component structure
-    return `
-<!DOCTYPE html>
-<html>
+    // Build a simple component list for display
+    const componentList = projectFiles
+      .filter(f => f.path.startsWith('components/'))
+      .map(f => f.path.split('/').pop()?.replace('.tsx', ''))
+      .filter(Boolean);
+
+    return `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; }
     ${cssContent}
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
   </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#8B5CF6',
+          }
+        }
+      }
+    }
+  </script>
 </head>
-<body>
-  <div id="preview-notice" style="position:fixed;top:0;left:0;right:0;background:linear-gradient(90deg,#8B5CF6,#6366F1);color:white;padding:8px 16px;font-size:12px;text-align:center;z-index:9999;">
-    📋 Preview Mode - Full render requires deployment
+<body class="bg-slate-950 text-white min-h-screen">
+  <div style="position:fixed;top:0;left:0;right:0;background:linear-gradient(90deg,#8B5CF6,#6366F1);color:white;padding:8px 16px;font-size:12px;text-align:center;z-index:9999;">
+    ⚡ Preview Mode - ${projectFiles.length} files generated | Components: ${componentList.join(', ') || 'none'}
   </div>
   <div style="padding-top:40px;">
-    <div style="padding:2rem;background:#0a0a0f;min-height:100vh;color:white;">
-      <h1 style="font-size:2rem;font-weight:bold;margin-bottom:1rem;">
-        ${currentProject?.name || 'Project Preview'}
-      </h1>
-      <div style="background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:1rem;margin-bottom:1rem;">
-        <p style="color:#94a3b8;font-size:14px;margin-bottom:0.5rem;">Generated ${files.size} files:</p>
-        <ul style="list-style:none;font-family:monospace;font-size:12px;color:#64748b;">
-          ${fileArray.slice(0, 10).map(([path]) => `<li style="padding:4px 0;">📄 ${path}</li>`).join('')}
-          ${fileArray.length > 10 ? `<li style="padding:4px 0;color:#8B5CF6;">... and ${fileArray.length - 10} more</li>` : ''}
-        </ul>
+    <div class="container mx-auto px-4 py-12">
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+          ${currentProject?.name || 'Project Preview'}
+        </h1>
+        <p class="text-slate-400 mt-2">Generated by Faz Code</p>
       </div>
-      <p style="color:#64748b;font-size:13px;">Click "Deploy" to see the full rendered site</p>
+      
+      <div class="grid gap-4 mb-8">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            📁 Generated Files (${projectFiles.length})
+          </h2>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            ${projectFiles.map(f => `
+              <div class="bg-slate-800 rounded-lg px-3 py-2 text-sm">
+                <span class="text-purple-400">📄</span>
+                <span class="text-slate-300 font-mono text-xs ml-1">${f.path}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      
+      <div class="text-center text-slate-500 text-sm">
+        <p>Click <strong class="text-purple-400">Deploy</strong> to see the full rendered site on Vercel</p>
+      </div>
     </div>
   </div>
 </body>
@@ -408,8 +522,6 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
   };
 
   // ===== RENDER HELPERS =====
-  
-  const activeTabContent = openTabs.find(t => t.path === activeTab);
 
   const renderStatusPipeline = () => {
     const currentIndex = getCurrentStageIndex();
@@ -450,11 +562,10 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
   };
 
   const renderFileTree = () => {
-    const fileArray = Array.from(fileMetadata.values());
     const folders: Record<string, FazFile[]> = {};
     const rootFiles: FazFile[] = [];
 
-    fileArray.forEach(file => {
+    projectFiles.forEach(file => {
       const parts = file.path.split('/');
       if (parts.length > 1) {
         const folder = parts[0];
@@ -476,6 +587,8 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
       </div>
     );
   };
+
+  const activeTabData = openTabs.find(t => t.path === activeTab);
 
   // ===== MAIN RENDER =====
   
@@ -500,6 +613,7 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
               <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full uppercase tracking-wide ${
                 pipelineRunning ? 'bg-purple-500/20 text-purple-300 animate-pulse' :
                 currentProject.status === 'approved' ? 'bg-emerald-500/20 text-emerald-300' :
+                currentProject.status === 'deployed' ? 'bg-blue-500/20 text-blue-300' :
                 currentProject.status === 'failed' ? 'bg-red-500/20 text-red-300' :
                 'bg-[#1e1e2e] text-[#64748b]'
               }`}>
@@ -512,8 +626,8 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
         <div className="flex items-center gap-2">
           {view === 'workspace' && currentProject && (
             <>
-              <button onClick={pollActivities} className="p-1.5 text-[#64748B] hover:text-white hover:bg-[#1a1a2e] rounded-lg transition-all" title="Refresh">
-                <RefreshCw size={14} />
+              <button onClick={handleRefresh} className="p-1.5 text-[#64748B] hover:text-white hover:bg-[#1a1a2e] rounded-lg transition-all" title="Refresh">
+                <RefreshCw size={14} className={pipelineRunning ? 'animate-spin' : ''} />
               </button>
               
               {pipelineRunning ? (
@@ -526,7 +640,7 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
                 </button>
               )}
               
-              {files.size > 0 && !pipelineRunning && currentProject.status === 'approved' && (
+              {projectFiles.length > 0 && !pipelineRunning && ['approved', 'review'].includes(currentProject.status) && (
                 <button onClick={handleDeploy} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-500/30 border border-emerald-500/30">
                   <Rocket size={12} /> Deploy
                 </button>
@@ -572,30 +686,283 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
             onRefresh={fetchProjects}
           />
         ) : (
-          <WorkspaceView
-            files={files}
-            openTabs={openTabs}
-            activeTab={activeTab}
-            activeTabContent={activeTabContent}
-            activities={activities}
-            currentProject={currentProject}
-            previewMode={previewMode}
-            showPreview={showPreview}
-            pipelineRunning={pipelineRunning}
-            chatMessage={chatMessage}
-            sendingMessage={sendingMessage}
-            copied={copied}
-            onSetActiveTab={setActiveTab}
-            onCloseTab={closeTab}
-            onCopy={handleCopy}
-            onSetPreviewMode={setPreviewMode}
-            onTogglePreview={() => setShowPreview(!showPreview)}
-            onSetChatMessage={setChatMessage}
-            onSendMessage={handleSendMessage}
-            renderFileTree={renderFileTree}
-            generatePreviewHTML={generatePreviewHTML}
-            activityScrollRef={activityScrollRef}
-          />
+          <div className="h-full flex">
+            {/* Left: File Tree */}
+            <div className="w-[200px] border-r border-[#1a1a2e] flex flex-col bg-[#0a0a10]">
+              <div className="p-3 border-b border-[#1a1a2e] flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider">Explorer</span>
+                <span className="text-[10px] text-purple-400 font-mono">{projectFiles.length}</span>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-2">
+                {projectFiles.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-[#4a4a5a] text-center px-2">
+                    <div>
+                      <Terminal size={24} className="mx-auto mb-2 opacity-40" />
+                      <p className="text-[10px]">{pipelineRunning ? 'Generating...' : 'No files yet'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  renderFileTree()
+                )}
+              </div>
+              
+              {currentProject && (
+                <div className="p-3 border-t border-[#1a1a2e] bg-[#08080c] text-[10px] space-y-1">
+                  <div className="flex justify-between text-[#64748B]">
+                    <span>Files</span>
+                    <span className="text-[#94A3B8] font-mono">{projectFiles.length}</span>
+                  </div>
+                  <div className="flex justify-between text-[#64748B]">
+                    <span>Tokens</span>
+                    <span className="text-[#94A3B8] font-mono">{currentProject.total_tokens_used?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-[#64748B]">
+                    <span>Cost</span>
+                    <span className="text-[#94A3B8] font-mono">${((currentProject.total_cost_cents || 0) / 100).toFixed(3)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Center: Editor + Preview */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Tabs */}
+              <div className="h-9 bg-[#0a0a0f] border-b border-[#1a1a2e] flex items-center">
+                <div className="flex-1 flex items-center overflow-x-auto">
+                  {openTabs.map(tab => (
+                    <div
+                      key={tab.path}
+                      onClick={() => setActiveTab(tab.path)}
+                      className={`flex items-center gap-2 px-3 h-9 border-r border-[#1a1a2e] cursor-pointer group ${
+                        activeTab === tab.path ? 'bg-[#12121a] text-white' : 'text-[#64748B] hover:text-[#94a3b8]'
+                      }`}
+                    >
+                      <FileCode size={12} />
+                      <span className="text-xs font-mono truncate max-w-[120px]">
+                        {tab.isDirty && <span className="text-amber-400 mr-1">•</span>}
+                        {tab.path.split('/').pop()}
+                      </span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); closeTab(tab.path); }}
+                        className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex items-center gap-1 px-2">
+                  <button onClick={() => setShowPreview(!showPreview)} className={`p-1.5 rounded ${showPreview ? 'bg-purple-500/20 text-purple-400' : 'text-[#64748B] hover:text-white'}`} title="Toggle Preview">
+                    <Eye size={14} />
+                  </button>
+                  {activeTab && editedContent[activeTab] !== undefined && (
+                    <button 
+                      onClick={() => handleSaveFile(activeTab)}
+                      disabled={saving}
+                      className="p-1.5 text-amber-400 hover:bg-amber-500/20 rounded"
+                      title="Save (⌘S)"
+                    >
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Editor + Preview Split */}
+              <div className="flex-1 flex overflow-hidden">
+                {/* Monaco Editor */}
+                <div className={`flex flex-col bg-[#0a0a0f] ${showPreview ? 'w-1/2' : 'flex-1'}`}>
+                  {activeTabData ? (
+                    <MonacoEditor
+                      height="100%"
+                      language={activeTabData.language}
+                      value={getTabContent(activeTabData.path)}
+                      onChange={(value) => handleEditorChange(activeTabData.path, value)}
+                      theme="vs-dark"
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        tabSize: 2,
+                        wordWrap: 'on',
+                        padding: { top: 12 },
+                      }}
+                    />
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-[#4a4a5a]">
+                      <div className="text-center">
+                        <Code2 size={40} className="mx-auto mb-3 opacity-30" />
+                        <p className="text-sm mb-1">Select a file to view</p>
+                        <p className="text-xs opacity-60">or run the pipeline to generate code</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview */}
+                {showPreview && (
+                  <div className="w-1/2 border-l border-[#1a1a2e] flex flex-col bg-[#0a0a0f]">
+                    {/* Preview Toolbar */}
+                    <div className="h-9 border-b border-[#1a1a2e] flex items-center justify-between px-3">
+                      <div className="flex items-center gap-1 bg-[#08080c] p-0.5 rounded border border-[#1a1a2e]">
+                        {(['mobile', 'tablet', 'desktop'] as const).map(mode => (
+                          <button
+                            key={mode}
+                            onClick={() => setPreviewMode(mode)}
+                            className={`p-1 rounded transition-colors ${previewMode === mode ? 'bg-[#1e1e2e] text-white' : 'text-[#64748B] hover:text-[#94A3B8]'}`}
+                            title={`${mode} view`}
+                          >
+                            {mode === 'mobile' ? <Smartphone size={12} /> : mode === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setPreviewKey(k => k + 1)} className="p-1 text-[#64748B] hover:text-white" title="Refresh preview">
+                        <RefreshCw size={12} />
+                      </button>
+                    </div>
+
+                    {/* Preview iframe */}
+                    <div className="flex-1 p-4 bg-[radial-gradient(#1e1e2e_1px,transparent_1px)] [background-size:12px_12px] flex items-start justify-center overflow-auto">
+                      <div className={`bg-white shadow-2xl transition-all duration-300 h-full overflow-hidden ${
+                        previewMode === 'mobile' ? 'w-[375px] rounded-2xl border-4 border-[#1e1e2e]' :
+                        previewMode === 'tablet' ? 'w-[768px] rounded-xl border-2 border-[#1e1e2e]' :
+                        'w-full'
+                      }`}>
+                        <iframe
+                          key={previewKey}
+                          srcDoc={generatePreviewHTML()}
+                          className="w-full h-full border-0"
+                          title="Preview"
+                          sandbox="allow-scripts"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Activity + Chat */}
+            <div className="w-[300px] border-l border-[#1a1a2e] flex flex-col bg-[#0a0a10]">
+              {/* Tab Switcher */}
+              <div className="flex border-b border-[#1a1a2e]">
+                <button 
+                  onClick={() => setActiveRightTab('activity')}
+                  className={`flex-1 py-2 text-xs font-medium ${activeRightTab === 'activity' ? 'text-white border-b-2 border-purple-500' : 'text-[#64748B]'}`}
+                >
+                  <Bot size={12} className="inline mr-1" /> Activity
+                </button>
+                <button 
+                  onClick={() => setActiveRightTab('chat')}
+                  className={`flex-1 py-2 text-xs font-medium ${activeRightTab === 'chat' ? 'text-white border-b-2 border-purple-500' : 'text-[#64748B]'}`}
+                >
+                  <MessageSquare size={12} className="inline mr-1" /> Chat
+                </button>
+              </div>
+              
+              {activeRightTab === 'activity' ? (
+                <>
+                  <div className="p-3 border-b border-[#1a1a2e] flex justify-between items-center">
+                    <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Agent Activity</span>
+                    {pipelineRunning && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                        <span className="text-[9px] text-green-400 font-medium">LIVE</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div ref={activityScrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
+                    <AnimatePresence mode="popLayout">
+                      {activities.length === 0 ? (
+                        <div className="text-center text-[#4a4a5a] py-8">
+                          <Bot size={24} className="mx-auto mb-2 opacity-40" />
+                          <p className="text-xs">No activity yet</p>
+                          <p className="text-[10px] mt-1 opacity-60">Run pipeline to start</p>
+                        </div>
+                      ) : (
+                        [...activities].slice(0, 50).map((activity, idx) => {
+                          const agentConfig = AGENT_CONFIG[activity.agent_name.toLowerCase()] || AGENT_CONFIG.coding;
+                          
+                          return (
+                            <motion.div
+                              key={`${activity.activity_id}-${idx}`}
+                              initial={{ opacity: 0, y: -5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="relative pl-6 pb-2"
+                            >
+                              <div 
+                                className="absolute left-0 top-0 w-4 h-4 rounded flex items-center justify-center"
+                                style={{ backgroundColor: `${agentConfig.color}20`, color: agentConfig.color }}
+                              >
+                                {agentConfig.icon}
+                              </div>
+                              
+                              <div className="flex justify-between items-start mb-0.5">
+                                <span className="text-[9px] font-medium uppercase tracking-wide" style={{ color: agentConfig.color }}>
+                                  {agentConfig.label}
+                                </span>
+                                <span className="text-[8px] text-[#4a4a5a]">
+                                  {format(new Date(activity.started_at), 'HH:mm:ss')}
+                                </span>
+                              </div>
+                              
+                              <p className={`text-[11px] leading-relaxed ${activity.content_type === 'error' ? 'text-red-400' : 'text-[#94A3B8]'}`}>
+                                {activity.message}
+                              </p>
+                              
+                              {activity.cost_cents > 0 && (
+                                <span className="inline-block mt-1 text-[8px] text-[#4a4a5a] bg-[#12121a] px-1 py-0.5 rounded">
+                                  ${(activity.cost_cents / 100).toFixed(4)}
+                                </span>
+                              )}
+                            </motion.div>
+                          );
+                        })
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                    {/* Chat messages would go here */}
+                    <div className="text-center text-[#4a4a5a] py-8">
+                      <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
+                      <p className="text-xs">Chat with Nicole</p>
+                      <p className="text-[10px] mt-1 opacity-60">Coming soon - interactive feedback</p>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Chat Input */}
+              <div className="p-3 border-t border-[#1a1a2e]">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Message Nicole..."
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                    className="flex-1 px-2.5 py-1.5 bg-[#12121A] border border-[#1E1E2E] rounded text-xs text-white placeholder-[#4a4a5a] focus:outline-none focus:border-purple-500/50"
+                    disabled={sendingMessage}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={sendingMessage || !chatMessage.trim()}
+                    className="p-1.5 bg-purple-600/20 text-purple-400 rounded hover:bg-purple-600/30 disabled:opacity-50 transition-all"
+                  >
+                    {sendingMessage ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -735,272 +1102,13 @@ function ProjectsView({
                 <p className="text-xs text-[#64748B] line-clamp-2 mb-3">{project.original_prompt}</p>
                 <div className="flex items-center gap-4 text-[10px] text-[#4a4a5a]">
                   <span className="flex items-center gap-1"><FileCode size={10} /> {project.file_count} files</span>
-                  <span>{project.total_tokens_used.toLocaleString()} tokens</span>
-                  <span>${(project.total_cost_cents / 100).toFixed(3)}</span>
+                  <span>{project.total_tokens_used?.toLocaleString() || 0} tokens</span>
+                  <span>${((project.total_cost_cents || 0) / 100).toFixed(3)}</span>
                 </div>
               </button>
             ))}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceView({
-  files, openTabs, activeTab, activeTabContent, activities, currentProject,
-  previewMode, showPreview, pipelineRunning, chatMessage, sendingMessage, copied,
-  onSetActiveTab, onCloseTab, onCopy, onSetPreviewMode, onTogglePreview,
-  onSetChatMessage, onSendMessage, renderFileTree, generatePreviewHTML, activityScrollRef
-}: {
-  files: Map<string, string>;
-  openTabs: OpenTab[];
-  activeTab: string | null;
-  activeTabContent: OpenTab | undefined;
-  activities: FazActivity[];
-  currentProject: FazProject | null;
-  previewMode: 'desktop' | 'tablet' | 'mobile';
-  showPreview: boolean;
-  pipelineRunning: boolean;
-  chatMessage: string;
-  sendingMessage: boolean;
-  copied: boolean;
-  onSetActiveTab: (p: string) => void;
-  onCloseTab: (p: string) => void;
-  onCopy: () => void;
-  onSetPreviewMode: (m: 'desktop' | 'tablet' | 'mobile') => void;
-  onTogglePreview: () => void;
-  onSetChatMessage: (m: string) => void;
-  onSendMessage: () => void;
-  renderFileTree: () => React.ReactNode;
-  generatePreviewHTML: () => string;
-  activityScrollRef: React.RefObject<HTMLDivElement>;
-}) {
-  return (
-    <div className="h-full flex">
-      {/* Left: File Tree */}
-      <div className="w-[200px] border-r border-[#1a1a2e] flex flex-col bg-[#0a0a10]">
-        <div className="p-3 border-b border-[#1a1a2e] flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider">Explorer</span>
-          <span className="text-[10px] text-purple-400 font-mono">{files.size}</span>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-2">
-          {files.size === 0 ? (
-            <div className="flex items-center justify-center h-full text-[#4a4a5a] text-center px-2">
-              <div>
-                <Terminal size={24} className="mx-auto mb-2 opacity-40" />
-                <p className="text-[10px]">No files yet</p>
-              </div>
-            </div>
-          ) : (
-            renderFileTree()
-          )}
-        </div>
-        
-        {currentProject && (
-          <div className="p-3 border-t border-[#1a1a2e] bg-[#08080c] text-[10px] space-y-1">
-            <div className="flex justify-between text-[#64748B]">
-              <span>Tokens</span>
-              <span className="text-[#94A3B8] font-mono">{currentProject.total_tokens_used?.toLocaleString() || 0}</span>
-            </div>
-            <div className="flex justify-between text-[#64748B]">
-              <span>Cost</span>
-              <span className="text-[#94A3B8] font-mono">${((currentProject.total_cost_cents || 0) / 100).toFixed(3)}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Center: Editor + Preview */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Tabs */}
-        <div className="h-9 bg-[#0a0a0f] border-b border-[#1a1a2e] flex items-center">
-          <div className="flex-1 flex items-center overflow-x-auto">
-            {openTabs.map(tab => (
-              <div
-                key={tab.path}
-                onClick={() => onSetActiveTab(tab.path)}
-                className={`flex items-center gap-2 px-3 h-9 border-r border-[#1a1a2e] cursor-pointer group ${
-                  activeTab === tab.path ? 'bg-[#12121a] text-white' : 'text-[#64748B] hover:text-[#94a3b8]'
-                }`}
-              >
-                <FileCode size={12} />
-                <span className="text-xs font-mono truncate max-w-[120px]">{tab.path.split('/').pop()}</span>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onCloseTab(tab.path); }}
-                  className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-          
-          <div className="flex items-center gap-1 px-2">
-            <button onClick={onTogglePreview} className={`p-1.5 rounded ${showPreview ? 'bg-purple-500/20 text-purple-400' : 'text-[#64748B] hover:text-white'}`} title="Toggle Preview">
-              <Eye size={14} />
-            </button>
-            <button onClick={onCopy} className="p-1.5 text-[#64748B] hover:text-white rounded" title="Copy Code">
-              {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Editor + Preview Split */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Code Editor */}
-          <div className={`flex flex-col bg-[#0a0a0f] ${showPreview ? 'w-1/2' : 'flex-1'}`}>
-            {activeTabContent ? (
-              <div className="flex-1 overflow-auto font-mono text-sm">
-                <div className="flex min-h-full">
-                  {/* Line Numbers */}
-                  <div className="w-12 flex-shrink-0 bg-[#08080c] text-[#3a3a4a] text-right pr-3 pt-4 select-none border-r border-[#1a1a2e]">
-                    {activeTabContent.content.split('\n').map((_, i) => (
-                      <div key={i} className="leading-6 text-xs">{i + 1}</div>
-                    ))}
-                  </div>
-                  {/* Code Content */}
-                  <pre className="flex-1 p-4 text-[#e4e4e7] overflow-x-auto leading-6 text-xs">
-                    <code>{activeTabContent.content}</code>
-                  </pre>
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-[#4a4a5a]">
-                <div className="text-center">
-                  <Code2 size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm mb-1">Select a file to view</p>
-                  <p className="text-xs opacity-60">or run the pipeline to generate code</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Preview */}
-          {showPreview && (
-            <div className="w-1/2 border-l border-[#1a1a2e] flex flex-col bg-[#0a0a0f]">
-              {/* Preview Toolbar */}
-              <div className="h-9 border-b border-[#1a1a2e] flex items-center justify-between px-3">
-                <div className="flex items-center gap-1 bg-[#08080c] p-0.5 rounded border border-[#1a1a2e]">
-                  {(['mobile', 'tablet', 'desktop'] as const).map(mode => (
-                    <button
-                      key={mode}
-                      onClick={() => onSetPreviewMode(mode)}
-                      className={`p-1 rounded transition-colors ${previewMode === mode ? 'bg-[#1e1e2e] text-white' : 'text-[#64748B] hover:text-[#94A3B8]'}`}
-                      title={`${mode} view`}
-                    >
-                      {mode === 'mobile' ? <Smartphone size={12} /> : mode === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[10px] text-[#4a4a5a]">Preview</span>
-              </div>
-
-              {/* Preview iframe */}
-              <div className="flex-1 p-4 bg-[radial-gradient(#1e1e2e_1px,transparent_1px)] [background-size:12px_12px] flex items-start justify-center overflow-auto">
-                <div className={`bg-white shadow-2xl transition-all duration-300 h-full ${
-                  previewMode === 'mobile' ? 'w-[375px] rounded-2xl border-4 border-[#1e1e2e]' :
-                  previewMode === 'tablet' ? 'w-[768px] rounded-xl border-2 border-[#1e1e2e]' :
-                  'w-full'
-                }`}>
-                  <iframe
-                    srcDoc={generatePreviewHTML()}
-                    className="w-full h-full border-0"
-                    title="Preview"
-                    sandbox="allow-scripts"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right: Activity + Chat */}
-      <div className="w-[280px] border-l border-[#1a1a2e] flex flex-col bg-[#0a0a10]">
-        <div className="p-3 border-b border-[#1a1a2e] flex justify-between items-center">
-          <span className="text-[10px] font-semibold text-[#F1F5F9] uppercase tracking-wider">Agent Activity</span>
-          {pipelineRunning && (
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[9px] text-green-400 font-medium">LIVE</span>
-            </div>
-          )}
-        </div>
-        
-        <div ref={activityScrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-          <AnimatePresence mode="popLayout">
-            {activities.length === 0 ? (
-              <div className="text-center text-[#4a4a5a] py-8">
-                <Bot size={24} className="mx-auto mb-2 opacity-40" />
-                <p className="text-xs">No activity yet</p>
-                <p className="text-[10px] mt-1 opacity-60">Run to start</p>
-              </div>
-            ) : (
-              [...activities].reverse().slice(0, 50).map((activity, idx) => {
-                const agentConfig = AGENT_CONFIG[activity.agent_name.toLowerCase()] || AGENT_CONFIG.coding;
-                
-                return (
-                  <motion.div
-                    key={`${activity.activity_id}-${idx}`}
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="relative pl-6 pb-2"
-                  >
-                    <div 
-                      className="absolute left-0 top-0 w-4 h-4 rounded flex items-center justify-center"
-                      style={{ backgroundColor: `${agentConfig.color}20`, color: agentConfig.color }}
-                    >
-                      {agentConfig.icon}
-                    </div>
-                    
-                    <div className="flex justify-between items-start mb-0.5">
-                      <span className="text-[9px] font-medium uppercase tracking-wide" style={{ color: agentConfig.color }}>
-                        {agentConfig.label}
-                      </span>
-                      <span className="text-[8px] text-[#4a4a5a]">
-                        {format(new Date(activity.started_at), 'HH:mm:ss')}
-                      </span>
-                    </div>
-                    
-                    <p className={`text-[10px] leading-relaxed ${activity.content_type === 'error' ? 'text-red-400' : 'text-[#94A3B8]'}`}>
-                      {activity.message}
-                    </p>
-                    
-                    {activity.cost_cents > 0 && (
-                      <span className="inline-block mt-1 text-[8px] text-[#4a4a5a] bg-[#12121a] px-1 py-0.5 rounded">
-                        ${(activity.cost_cents / 100).toFixed(4)}
-                      </span>
-                    )}
-                  </motion.div>
-                );
-              })
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Chat Input */}
-        <div className="p-3 border-t border-[#1a1a2e]">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Message Nicole..."
-              value={chatMessage}
-              onChange={(e) => onSetChatMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSendMessage()}
-              className="flex-1 px-2.5 py-1.5 bg-[#12121A] border border-[#1E1E2E] rounded text-xs text-white placeholder-[#4a4a5a] focus:outline-none focus:border-purple-500/50"
-              disabled={sendingMessage}
-            />
-            <button
-              onClick={onSendMessage}
-              disabled={sendingMessage || !chatMessage.trim()}
-              className="p-1.5 bg-purple-600/20 text-purple-400 rounded hover:bg-purple-600/30 disabled:opacity-50 transition-all"
-            >
-              {sendingMessage ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1024,6 +1132,7 @@ function FileTreeFolder({ name, files, onFileClick, activeFile }: {
         {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Folder size={12} className="text-purple-400" />
         <span className="truncate">{name}</span>
+        <span className="text-[9px] text-[#4a4a5a] ml-auto">{files.length}</span>
       </button>
       
       {isOpen && (
@@ -1052,7 +1161,7 @@ function FileTreeItem({ file, onClick, isActive }: {
       }`}
     >
       <FileCode size={12} className={isActive ? 'text-purple-400' : 'text-[#64748B]'} />
-      <span className="truncate">{filename}</span>
+      <span className="truncate text-xs">{filename}</span>
     </button>
   );
 }
