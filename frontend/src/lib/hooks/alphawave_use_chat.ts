@@ -354,15 +354,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       const assistantMessageId = crypto.randomUUID();
+      let assistantMessageCreated = false;
       
-      // Create empty assistant message for streaming
-      setMessages((prev) => [...prev, {
-        id: assistantMessageId,
-        role: 'assistant' as const,
-        content: '',
-        timestamp: new Date(),
-        status: 'sent' as const,
-      }]);
+      // DON'T create assistant message yet - wait for first text token
+      // This ensures Nicole's name only appears when she starts responding,
+      // not when she's still thinking
 
       while (true) {
         const { done, value } = await reader.read();
@@ -388,7 +384,17 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   displayText: 'Processing...',
                 }));
               } else if (data.type === 'thinking_start') {
-                // Extended thinking begins
+                // Extended thinking begins - create assistant message now for thinking block
+                if (!assistantMessageCreated) {
+                  setMessages((prev) => [...prev, {
+                    id: assistantMessageId,
+                    role: 'assistant' as const,
+                    content: '',
+                    timestamp: new Date(),
+                    status: 'sent' as const,
+                  }]);
+                  assistantMessageCreated = true;
+                }
                 setActivityStatus(prev => ({
                   ...prev,
                   isActive: true,
@@ -403,7 +409,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   },
                 }));
               } else if (data.type === 'thinking_delta') {
-                // Streaming thinking content
+                // Streaming thinking content in real-time
                 const thinkingContent = data.content || '';
                 setActivityStatus(prev => ({
                   ...prev,
@@ -490,6 +496,18 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 }));
               } else if (data.type === 'token' || data.type === 'content') {
                 const textContent = data.content || data.text || '';
+                
+                // Create assistant message on first text token if not already created
+                if (!assistantMessageCreated) {
+                  setMessages((prev) => [...prev, {
+                    id: assistantMessageId,
+                    role: 'assistant' as const,
+                    content: '',
+                    timestamp: new Date(),
+                    status: 'sent' as const,
+                  }]);
+                  assistantMessageCreated = true;
+                }
                 
                 // First token - keep thinking block visible but mark thinking as complete
                 // Keep isStreaming TRUE - spinner should keep spinning during response
