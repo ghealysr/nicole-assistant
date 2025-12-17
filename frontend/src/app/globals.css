@@ -9530,15 +9530,149 @@ pre[class*="language-"] {
 
 /* Faz Code Theme Variables (Scoped) */
 .faz-theme {
-  --background: #0A0A0F;
-  --card: #12121A;
-  --border: #1E1E2E;
-  --primary: #6366F1;
-  --primary-hover: #818CF8;
-  --accent: #22D3EE;
-  --success: #22C55E;
-  --warning: #F59E0B;
-  --error: #EF4444;
-  --text: #F1F5F9;
-  --text-muted: #64748B;
+  --faz-bg: #08080C;
+  --faz-card: #12121A;
+  --faz-border: #1a1a2e;
+  --faz-primary: #6366F1;
+  --faz-primary-hover: #818CF8;
+  --faz-accent: #22D3EE;
+  --faz-success: #22C55E;
+  --faz-warning: #F59E0B;
+  --faz-error: #EF4444;
+  --faz-text: #F1F5F9;
+  --faz-text-muted: #64748B;
+  --faz-text-subtle: #4a4a5a;
+}
+
+/* Faz Code Panel Animations */
+@keyframes faz-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.4);
+  }
+}
+
+@keyframes faz-agent-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes faz-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes faz-file-appear {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Faz Code - Agent Running Indicator */
+.faz-agent-running {
+  animation: faz-agent-pulse 2s ease-in-out infinite;
+}
+
+/* Faz Code - Activity Item */
+.faz-activity-item {
+  animation: faz-file-appear 0.3s ease-out;
+}
+
+/* Faz Code - Gradient Buttons */
+.faz-button-primary {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  transition: all 0.2s ease;
+}
+
+.faz-button-primary:hover {
+  background: linear-gradient(135deg, #818cf8, #6366f1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+/* Faz Code - Code Viewer */
+.faz-code-viewer {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Faz Code - File Tree Item */
+.faz-file-item {
+  transition: all 0.15s ease;
+}
+
+.faz-file-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.faz-file-item.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-left: 2px solid #6366f1;
+}
+
+/* Faz Code - Status Badge */
+.faz-status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.faz-status-intake { background: rgba(100, 116, 139, 0.2); color: #94A3B8; }
+.faz-status-planning { background: rgba(99, 102, 241, 0.2); color: #818CF8; }
+.faz-status-researching { background: rgba(59, 130, 246, 0.2); color: #60A5FA; }
+.faz-status-designing { background: rgba(236, 72, 153, 0.2); color: #F472B6; }
+.faz-status-building { background: rgba(234, 179, 8, 0.2); color: #FACC15; }
+.faz-status-processing { background: rgba(234, 179, 8, 0.2); color: #FACC15; }
+.faz-status-qa { background: rgba(249, 115, 22, 0.2); color: #FB923C; }
+.faz-status-review { background: rgba(34, 211, 238, 0.2); color: #22D3EE; }
+.faz-status-approved { background: rgba(34, 197, 94, 0.2); color: #22C55E; }
+.faz-status-deployed { background: rgba(34, 197, 94, 0.3); color: #4ADE80; }
+.faz-status-failed { background: rgba(239, 68, 68, 0.2); color: #F87171; }
+.faz-status-paused { background: rgba(156, 163, 175, 0.2); color: #9CA3AF; }
+
+/* Faz Code - Dark Scrollbar */
+.faz-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.faz-scrollbar::-webkit-scrollbar-track {
+  background: #0a0a10;
+}
+
+.faz-scrollbar::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 4px;
+}
+
+.faz-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3a3a4a;
+}
+
+/* Faz Code - Resize Handle Glow */
+.faz-resize-handle:hover {
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
 }
