@@ -680,13 +680,17 @@ class AlphawaveClaudeClient:
                 # Check if we need to execute tools
                 actual_tool_uses = [b for b in final_message.content if b.type == 'tool_use']
                 
+                logger.info(f"[CLAUDE] Iteration {iterations} complete - stop_reason: {final_message.stop_reason}, tool_uses: {len(actual_tool_uses)}")
+                
                 if not actual_tool_uses:
                     # No tools, we're done (text already streamed)
+                    logger.info(f"[CLAUDE] No more tools, streaming complete")
                     yield {"type": "done"}
                     return
                 
                 # Process tool uses
-                logger.info(f"[CLAUDE] Processing {len(actual_tool_uses)} tool uses")
+                tool_names = [t.name for t in actual_tool_uses]
+                logger.info(f"[CLAUDE] Processing {len(actual_tool_uses)} tool uses: {tool_names}")
                 assistant_content = []
                 
                 for block in final_message.content:
@@ -771,8 +775,41 @@ class AlphawaveClaudeClient:
                 yield {"type": "error", "message": str(e)}
                 return
         
-        logger.warning(f"Reached max tool iterations ({max_tool_iterations})")
-        yield {"type": "error", "message": "Maximum tool iterations reached"}
+        # Max iterations reached - make final call WITHOUT tools to get proper response
+        logger.warning(f"[CLAUDE] Reached max tool iterations ({max_tool_iterations}), making final streaming call without tools")
+        try:
+            # Summarize what we learned from tools for context
+            tool_summary = "Based on my research and tool usage, here's what I found:\n"
+            
+            # Add a user message asking for final response
+            final_messages = list(messages)  # Start fresh with original messages
+            final_messages.append({
+                "role": "user",
+                "content": f"{tool_summary}\n\nPlease provide your complete response now, incorporating what you learned from using your tools."
+            })
+            
+            # Stream final response without tools
+            with self.client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt if system_prompt else "",
+                messages=final_messages
+            ) as stream:
+                for event in stream:
+                    if event.type == 'content_block_delta':
+                        delta = event.delta
+                        if getattr(delta, 'type', None) == 'text_delta':
+                            text = getattr(delta, 'text', '')
+                            if text:
+                                yield {"type": "text", "content": text}
+            
+            yield {"type": "done"}
+            logger.info("[CLAUDE] Final streaming call complete")
+            
+        except Exception as e:
+            logger.error(f"[CLAUDE] Final streaming call failed: {e}", exc_info=True)
+            yield {"type": "error", "message": f"Failed to generate final response: {str(e)}"}
     
     async def classify_with_haiku(
         self,
