@@ -507,7 +507,7 @@ async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent
         
         # Update status
         await db.execute(
-            "UPDATE faz_projects SET status = 'processing', updated_at = NOW() WHERE project_id = $1",
+            "UPDATE faz_projects SET status = 'planning', updated_at = NOW() WHERE project_id = $1",
             project_id,
         )
         

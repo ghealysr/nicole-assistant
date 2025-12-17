@@ -280,13 +280,13 @@ class FazOrchestrator:
         self.state["original_prompt"] = prompt
         self.state["current_prompt"] = prompt
         self.state["pipeline_status"] = PipelineStatus.RUNNING
-        self.state["status"] = "processing"
+        self.state["status"] = "planning"
         
         # Load context from memory
         await self._load_memory_context()
         
         # Update project status
-        await self._update_project_status("processing")
+        await self._update_project_status("planning")
         
         current_agent = start_agent
         
@@ -540,7 +540,7 @@ class FazOrchestrator:
             None: "approved",
         }
         
-        status = status_map.get(next_agent, "processing")
+        status = status_map.get(next_agent, "building")
         self.state["status"] = status
         await self._update_project_status(status)
     

@@ -327,12 +327,12 @@ async def run_pipeline(
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Check if already running
-        if project["status"] in ["processing", "building"]:
+        if project["status"] in ["planning", "researching", "designing", "building", "qa", "review", "deploying"]:
             raise HTTPException(status_code=400, detail="Pipeline already running")
         
-        # Update status
+        # Update status to 'planning' (first pipeline stage)
         await db.execute(
-            "UPDATE faz_projects SET status = 'processing', updated_at = NOW() WHERE project_id = $1",
+            "UPDATE faz_projects SET status = 'planning', updated_at = NOW() WHERE project_id = $1",
             project_id,
         )
         
