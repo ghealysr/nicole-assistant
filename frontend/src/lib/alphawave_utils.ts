@@ -30,10 +30,15 @@ export function getAuthHeaders(): HeadersInit {
 
 /**
  * Get auth token directly
+ * Checks for both Nicole JWT tokens and Google OAuth tokens
  */
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('nicole_token') || localStorage.getItem('auth_token');
+  return (
+    localStorage.getItem('nicole_token') ||
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('nicole_google_token') // Google OAuth ID token
+  );
 }
 
 /**
@@ -55,9 +60,15 @@ export function clearAuthToken(): void {
 
 /**
  * Check if user is authenticated
+ * Returns true if any valid auth token exists
  */
 export function isAuthenticated(): boolean {
-  return !!getAuthToken();
+  if (typeof window === 'undefined') return false;
+  return !!(
+    localStorage.getItem('nicole_token') ||
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('nicole_google_token')
+  );
 }
 
 /**
