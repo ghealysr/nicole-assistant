@@ -679,14 +679,30 @@ class AlphawaveClaudeClient:
                 
                 # Check if we need to execute tools
                 actual_tool_uses = [b for b in final_message.content if b.type == 'tool_use']
+                text_blocks = [b for b in final_message.content if b.type == 'text']
                 
-                logger.info(f"[CLAUDE] Iteration {iterations} complete - stop_reason: {final_message.stop_reason}, tool_uses: {len(actual_tool_uses)}")
+                logger.info(f"[CLAUDE] Iteration {iterations} complete - stop_reason: {final_message.stop_reason}, tool_uses: {len(actual_tool_uses)}, text_blocks: {len(text_blocks)}")
                 
                 if not actual_tool_uses:
-                    # No tools, we're done (text already streamed)
-                    logger.info(f"[CLAUDE] No more tools, streaming complete")
-                    yield {"type": "done"}
-                    return
+                    # No more tools requested
+                    # Check if we got meaningful text in this iteration
+                    total_text = "".join([b.text for b in text_blocks])
+                    
+                    if total_text.strip():
+                        # Text was already streamed during this iteration, we're done
+                        logger.info(f"[CLAUDE] No more tools, response streamed ({len(total_text)} chars), complete")
+                        yield {"type": "done"}
+                        return
+                    elif iterations > 1:
+                        # We executed tools but Claude didn't generate a response - force one
+                        logger.warning(f"[CLAUDE] Iteration {iterations}: Tools executed but no response text - forcing final response")
+                        # Fall through to max_iterations handling below
+                        break
+                    else:
+                        # First iteration with no tools and no text - unusual but done
+                        logger.warning(f"[CLAUDE] First iteration with no tools and no text - ending")
+                        yield {"type": "done"}
+                        return
                 
                 # Process tool uses
                 tool_names = [t.name for t in actual_tool_uses]
@@ -775,17 +791,18 @@ class AlphawaveClaudeClient:
                 yield {"type": "error", "message": str(e)}
                 return
         
-        # Max iterations reached - make final call WITHOUT tools to get proper response
-        logger.warning(f"[CLAUDE] Reached max tool iterations ({max_tool_iterations}), making final streaming call without tools")
+        # Max iterations reached OR Claude failed to generate response after tools
+        # Make final call WITHOUT tools to force a proper response
+        logger.warning(f"[CLAUDE] Making final streaming call without tools (iterations={iterations})")
         try:
-            # Summarize what we learned from tools for context
-            tool_summary = "Based on my research and tool usage, here's what I found:\n"
+            # Use the full conversation with tool results for context
+            # This ensures Claude has all the tool output to reference
+            final_messages = list(conversation)
             
-            # Add a user message asking for final response
-            final_messages = list(messages)  # Start fresh with original messages
+            # Add a prompt to ensure Claude generates a response
             final_messages.append({
                 "role": "user",
-                "content": f"{tool_summary}\n\nPlease provide your complete response now, incorporating what you learned from using your tools."
+                "content": "Now please provide your complete response to my original question, summarizing what you found from using your tools. Present the information clearly and helpfully."
             })
             
             # Stream final response without tools
