@@ -11,7 +11,7 @@ import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
-import type { ThinkingStep } from '@/lib/hooks/alphawave_use_chat';
+import type { ThinkingStep, ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
 interface Message {
   id: string;
@@ -195,8 +195,16 @@ function ThinkingBox({
 /**
  * Message bubble component - Claude style with attachment chips
  * Uses NicoleMessageRenderer for assistant messages with rich formatting
+ * 
+ * For assistant messages, can show real-time thinking block INSIDE the message area
  */
-function MessageBubble({ message }: { message: Message }) {
+interface MessageBubbleProps {
+  message: Message;
+  activityStatus?: ActivityStatus;
+  showThinking?: boolean;
+}
+
+function MessageBubble({ message, activityStatus, showThinking = false }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const hasAttachments = message.attachments && message.attachments.length > 0;
   
@@ -210,6 +218,15 @@ function MessageBubble({ message }: { message: Message }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  
+  // Determine if we should show the real-time thinking block
+  const shouldShowThinking = !isUser && showThinking && activityStatus && (
+    activityStatus.isActive ||
+    activityStatus.extendedThinking?.isThinking ||
+    activityStatus.extendedThinking?.content ||
+    activityStatus.extendedThinking?.isStreaming ||
+    activityStatus.toolUses?.length > 0
+  );
   
   return (
     <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'} animate-fade-in-up`}>
@@ -245,8 +262,15 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
           ) : (
             <>
-              {/* Thinking steps if available */}
-              {message.thinkingSteps && message.thinkingSteps.length > 0 && (
+              {/* Real-time thinking block - INSIDE Nicole's message area */}
+              {shouldShowThinking && activityStatus && (
+                <div className="mb-3">
+                  <NicoleActivityStatus status={activityStatus} />
+                </div>
+              )}
+              
+              {/* Saved thinking steps from history */}
+              {message.thinkingSteps && message.thinkingSteps.length > 0 && !shouldShowThinking && (
                 <ThinkingBox 
                   steps={message.thinkingSteps} 
                   summary={message.thinkingSummary}
@@ -260,7 +284,7 @@ function MessageBubble({ message }: { message: Message }) {
           )}
           
           {/* Action buttons for assistant messages */}
-          {!isUser && (
+          {!isUser && displayContent && (
             <div className="message-actions mt-3 flex gap-1">
               <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Good response">
                 <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
@@ -383,45 +407,18 @@ export function AlphawaveChatContainer() {
                 const isLastMessage = index === messages.length - 1;
                 const isAssistantMessage = message.role === 'assistant';
                 
-                // For the last assistant message, show thinking BEFORE the message
-                // This creates the Claude-style flow: think → collapse → respond
-                const showThinkingWithMessage = isLastMessage && isAssistantMessage && (
-                  activityStatus.isActive ||
-                  activityStatus.extendedThinking?.isThinking || 
-                  activityStatus.extendedThinking?.content ||
-                  activityStatus.extendedThinking?.isStreaming ||
-                  activityStatus.toolUses?.length > 0
+                // For the last assistant message, pass activityStatus to show thinking INSIDE the bubble
+                const shouldShowThinking = isLastMessage && isAssistantMessage;
+                
+                return (
+                  <MessageBubble 
+                    key={message.id} 
+                    message={message as Message}
+                    activityStatus={shouldShowThinking ? activityStatus : undefined}
+                    showThinking={shouldShowThinking}
+                  />
                 );
-                
-                if (showThinkingWithMessage) {
-                  return (
-                    <div key={message.id}>
-                      {/* Thinking block appears FIRST */}
-                      <div className="py-2 px-6">
-                        <div className="max-w-[800px] mx-auto">
-                          <NicoleActivityStatus status={activityStatus} />
-                        </div>
-                      </div>
-                      {/* Then Nicole's response streams below */}
-                      <MessageBubble message={message as Message} />
-                    </div>
-                  );
-                }
-                
-                return <MessageBubble key={message.id} message={message as Message} />;
               })}
-              
-              {/* Show thinking block when waiting for response (no assistant message yet) */}
-              {(activityStatus.isActive ||
-                activityStatus.extendedThinking?.isThinking || 
-                activityStatus.extendedThinking?.isStreaming) && 
-                (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && (
-                <div className="py-2 px-6">
-                  <div className="max-w-[800px] mx-auto">
-                    <NicoleActivityStatus status={activityStatus} />
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />
