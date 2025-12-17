@@ -1,5 +1,5 @@
 {
-  "updated_at": "2025-12-03T02:07:07.144282",
+  "updated_at": "2025-12-17T17:59:58.840183",
   "skills": [
     {
       "id": "ios-simulator-skill-ios-simulator-skill",
@@ -109,8 +109,16 @@
         {
           "domain": "testing",
           "description": "Demonstrates python script execution. Returns a greeting message.",
-          "trigger_phrases": ["run hello world", "test python skill", "execute example skill"],
-          "tags": ["testing", "demo", "python"]
+          "trigger_phrases": [
+            "run hello world",
+            "test python skill",
+            "execute example skill"
+          ],
+          "tags": [
+            "testing",
+            "demo",
+            "python"
+          ]
         }
       ],
       "safety": {
@@ -131,7 +139,9 @@
       "status": "installed",
       "setup_status": "ready",
       "last_health_check_at": "2025-12-10T19:30:00Z",
-      "health_notes": ["Manually verified - ready for execution"],
+      "health_notes": [
+        "Manually verified - ready for execution"
+      ],
       "last_run_at": null,
       "last_run_status": null,
       "knowledge_base_id": null
@@ -162,13 +172,26 @@
         {
           "domain": "notion",
           "description": "Captures knowledge from conversations and saves to Notion with proper structure and linking",
-          "trigger_phrases": ["save to notion", "capture knowledge", "document in notion", "create notion page", "save to wiki"],
-          "tags": ["notion", "documentation", "knowledge", "wiki"]
+          "trigger_phrases": [
+            "save to notion",
+            "capture knowledge",
+            "document in notion",
+            "create notion page",
+            "save to wiki"
+          ],
+          "tags": [
+            "notion",
+            "documentation",
+            "knowledge",
+            "wiki"
+          ]
         }
       ],
       "safety": {
         "risk_level": "low",
-        "notes": ["Uses Notion MCP tools for safe workspace operations"],
+        "notes": [
+          "Uses Notion MCP tools for safe workspace operations"
+        ],
         "review_status": "reviewed"
       },
       "usage_examples": [
@@ -183,7 +206,9 @@
       "status": "installed",
       "setup_status": "ready",
       "last_health_check_at": "2025-12-10T23:10:00Z",
-      "health_notes": ["Ready - uses Notion MCP tools"],
+      "health_notes": [
+        "Ready - uses Notion MCP tools"
+      ],
       "last_run_at": null,
       "last_run_status": null,
       "knowledge_base_id": null
@@ -214,13 +239,26 @@
         {
           "domain": "notion",
           "description": "Prepares comprehensive meeting materials with context gathering and agenda creation",
-          "trigger_phrases": ["prep for meeting", "create meeting agenda", "meeting prep", "prepare meeting materials", "create pre-read"],
-          "tags": ["notion", "meetings", "agenda", "preparation"]
+          "trigger_phrases": [
+            "prep for meeting",
+            "create meeting agenda",
+            "meeting prep",
+            "prepare meeting materials",
+            "create pre-read"
+          ],
+          "tags": [
+            "notion",
+            "meetings",
+            "agenda",
+            "preparation"
+          ]
         }
       ],
       "safety": {
         "risk_level": "low",
-        "notes": ["Uses Notion MCP tools for safe workspace operations"],
+        "notes": [
+          "Uses Notion MCP tools for safe workspace operations"
+        ],
         "review_status": "reviewed"
       },
       "usage_examples": [
@@ -235,7 +273,9 @@
       "status": "installed",
       "setup_status": "ready",
       "last_health_check_at": "2025-12-10T23:10:00Z",
-      "health_notes": ["Ready - uses Notion MCP tools"],
+      "health_notes": [
+        "Ready - uses Notion MCP tools"
+      ],
       "last_run_at": null,
       "last_run_status": null,
       "knowledge_base_id": null
@@ -266,13 +306,26 @@
         {
           "domain": "notion",
           "description": "Researches topics across Notion workspace and creates comprehensive documentation",
-          "trigger_phrases": ["research in notion", "document research", "create research report", "synthesize notion pages", "research documentation"],
-          "tags": ["notion", "research", "documentation", "synthesis"]
+          "trigger_phrases": [
+            "research in notion",
+            "document research",
+            "create research report",
+            "synthesize notion pages",
+            "research documentation"
+          ],
+          "tags": [
+            "notion",
+            "research",
+            "documentation",
+            "synthesis"
+          ]
         }
       ],
       "safety": {
         "risk_level": "low",
-        "notes": ["Uses Notion MCP tools for safe workspace operations"],
+        "notes": [
+          "Uses Notion MCP tools for safe workspace operations"
+        ],
         "review_status": "reviewed"
       },
       "usage_examples": [
@@ -287,7 +340,9 @@
       "status": "installed",
       "setup_status": "ready",
       "last_health_check_at": "2025-12-10T23:10:00Z",
-      "health_notes": ["Ready - uses Notion MCP tools"],
+      "health_notes": [
+        "Ready - uses Notion MCP tools"
+      ],
       "last_run_at": null,
       "last_run_status": null,
       "knowledge_base_id": null
@@ -318,13 +373,27 @@
         {
           "domain": "notion",
           "description": "Converts specifications into actionable implementation plans and tasks",
-          "trigger_phrases": ["implement spec", "create implementation plan", "break down spec", "create tasks from spec", "spec to tasks"],
-          "tags": ["notion", "specification", "implementation", "tasks", "project-management"]
+          "trigger_phrases": [
+            "implement spec",
+            "create implementation plan",
+            "break down spec",
+            "create tasks from spec",
+            "spec to tasks"
+          ],
+          "tags": [
+            "notion",
+            "specification",
+            "implementation",
+            "tasks",
+            "project-management"
+          ]
         }
       ],
       "safety": {
         "risk_level": "low",
-        "notes": ["Uses Notion MCP tools for safe workspace operations"],
+        "notes": [
+          "Uses Notion MCP tools for safe workspace operations"
+        ],
         "review_status": "reviewed"
       },
       "usage_examples": [
@@ -339,7 +408,1467 @@
       "status": "installed",
       "setup_status": "ready",
       "last_health_check_at": "2025-12-10T23:10:00Z",
-      "health_notes": ["Ready - uses Notion MCP tools"],
+      "health_notes": [
+        "Ready - uses Notion MCP tools"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-artifacts-builder",
+      "name": "artifacts-builder",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Suite of tools for creating elaborate, multi-component claude.ai HTML artifacts using modern frontend web technologies (React, Tailwind CSS, shadcn/ui). Use for complex artifacts requiring state management, routing, or shadcn/ui components - not for simple single-file HTML/JSX artifacts.",
+      "version": "1.0.0",
+      "checksum": "1f5c2d3bd954813b",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/artifacts-builder",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.743535"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "development",
+          "description": "Suite of tools for creating elaborate, multi-component claude.ai HTML artifacts using modern fronten",
+          "trigger_phrases": [],
+          "tags": [
+            "development",
+            "artifacts-builder"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/artifacts-builder",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.743706",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-brand-guidelines",
+      "name": "brand-guidelines",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.",
+      "version": "1.0.0",
+      "checksum": "349e6148520edb94",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/brand-guidelines",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.745271"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "creative",
+          "description": "Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit fr",
+          "trigger_phrases": [],
+          "tags": [
+            "creative",
+            "brand-guidelines"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/brand-guidelines",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.745273",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-canvas-design",
+      "name": "canvas-design",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Create beautiful visual art in .png and .pdf documents using design philosophy. You should use this skill when the user asks to create a poster, piece of art, design, or other static piece. Create original visual designs, never copying existing artists' work to avoid copyright violations.",
+      "version": "1.0.0",
+      "checksum": "fcdf59cf3c19d79b",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/canvas-design",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.759163"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "creative",
+          "description": "Create beautiful visual art in .png and .pdf documents using design philosophy. You should use this ",
+          "trigger_phrases": [],
+          "tags": [
+            "creative",
+            "canvas-design"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/canvas-design",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.759170",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-changelog-generator",
+      "name": "changelog-generator",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Automatically creates user-facing changelogs from git commits by analyzing commit history, categorizing changes, and transforming technical commits into clear, customer-friendly release notes. Turns hours of manual changelog writing into minutes of automated generation.",
+      "version": "1.0.0",
+      "checksum": "0fdde1fc7ed062a8",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/changelog-generator",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.775298"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Automatically creates user-facing changelogs from git commits by analyzing commit history, categoriz",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "changelog-generator"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/changelog-generator",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.775305",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-competitive-ads-extractor",
+      "name": "competitive-ads-extractor",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Extracts and analyzes competitors' ads from ad libraries (Facebook, LinkedIn, etc.) to understand what messaging, problems, and creative approaches are working. Helps inspire and improve your own ad campaigns.",
+      "version": "1.0.0",
+      "checksum": "c9bc0f711936ee05",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/competitive-ads-extractor",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.775849"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "business",
+          "description": "Extracts and analyzes competitors' ads from ad libraries (Facebook, LinkedIn, etc.) to understand wh",
+          "trigger_phrases": [],
+          "tags": [
+            "business",
+            "competitive-ads-extractor"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/competitive-ads-extractor",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.775851",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-content-research-writer",
+      "name": "content-research-writer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Assists in writing high-quality content by conducting research, adding citations, improving hooks, iterating on outlines, and providing real-time feedback on each section. Transforms your writing process from solo effort to collaborative partnership.",
+      "version": "1.0.0",
+      "checksum": "27eb5c1a0a88a9c1",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/content-research-writer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.776385"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "communication",
+          "description": "Assists in writing high-quality content by conducting research, adding citations, improving hooks, i",
+          "trigger_phrases": [],
+          "tags": [
+            "communication",
+            "content-research-writer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/content-research-writer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.776386",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-developer-growth-analysis",
+      "name": "developer-growth-analysis",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Analyzes your recent Claude Code chat history to identify coding patterns, development gaps, and areas for improvement, curates relevant learning resources from HackerNews, and automatically sends a personalized growth report to your Slack DMs.",
+      "version": "1.0.0",
+      "checksum": "8117a9dcd2991c53",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/developer-growth-analysis",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.776929"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "development",
+          "description": "Analyzes your recent Claude Code chat history to identify coding patterns, development gaps, and are",
+          "trigger_phrases": [],
+          "tags": [
+            "development",
+            "developer-growth-analysis"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/developer-growth-analysis",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.776931",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-docx",
+      "name": "docx",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. When Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks",
+      "version": "1.0.0",
+      "checksum": "f3be4f8568c1cc13",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/docx",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Proprietary. LICENSE.txt has complete terms",
+        "imported_at": "2025-12-17T17:59:58.783811"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "__init__.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "documents",
+          "description": "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, f",
+          "trigger_phrases": [],
+          "tags": [
+            "documents",
+            "docx"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/docx",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.783817",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-pdf",
+      "name": "pdf",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms. When Claude needs to fill in a PDF form or programmatically process, generate, or analyze PDF documents at scale.",
+      "version": "1.0.0",
+      "checksum": "dd77969b26785158",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/pdf",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Proprietary. LICENSE.txt has complete terms",
+        "imported_at": "2025-12-17T17:59:58.796220"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "fill_fillable_fields.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "documents",
+          "description": "Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/sp",
+          "trigger_phrases": [],
+          "tags": [
+            "documents",
+            "pdf"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/pdf",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.796227",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-pptx",
+      "name": "pptx",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx files) for: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes, or any other presentation tasks",
+      "version": "1.0.0",
+      "checksum": "1aaed7c4a94b8869",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/pptx",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Proprietary. LICENSE.txt has complete terms",
+        "imported_at": "2025-12-17T17:59:58.805185"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "thumbnail.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "documents",
+          "description": "Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx fi",
+          "trigger_phrases": [],
+          "tags": [
+            "documents",
+            "pptx"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/pptx",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.805193",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-xlsx",
+      "name": "xlsx",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas",
+      "version": "1.0.0",
+      "checksum": "2958f68802bc6c70",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/xlsx",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Proprietary. LICENSE.txt has complete terms",
+        "imported_at": "2025-12-17T17:59:58.816917"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "documents",
+          "description": "Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, dat",
+          "trigger_phrases": [],
+          "tags": [
+            "documents",
+            "xlsx"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/xlsx",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.816922",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-domain-name-brainstormer",
+      "name": "domain-name-brainstormer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Generates creative domain name ideas for your project and checks availability across multiple TLDs (.com, .io, .dev, .ai, etc.). Saves hours of brainstorming and manual checking.",
+      "version": "1.0.0",
+      "checksum": "495707739b354f81",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/domain-name-brainstormer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.817796"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "business",
+          "description": "Generates creative domain name ideas for your project and checks availability across multiple TLDs (",
+          "trigger_phrases": [],
+          "tags": [
+            "business",
+            "domain-name-brainstormer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/domain-name-brainstormer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.817799",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-file-organizer",
+      "name": "file-organizer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Intelligently organizes your files and folders across your computer by understanding context, finding duplicates, suggesting better structures, and automating cleanup tasks. Reduces cognitive load and keeps your digital workspace tidy without manual effort.",
+      "version": "1.0.0",
+      "checksum": "a8b91952bab7f735",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/file-organizer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.818351"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "productivity",
+          "description": "Intelligently organizes your files and folders across your computer by understanding context, findin",
+          "trigger_phrases": [],
+          "tags": [
+            "productivity",
+            "file-organizer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/file-organizer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.818353",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-image-enhancer",
+      "name": "image-enhancer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Improves the quality of images, especially screenshots, by enhancing resolution, sharpness, and clarity. Perfect for preparing images for presentations, documentation, or social media posts.",
+      "version": "1.0.0",
+      "checksum": "57b003b9cd0c3e42",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/image-enhancer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.818866"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "creative",
+          "description": "Improves the quality of images, especially screenshots, by enhancing resolution, sharpness, and clar",
+          "trigger_phrases": [],
+          "tags": [
+            "creative",
+            "image-enhancer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/image-enhancer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.818868",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-internal-comms",
+      "name": "internal-comms",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).",
+      "version": "1.0.0",
+      "checksum": "2096aee0072a6381",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/internal-comms",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.819904"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "communication",
+          "description": "A set of resources to help me write all kinds of internal communications, using the formats that my ",
+          "trigger_phrases": [],
+          "tags": [
+            "communication",
+            "internal-comms"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/internal-comms",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.819908",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-invoice-organizer",
+      "name": "invoice-organizer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Automatically organizes invoices and receipts for tax preparation by reading messy files, extracting key information, renaming them consistently, and sorting them into logical folders. Turns hours of manual bookkeeping into minutes of automated organization.",
+      "version": "1.0.0",
+      "checksum": "62198235231376cb",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/invoice-organizer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.821443"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "business",
+          "description": "Automatically organizes invoices and receipts for tax preparation by reading messy files, extracting",
+          "trigger_phrases": [],
+          "tags": [
+            "business",
+            "invoice-organizer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/invoice-organizer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.821445",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-lead-research-assistant",
+      "name": "lead-research-assistant",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Identifies high-quality leads for your product or service by analyzing your business, searching for target companies, and providing actionable contact strategies. Perfect for sales, business development, and marketing professionals.",
+      "version": "1.0.0",
+      "checksum": "5b6a21b21d4a4bfd",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/lead-research-assistant",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.821873"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "business",
+          "description": "Identifies high-quality leads for your product or service by analyzing your business, searching for ",
+          "trigger_phrases": [],
+          "tags": [
+            "business",
+            "lead-research-assistant"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/lead-research-assistant",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.821874",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-mcp-builder",
+      "name": "mcp-builder",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. Use when building MCP servers to integrate external APIs or services, whether in Python (FastMCP) or Node/TypeScript (MCP SDK).",
+      "version": "1.0.0",
+      "checksum": "d7928243242385bd",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/mcp-builder",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.823423"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "evaluation.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "development",
+          "description": "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact wi",
+          "trigger_phrases": [],
+          "tags": [
+            "development",
+            "mcp-builder"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/mcp-builder",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.823425",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-meeting-insights-analyzer",
+      "name": "meeting-insights-analyzer",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Analyzes meeting transcripts and recordings to uncover behavioral patterns, communication insights, and actionable feedback. Identifies when you avoid conflict, use filler words, dominate conversations, or miss opportunities to listen. Perfect for professionals seeking to improve their communication and leadership skills.",
+      "version": "1.0.0",
+      "checksum": "c639c0fc10a84225",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/meeting-insights-analyzer",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.825604"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "business",
+          "description": "Analyzes meeting transcripts and recordings to uncover behavioral patterns, communication insights, ",
+          "trigger_phrases": [],
+          "tags": [
+            "business",
+            "meeting-insights-analyzer"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/meeting-insights-analyzer",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.825606",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-raffle-winner-picker",
+      "name": "raffle-winner-picker",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Picks random winners from lists, spreadsheets, or Google Sheets for giveaways, raffles, and contests. Ensures fair, unbiased selection with transparency.",
+      "version": "1.0.0",
+      "checksum": "3ca742a080f4b257",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/raffle-winner-picker",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.826008"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "productivity",
+          "description": "Picks random winners from lists, spreadsheets, or Google Sheets for giveaways, raffles, and contests",
+          "trigger_phrases": [],
+          "tags": [
+            "productivity",
+            "raffle-winner-picker"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/raffle-winner-picker",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.826009",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-skill-creator",
+      "name": "skill-creator",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.",
+      "version": "1.0.0",
+      "checksum": "7a91e7ac65d7fb6f",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/skill-creator",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.826673"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "init_skill.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "skill-creator"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/skill-creator",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.826675",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-skill-share",
+      "name": "skill-share",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "A skill that creates new Claude skills and automatically shares them on Slack using Rube for seamless team collaboration and skill discovery.",
+      "version": "1.0.0",
+      "checksum": "490d49b6be9169c3",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/skill-share",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.827737"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "A skill that creates new Claude skills and automatically shares them on Slack using Rube for seamles",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "skill-share"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/skill-share",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.827738",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-slack-gif-creator",
+      "name": "slack-gif-creator",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Toolkit for creating animated GIFs optimized for Slack, with validators for size constraints and composable animation primitives. This skill applies when users request animated GIFs or emoji animations for Slack from descriptions like \"make me a GIF for Slack of X doing Y\".",
+      "version": "1.0.0",
+      "checksum": "4b35a4b2af34165b",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/slack-gif-creator",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.829795"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Toolkit for creating animated GIFs optimized for Slack, with validators for size constraints and com",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "slack-gif-creator"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/slack-gif-creator",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.829796",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-template-skill",
+      "name": "template-skill",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Replace with description of the skill and when Claude should use it.",
+      "version": "1.0.0",
+      "checksum": "eb685d91de039ed8",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/template-skill",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.833937"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Replace with description of the skill and when Claude should use it.",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "template-skill"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/template-skill",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.833939",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-theme-factory",
+      "name": "theme-factory",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Toolkit for styling artifacts with a theme. These artifacts can be slides, docs, reportings, HTML landing pages, etc. There are 10 pre-set themes with colors/fonts that you can apply to any artifact that has been creating, or can generate a new theme on-the-fly.",
+      "version": "1.0.0",
+      "checksum": "14f575e587eef24a",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/theme-factory",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.835688"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "creative",
+          "description": "Toolkit for styling artifacts with a theme. These artifacts can be slides, docs, reportings, HTML la",
+          "trigger_phrases": [],
+          "tags": [
+            "creative",
+            "theme-factory"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/theme-factory",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.835691",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-video-downloader",
+      "name": "video-downloader",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Downloads videos from YouTube and other platforms for offline viewing, editing, or archival. Handles various formats and quality options.",
+      "version": "1.0.0",
+      "checksum": "b5acaa3f9ee216c3",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/video-downloader",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "MIT",
+        "imported_at": "2025-12-17T17:59:58.838028"
+      },
+      "executor": {
+        "executor_type": "manual",
+        "entrypoint": "SKILL.md",
+        "runtime": null,
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "general",
+          "description": "Downloads videos from YouTube and other platforms for offline viewing, editing, or archival. Handles",
+          "trigger_phrases": [],
+          "tags": [
+            "general",
+            "video-downloader"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/video-downloader",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.838030",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
+      "last_run_at": null,
+      "last_run_status": null,
+      "knowledge_base_id": null
+    },
+    {
+      "id": "claude-skills-webapp-testing",
+      "name": "webapp-testing",
+      "vendor": "ComposioHQ/awesome-claude-skills",
+      "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.",
+      "version": "1.0.0",
+      "checksum": "4e347750b23cdf4a",
+      "source": {
+        "url": "https://github.com/ComposioHQ/awesome-claude-skills/tree/master/webapp-testing",
+        "repo": "ComposioHQ/awesome-claude-skills",
+        "ref": "master",
+        "license": "Complete terms in LICENSE.txt",
+        "imported_at": "2025-12-17T17:59:58.838953"
+      },
+      "executor": {
+        "executor_type": "python_script",
+        "entrypoint": "with_server.py",
+        "runtime": "python3",
+        "timeout_seconds": 300,
+        "env": {},
+        "requires_gpu": false
+      },
+      "capabilities": [
+        {
+          "domain": "development",
+          "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying",
+          "trigger_phrases": [],
+          "tags": [
+            "development",
+            "webapp-testing"
+          ]
+        }
+      ],
+      "safety": {
+        "risk_level": "low",
+        "notes": [
+          "Imported from awesome-claude-skills"
+        ],
+        "review_status": "unreviewed"
+      },
+      "usage_examples": [],
+      "dependencies": [],
+      "tests": [],
+      "install_path": "skills/installed/claude-skills/webapp-testing",
+      "status": "installed",
+      "setup_status": "ready",
+      "last_health_check_at": "2025-12-17T17:59:58.838955",
+      "health_notes": [
+        "Auto-imported from awesome-claude-skills"
+      ],
       "last_run_at": null,
       "last_run_status": null,
       "knowledge_base_id": null
