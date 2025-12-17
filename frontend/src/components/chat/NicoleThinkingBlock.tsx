@@ -42,7 +42,7 @@ interface ToolIndicatorProps {
   success?: boolean;
 }
 
-const ToolIndicator = memo(function ToolIndicator({ toolName, isActive, result, success }: ToolIndicatorProps) {
+const ToolIndicator = memo(function ToolIndicator({ toolName, isActive, success }: ToolIndicatorProps) {
   const getToolIcon = (name: string) => {
     const lowerName = name.toLowerCase();
     if (lowerName.includes('memory')) return '🧠';
