@@ -599,6 +599,75 @@ TECHNICAL RESEARCH MODE:
             research_type=ResearchType.COMPETITOR,
             enable_thinking=True
         )
+    
+    async def generate_content(
+        self,
+        prompt: str,
+        model_name: str = "gemini-3-pro-preview",
+        temperature: float = 0.7,
+        max_tokens: int = 8192,
+        enable_thinking: bool = False
+    ) -> str:
+        """
+        Generate text content using Gemini.
+        
+        This is a simple text generation method for agents that need
+        raw generation capabilities without research grounding.
+        
+        Args:
+            prompt: The full prompt including system instruction
+            model_name: Model to use
+            temperature: Sampling temperature
+            max_tokens: Maximum output tokens
+            enable_thinking: Enable thinking mode
+            
+        Returns:
+            Generated text content
+        """
+        if not self.is_configured:
+            raise RuntimeError("Gemini not configured - check GEMINI_API_KEY")
+        
+        try:
+            # Build config
+            config = types.GenerateContentConfig(
+                response_modalities=["TEXT"],
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            )
+            
+            # Add thinking if enabled
+            if enable_thinking:
+                config.thinking_config = types.ThinkingConfig(
+                    thinking_budget=4000
+                )
+            
+            # Execute generation with retry
+            @async_retry_with_backoff(max_attempts=3, base_delay=1.0)
+            async def _execute_generation():
+                return await asyncio.to_thread(
+                    self._client.models.generate_content,
+                    model=model_name,
+                    contents=prompt,
+                    config=config
+                )
+            
+            response = await _execute_generation()
+            
+            # Extract text from response
+            text = ""
+            for candidate in response.candidates:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        text += part.text
+            
+            if not text:
+                raise RuntimeError("No text content in Gemini response")
+            
+            return text
+            
+        except Exception as e:
+            logger.error(f"[GEMINI] Generation failed: {e}", exc_info=True)
+            raise
 
 
 # Singleton instance

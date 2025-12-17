@@ -193,13 +193,14 @@ function AppLayoutInner({ children }: { children: React.ReactNode }) {
         onNewChat={clearConversation}
       />
 
-      {/* Main content area */}
+      {/* Main content area - show Faz Code OR regular content */}
       <main className="flex-1 min-w-0 overflow-hidden">
-        {children}
+        {isFazCodeOpen ? (
+          <FazCodePanel isOpen={true} onClose={() => setIsFazCodeOpen(false)} isFullWidth={true} />
+        ) : (
+          children
+        )}
       </main>
-
-      {/* Faz Code Panel - slides in from right */}
-      <FazCodePanel isOpen={isFazCodeOpen} onClose={() => setIsFazCodeOpen(false)} />
 
       {/* Memory Dashboard - slides in from right */}
       <AlphawaveMemoryDashboard isOpen={isMemoryOpen} onClose={() => setIsMemoryOpen(false)} authToken={token || undefined} />
