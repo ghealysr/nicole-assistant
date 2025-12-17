@@ -21,6 +21,58 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 
+def _build_family_section(family_context: Optional[Dict[str, Any]]) -> str:
+    """
+    Build the family context section for the system prompt.
+    
+    Args:
+        family_context: Dictionary containing family member information
+        
+    Returns:
+        Formatted family context string for the prompt
+    """
+    if not family_context:
+        return ""
+    
+    members = family_context.get("members", [])
+    if not members:
+        return ""
+    
+    lines = [
+        "## 👨‍👩‍👧‍👦 FAMILY CONTEXT",
+        "",
+        "Glen's family members (I know and remember them):",
+        ""
+    ]
+    
+    for member in members:
+        name = member.get("name", "Unknown")
+        relationship = member.get("relationship", "family member")
+        age = member.get("age")
+        interests = member.get("interests", [])
+        notes = member.get("notes", "")
+        
+        # Build member entry
+        entry = f"### {name} ({relationship})"
+        lines.append(entry)
+        
+        if age:
+            lines.append(f"- **Age:** {age}")
+        
+        if interests:
+            lines.append(f"- **Interests:** {', '.join(interests)}")
+        
+        if notes:
+            lines.append(f"- **Notes:** {notes}")
+        
+        lines.append("")
+    
+    lines.append("---")
+    lines.append("")
+    
+    return "\n".join(lines)
+
+
 def build_nicole_system_prompt(
     user_name: str,
     user_role: str,
@@ -353,6 +405,8 @@ I don't just wait to be asked. I:
 {document_context if document_context else "_No documents referenced._"}
 
 ---
+
+{_build_family_section(family_context) if family_context else ""}
 
 ## 🧠 THINK TOOL - Explicit Reasoning
 

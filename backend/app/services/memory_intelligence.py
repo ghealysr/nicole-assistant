@@ -94,10 +94,11 @@ class MemoryIntelligenceService:
     """
     
     def __init__(self):
-        self._min_memory_length = 10  # Minimum content length
-        self._max_daily_memories = 100  # Prevent memory bloat
-        self._similarity_threshold = 0.85  # For duplicate detection
-        self._relationship_threshold = 0.6  # Minimum for auto-linking
+        from app.config import settings
+        self._min_memory_length = settings.MEMORY_MIN_CONTENT_LENGTH
+        self._max_daily_memories = settings.MEMORY_MAX_DAILY_PER_USER
+        self._similarity_threshold = settings.MEMORY_SIMILARITY_THRESHOLD
+        self._relationship_threshold = settings.MEMORY_RELATIONSHIP_THRESHOLD
         
     # =========================================================================
     # INTELLIGENT MEMORY EXTRACTION

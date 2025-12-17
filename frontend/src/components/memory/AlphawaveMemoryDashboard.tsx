@@ -52,6 +52,8 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
   const [memorySearch, setMemorySearch] = useState('');
   const [documentSearch, setDocumentSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  const [correctionModal, setCorrectionModal] = useState<{ memory: Memory; isOpen: boolean } | null>(null);
+  const [correctionText, setCorrectionText] = useState('');
   
   const resizeRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
@@ -102,6 +104,95 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
     return { label: 'No Data', class: 'mem-badge-info' };
   };
   
+  // API base URL
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+
+  // Memory management handlers
+  const handleCorrectMemory = useCallback((memory: Memory) => {
+    setCorrectionModal({ memory, isOpen: true });
+    setCorrectionText(memory.content);
+  }, []);
+
+  const handleSubmitCorrection = useCallback(async () => {
+    if (!correctionModal || !authToken) return;
+    
+    try {
+      const response = await fetch(`${API_BASE}/memories/${correctionModal.memory.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          content: correctionText,
+        }),
+      });
+
+      if (response.ok) {
+        // Also record the correction for learning
+        await fetch(`${API_BASE}/memories/learn-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            original: correctionModal.memory.content,
+            corrected: correctionText,
+          }),
+        });
+        
+        dashboardData.refresh();
+        setCorrectionModal(null);
+        setCorrectionText('');
+      }
+    } catch (error) {
+      console.error('Failed to correct memory:', error);
+    }
+  }, [correctionModal, correctionText, authToken, dashboardData, API_BASE]);
+
+  const handleBoostMemory = useCallback(async (memory: Memory) => {
+    if (!authToken) return;
+    
+    try {
+      await fetch(`${API_BASE}/memories/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          operation: 'boost_confidence',
+          memory_ids: [memory.id],
+          confidence_boost: 0.1,
+        }),
+      });
+      
+      dashboardData.refresh();
+    } catch (error) {
+      console.error('Failed to boost memory:', error);
+    }
+  }, [authToken, dashboardData, API_BASE]);
+
+  const handleArchiveMemory = useCallback(async (memory: Memory) => {
+    if (!authToken) return;
+    
+    if (!confirm('Archive this memory? It can be restored later.')) return;
+    
+    try {
+      await fetch(`${API_BASE}/memories/${memory.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+      
+      dashboardData.refresh();
+    } catch (error) {
+      console.error('Failed to archive memory:', error);
+    }
+  }, [authToken, dashboardData, API_BASE]);
+
   // Calculate actual day names for 7-day chart
   const getDayLabels = (): string[] => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -528,7 +619,7 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
               <div className="mem-memory-list">
                 {filteredMemories.length > 0 ? (
                   filteredMemories.map(memory => (
-                    <div key={memory.id} className="mem-memory-item">
+                    <div key={memory.id} className="mem-memory-item" style={{ position: 'relative' }}>
                       <span className={`mem-memory-type-badge ${getMemoryTypeBadgeClass(memory.type)}`}>
                         {memory.type}
                       </span>
@@ -543,6 +634,84 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
                           </span>
                           <span>Accessed {memory.accessCount}x</span>
                           <span>{memory.lastAccessed}</span>
+                        </div>
+                        {/* Memory Actions */}
+                        <div className="mem-memory-actions" style={{ 
+                          display: 'flex', 
+                          gap: '4px', 
+                          marginTop: '8px',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}>
+                          <button
+                            onClick={() => handleCorrectMemory(memory)}
+                            className="mem-action-btn"
+                            title="Correct this memory"
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              background: 'var(--alphawave-surface)',
+                              border: '1px solid var(--alphawave-border)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: 'var(--alphawave-text-secondary)'
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="12" height="12">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            Correct
+                          </button>
+                          <button
+                            onClick={() => handleBoostMemory(memory)}
+                            className="mem-action-btn"
+                            title="Boost confidence"
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              background: 'var(--alphawave-surface)',
+                              border: '1px solid var(--alphawave-border)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: 'var(--alphawave-text-secondary)'
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="12" height="12">
+                              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                              <polyline points="17 6 23 6 23 12"/>
+                            </svg>
+                            Boost
+                          </button>
+                          <button
+                            onClick={() => handleArchiveMemory(memory)}
+                            className="mem-action-btn"
+                            title="Archive this memory"
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              background: 'var(--alphawave-surface)',
+                              border: '1px solid var(--alphawave-border)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: '#ef4444'
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="12" height="12">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                            </svg>
+                            Archive
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -859,6 +1028,130 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
           </div>
         </div>
       </div>
+
+      {/* Memory Correction Modal */}
+      {correctionModal?.isOpen && (
+        <div 
+          className="mem-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setCorrectionModal(null)}
+        >
+          <div 
+            className="mem-modal"
+            style={{
+              background: 'var(--alphawave-bg)',
+              borderRadius: '12px',
+              padding: '24px',
+              width: '90%',
+              maxWidth: '500px',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 600 }}>
+              Correct Memory
+            </h3>
+            <p style={{ 
+              fontSize: '13px', 
+              color: 'var(--alphawave-text-secondary)', 
+              marginBottom: '16px' 
+            }}>
+              Edit the memory content below. Nicole will learn from this correction.
+            </p>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ 
+                display: 'block', 
+                fontSize: '12px', 
+                fontWeight: 500, 
+                marginBottom: '6px',
+                color: 'var(--alphawave-text-secondary)'
+              }}>
+                Original:
+              </label>
+              <div style={{
+                padding: '12px',
+                background: 'var(--alphawave-surface)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                color: 'var(--alphawave-text-secondary)',
+                textDecoration: 'line-through',
+                opacity: 0.7,
+              }}>
+                {correctionModal.memory.content}
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ 
+                display: 'block', 
+                fontSize: '12px', 
+                fontWeight: 500, 
+                marginBottom: '6px',
+                color: 'var(--alphawave-text)'
+              }}>
+                Corrected:
+              </label>
+              <textarea
+                value={correctionText}
+                onChange={(e) => setCorrectionText(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--alphawave-surface)',
+                  border: '1px solid var(--alphawave-border)',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  minHeight: '100px',
+                  resize: 'vertical',
+                  color: 'var(--alphawave-text)',
+                }}
+                placeholder="Enter the corrected information..."
+              />
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => setCorrectionModal(null)}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--alphawave-border)',
+                  background: 'transparent',
+                  color: 'var(--alphawave-text)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitCorrection}
+                disabled={correctionText === correctionModal.memory.content}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: correctionText !== correctionModal.memory.content ? 'var(--alphawave-primary)' : 'var(--alphawave-surface)',
+                  color: correctionText !== correctionModal.memory.content ? '#fff' : 'var(--alphawave-text-secondary)',
+                  cursor: correctionText !== correctionModal.memory.content ? 'pointer' : 'not-allowed',
+                  fontWeight: 500,
+                }}
+              >
+                Save Correction
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

@@ -49,6 +49,17 @@ export interface ExtendedThinking {
 }
 
 /**
+ * Tool use tracking
+ */
+export interface ToolUse {
+  id: string;
+  name: string;
+  isActive: boolean;
+  result?: string;
+  success?: boolean;
+}
+
+/**
  * Activity status for real-time display
  */
 export interface ActivityStatus {
@@ -63,6 +74,9 @@ export interface ActivityStatus {
   
   // Extended thinking (Claude-style)
   extendedThinking: ExtendedThinking;
+  
+  // Tool uses (for transparency)
+  toolUses: ToolUse[];
   
   // Memory notification (shows when Nicole remembers something)
   memoryNotification?: string;
@@ -174,6 +188,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       content: '',
       isComplete: false,
     },
+    toolUses: [],
   });
   
   // Flag to prevent loading history when we just created a new conversation during streaming
@@ -272,6 +287,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         content: '',
         isComplete: false,
       },
+      toolUses: [],
     });
 
     try {
@@ -421,20 +437,34 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
               } else if (data.type === 'tool_start') {
                 // Tool execution started
                 const toolName = data.tool_name || 'tool';
+                const toolId = data.tool_id || crypto.randomUUID();
                 setActivityStatus(prev => ({
                   ...prev,
                   isActive: true,
                   type: 'tool',
                   toolName,
                   displayText: getToolDisplayText(toolName),
+                  // Add new tool use to tracking
+                  toolUses: [
+                    ...prev.toolUses.map(t => ({ ...t, isActive: false })),
+                    { id: toolId, name: toolName, isActive: true }
+                  ],
                 }));
               } else if (data.type === 'tool_complete') {
-                // Tool finished - back to thinking
+                // Tool finished - update tool status
+                const toolName = data.tool_name || '';
+                const success = data.success !== false;
                 setActivityStatus(prev => ({
                   ...prev,
                   isActive: true,
                   type: 'thinking',
                   displayText: 'Processing...',
+                  // Mark the tool as complete
+                  toolUses: prev.toolUses.map(t => 
+                    t.name === toolName && t.isActive 
+                      ? { ...t, isActive: false, success }
+                      : t
+                  ),
                 }));
               } else if (data.type === 'thinking_step') {
                 // Simple status update from thinking step

@@ -122,8 +122,9 @@ class AgentOrchestrator:
             Skill activation prompt if a relevant skill is found, else None
         """
         try:
+            from app.config import settings
             relevant = self.detect_relevant_skills(user_message)
-            if relevant and relevant[0].get('relevance_score', 0) >= 5.0:
+            if relevant and relevant[0].get('relevance_score', 0) >= settings.SKILL_ACTIVATION_THRESHOLD:
                 skill = relevant[0]
                 activation = claude_skills_service.get_skill_activation_prompt(skill['id'])
                 if activation:

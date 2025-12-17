@@ -119,6 +119,38 @@ class Settings(BaseSettings):
     VERCEL_TOKEN: str = ""
     VERCEL_TEAM_ID: str = ""  # Optional team ID
 
+    # =========================================================================
+    # NICOLE INTELLIGENCE CONFIGURATION
+    # =========================================================================
+    
+    # Extended Thinking (Claude-style reasoning)
+    EXTENDED_THINKING_ENABLED: bool = True
+    EXTENDED_THINKING_BUDGET: int = 8000  # Tokens for thinking
+    
+    # Agent Tools
+    AGENT_TOOLS_ENABLED: bool = True
+    MAX_TOOL_ITERATIONS: int = 10
+    
+    # Memory System
+    MEMORY_MIN_CONTENT_LENGTH: int = 10
+    MEMORY_MAX_DAILY_PER_USER: int = 100
+    MEMORY_SIMILARITY_THRESHOLD: float = 0.85
+    MEMORY_RELATIONSHIP_THRESHOLD: float = 0.6
+    
+    # Memory Decay Settings
+    MEMORY_DECAY_DAYS_THRESHOLD: int = 30
+    MEMORY_DECAY_AMOUNT: float = 0.03
+    MEMORY_MIN_CONFIDENCE: float = 0.10
+    MEMORY_ARCHIVE_THRESHOLD: float = 0.15
+    
+    # Conversation Settings
+    CONVERSATION_HISTORY_LIMIT: int = 25
+    MEMORY_SEARCH_LIMIT: int = 10
+    MEMORY_SEARCH_MIN_CONFIDENCE: float = 0.3
+    
+    # Skill Activation
+    SKILL_ACTIVATION_THRESHOLD: float = 5.0
+
     class Config:
         env_file = ".env" if os.path.exists(".env") else "/opt/nicole/.env"
         env_file_encoding = "utf-8"

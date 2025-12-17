@@ -60,9 +60,10 @@ logger = logging.getLogger(__name__)
 # AGENT CONFIGURATION
 # ============================================================================
 
-# Feature flags
-ENABLE_AGENT_TOOLS = True  # Think Tool, Tool Search, Memory, Document
-ENABLE_EXTENDED_THINKING = False  # Disabled - requires anthropic SDK >= 0.45.0 (currently 0.39.0)
+# Feature flags - Now configured via settings
+from app.config import settings
+ENABLE_AGENT_TOOLS = settings.AGENT_TOOLS_ENABLED
+ENABLE_EXTENDED_THINKING = settings.EXTENDED_THINKING_ENABLED
 
 router = APIRouter()
 
@@ -556,7 +557,7 @@ async def send_message(
                 FROM messages
                 WHERE conversation_id = $1
                 ORDER BY created_at DESC
-                LIMIT 25
+                LIMIT {settings.CONVERSATION_HISTORY_LIMIT}
                 """,
                 conversation_id,
             )
@@ -602,6 +603,11 @@ async def send_message(
             except Exception as e:
                 logger.warning(f"[STREAM] Skill detection failed: {e}")
             
+            # Build family context from user data if available
+            family_context = None
+            if "family_members" in user_data:
+                family_context = {"members": user_data["family_members"]}
+            
             # Build the complete system prompt
             system_prompt = build_nicole_system_prompt(
                 user_name=user_name,
@@ -609,6 +615,7 @@ async def send_message(
                 user_data=user_data,
                 memory_context=formatted_memory_context,
                 document_context=formatted_document_context,
+                family_context=family_context,
                 skills_context=skills_summary,
                 active_skill=active_skill,
             )
@@ -656,7 +663,7 @@ async def send_message(
                         max_tokens=16000,
                         temperature=0.7,
                         enable_thinking=ENABLE_EXTENDED_THINKING,
-                        thinking_budget=8000,
+                        thinking_budget=settings.EXTENDED_THINKING_BUDGET,
                     ):
                         event_type = event.get("type", "")
                         

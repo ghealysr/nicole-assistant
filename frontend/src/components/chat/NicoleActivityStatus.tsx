@@ -12,8 +12,11 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
-import type { ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
+import type { ActivityStatus, ToolUse } from '@/lib/hooks/alphawave_use_chat';
 import { NicoleThinkingBlock } from './NicoleThinkingBlock';
+
+// Re-export ToolUse for components that need it
+export type { ToolUse };
 
 // Color palette
 const colors = {
@@ -139,8 +142,11 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
     };
   }, [shouldBeVisible, isVisible, isExiting, status.isActive, status.completedAt, hasThinkingContent]);
   
-  // If we have extended thinking content, show the ThinkingBlock
-  if (hasThinkingContent || isThinkingActive) {
+  // Check if we have tool uses to show
+  const hasToolUses = status.toolUses && status.toolUses.length > 0;
+  
+  // If we have extended thinking content or tool uses, show the ThinkingBlock
+  if (hasThinkingContent || isThinkingActive || hasToolUses) {
     return (
       <div 
         className={`
@@ -155,6 +161,7 @@ export function NicoleActivityStatus({ status }: NicoleActivityStatusProps) {
             content={status.extendedThinking?.content || ''}
             duration={status.extendedThinking?.duration}
             isComplete={status.extendedThinking?.isComplete || false}
+            toolUses={status.toolUses}
           />
         </div>
       </div>
