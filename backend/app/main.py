@@ -204,9 +204,42 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# GZip compression for responses > 1KB
+# GZip compression - with SSE streaming exclusion
+# NOTE: GZip MUST NOT compress SSE endpoints (text/event-stream)
+# because it buffers content before compressing, breaking real-time streaming
 from starlette.middleware.gzip import GZipMiddleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+class ConditionalGZipMiddleware:
+    """GZip middleware that excludes SSE endpoints."""
+    
+    # Paths that should NOT be gzipped (streaming endpoints)
+    EXCLUDED_PATHS = [
+        "/chat/message",      # Main chat streaming
+        "/chat/stream-test",  # Streaming test endpoint
+        "/vibe/",             # Vibe dashboard streaming
+        "/faz/",              # Faz code streaming
+    ]
+    
+    def __init__(self, app: ASGIApp, minimum_size: int = 1000):
+        self.app = app
+        self.gzip_middleware = GZipMiddleware(app, minimum_size=minimum_size)
+    
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            
+            # Skip gzip for excluded paths
+            for excluded in self.EXCLUDED_PATHS:
+                if excluded in path:
+                    await self.app(scope, receive, send)
+                    return
+        
+        # Apply gzip to all other requests
+        await self.gzip_middleware(scope, receive, send)
+
+app.add_middleware(ConditionalGZipMiddleware, minimum_size=1000)
 
 # CORS middleware (custom implementation as per Agent 1 spec)
 configure_cors(app)
