@@ -204,7 +204,7 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
       }
       return info;
     })
-    .filter((s): s is ParsedSource => s !== null);
+    .filter((s: ParsedSource | null): s is ParsedSource => s !== null);
 
   // Metadata - format dates nicely
   const date = data.completed_at
