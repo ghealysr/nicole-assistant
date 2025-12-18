@@ -50,18 +50,16 @@ export function AlphawaveSidebar({
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
-      {/* Logo - larger image */}
-      <div className="p-5 border-b border-[#333]">
-        <div className="flex items-center gap-4">
-          <Image 
-            src="/images/alphawave-logo.png" 
-            alt="Alphawave" 
-            width={56} 
-            height={56}
-            className="rounded-xl"
-          />
-          <span className="text-white text-xl font-semibold tracking-tight">Alphawave</span>
-        </div>
+      {/* Logo - AlphaWave logo only */}
+      <div className="p-4 border-b border-[#333] flex justify-center">
+        <Image 
+          src="/images/alpha_wave_logo.png" 
+          alt="AlphaWave" 
+          width={140} 
+          height={48}
+          className="object-contain"
+          priority
+        />
       </div>
       
       {/* Navigation */}
@@ -161,8 +159,8 @@ export function AlphawaveSidebar({
       </nav>
       
       {/* Version indicator at bottom */}
-      <div className="p-3 text-xs text-[#a1a1aa] border-t border-[#333]">
-        Nicole V7 • Alphawave Tech
+      <div className="p-3 text-xs text-white border-t border-[#333] text-center">
+        Nicole V7 • AlphaWave
       </div>
     </aside>
   );
