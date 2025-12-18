@@ -233,14 +233,14 @@ Format your response as structured JSON with these fields:
                     
                     @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
                     async def _execute_deep_research_agent():
-                        # Deep Research Agent requires background=True
+                        # Deep Research Agent requires background=True AND store=True
                         # We need to poll for completion
                         interaction = await asyncio.to_thread(
                             self._client.interactions.create,
                             agent="deep-research-pro-preview-12-2025",
                             input=full_query,
                             background=True,  # Required for agent interactions
-                            store=False  # Don't store for privacy
+                            store=True  # Required for background interactions
                         )
                         return interaction
                     
