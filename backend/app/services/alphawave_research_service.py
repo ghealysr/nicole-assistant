@@ -420,32 +420,83 @@ Respond ONLY with valid JSON, no markdown code blocks."""
         self,
         request_id: int,
         results: Dict[str, Any],
-        synthesis: str
+        synthesis: Any
     ) -> None:
-        """Store synthesized report."""
+        """
+        Store synthesized report with all structured fields for template rendering.
+        
+        Fields stored:
+        - article_title: Journalist-crafted headline
+        - subtitle: Brief subheading
+        - lead_paragraph: Opening hook paragraph
+        - body: Full article prose
+        - bottom_line: Powerful concluding sentence
+        - executive_summary: Gemini's raw summary (fallback)
+        - findings: Key findings array
+        - recommendations: Actionable recommendations
+        """
         if not request_id:
             return
         
         try:
             parsed = results.get("results", {})
-            # Handle synthesis as dict or string
-            synthesis_text = synthesis.get("body", "") if isinstance(synthesis, dict) else str(synthesis)
+            
+            # Extract structured fields from synthesis (dict or string)
+            if isinstance(synthesis, dict):
+                article_title = synthesis.get("article_title", "")
+                subtitle = synthesis.get("subtitle", "")
+                lead_paragraph = synthesis.get("lead_paragraph", "")
+                body = synthesis.get("body", "")
+                bottom_line = synthesis.get("bottom_line", "")
+                key_findings = synthesis.get("key_findings", [])
+                recommendations = synthesis.get("recommendations", [])
+                # Legacy field for backwards compatibility
+                nicole_synthesis = json.dumps(synthesis)
+            else:
+                # Fallback for string synthesis
+                article_title = ""
+                subtitle = ""
+                lead_paragraph = ""
+                body = str(synthesis)
+                bottom_line = ""
+                key_findings = parsed.get("key_findings", [])
+                recommendations = parsed.get("recommendations", [])
+                nicole_synthesis = str(synthesis)
+            
+            # Use Gemini's executive_summary as fallback if no lead_paragraph
+            executive_summary = parsed.get("executive_summary", "") or lead_paragraph
             
             await db.execute(
                 """
                 INSERT INTO research_reports (
-                    request_id, executive_summary, findings, 
-                    recommendations, nicole_synthesis, created_at
-                ) VALUES ($1, $2, $3, $4, $5, NOW())
+                    request_id, article_title, subtitle, lead_paragraph, body, bottom_line,
+                    executive_summary, findings, recommendations, nicole_synthesis, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                ON CONFLICT (request_id) DO UPDATE SET
+                    article_title = EXCLUDED.article_title,
+                    subtitle = EXCLUDED.subtitle,
+                    lead_paragraph = EXCLUDED.lead_paragraph,
+                    body = EXCLUDED.body,
+                    bottom_line = EXCLUDED.bottom_line,
+                    executive_summary = EXCLUDED.executive_summary,
+                    findings = EXCLUDED.findings,
+                    recommendations = EXCLUDED.recommendations,
+                    nicole_synthesis = EXCLUDED.nicole_synthesis
                 """,
                 request_id,
-                parsed.get("executive_summary", ""),
-                json.dumps(parsed.get("key_findings", [])),
-                json.dumps(parsed.get("recommendations", [])),
-                synthesis_text
+                article_title,
+                subtitle,
+                lead_paragraph,
+                body,
+                bottom_line,
+                executive_summary,
+                json.dumps(key_findings),
+                json.dumps(recommendations),
+                nicole_synthesis
             )
+            logger.info(f"[RESEARCH] Stored report for request {request_id} with title: {article_title[:50]}...")
         except Exception as e:
-            logger.error(f"[RESEARCH] Failed to store report: {e}")
+            logger.error(f"[RESEARCH] Failed to store report: {e}", exc_info=True)
     
     async def _update_request_status(self, request_id: int, status: ResearchStatus) -> None:
         """Update request status."""
@@ -527,12 +578,21 @@ Bottom Line: {bottom_line}
             logger.error(f"[RESEARCH] Failed to save to memory: {e}")
     
     async def get_research(self, request_id: int) -> Optional[Dict[str, Any]]:
-        """Get research results by ID."""
+        """
+        Get research results by ID with all structured fields for template rendering.
+        
+        Returns complete research data including:
+        - article_title, subtitle, lead_paragraph, body, bottom_line (template fields)
+        - findings, recommendations (structured data)
+        - sources (from Gemini research)
+        - metadata (query, type, timestamps)
+        """
         try:
             row = await db.fetchrow(
                 """
                 SELECT 
                     rr.id, rr.type, rr.query, rr.status, rr.created_at, rr.completed_at,
+                    rep.article_title, rep.subtitle, rep.lead_paragraph, rep.body, rep.bottom_line,
                     rep.executive_summary, rep.findings, rep.recommendations, rep.nicole_synthesis,
                     res.raw_gemini_output, res.sources
                 FROM research_requests rr
@@ -546,22 +606,70 @@ Bottom Line: {bottom_line}
             if not row:
                 return None
             
+            # Parse sources from various possible locations
+            sources = []
+            if row["sources"]:
+                try:
+                    sources = json.loads(row["sources"]) if isinstance(row["sources"], str) else row["sources"]
+                except:
+                    sources = []
+            
+            # Parse findings - could be string or already parsed
+            findings = []
+            if row["findings"]:
+                try:
+                    findings = json.loads(row["findings"]) if isinstance(row["findings"], str) else row["findings"]
+                except:
+                    findings = []
+            
+            # Parse recommendations
+            recommendations = []
+            if row["recommendations"]:
+                try:
+                    recommendations = json.loads(row["recommendations"]) if isinstance(row["recommendations"], str) else row["recommendations"]
+                except:
+                    recommendations = []
+            
             return {
-                "id": row["id"],
-                "type": row["type"],
+                # Request metadata
+                "request_id": row["id"],
+                "research_type": row["type"],
                 "query": row["query"],
                 "status": row["status"],
-                "executive_summary": row["executive_summary"],
-                "findings": json.loads(row["findings"]) if row["findings"] else [],
-                "recommendations": json.loads(row["recommendations"]) if row["recommendations"] else [],
-                "nicole_synthesis": row["nicole_synthesis"],
-                "sources": json.loads(row["sources"]) if row["sources"] else [],
+                
+                # Template fields - structured content from Claude synthesis
+                "article_title": row["article_title"] or "",
+                "subtitle": row["subtitle"] or "",
+                "lead_paragraph": row["lead_paragraph"] or "",
+                "body": row["body"] or "",
+                "bottom_line": row["bottom_line"] or "",
+                
+                # Legacy/fallback fields
+                "executive_summary": row["executive_summary"] or row["lead_paragraph"] or "",
+                "nicole_synthesis": row["nicole_synthesis"] or row["body"] or "",
+                
+                # Structured data
+                "findings": findings,
+                "recommendations": recommendations,
+                "sources": sources,
+                
+                # Metadata for templates
+                "metadata": {
+                    "model": "gemini-2.5-pro",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                    "elapsed_seconds": 0.0,
+                    "timestamp": row["completed_at"].isoformat() if row["completed_at"] else None
+                },
+                
+                # Timestamps
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None
             }
             
         except Exception as e:
-            logger.error(f"[RESEARCH] Failed to get research: {e}")
+            logger.error(f"[RESEARCH] Failed to get research: {e}", exc_info=True)
             return None
 
 

@@ -117,10 +117,13 @@ export function getSourceInfo(url: string): ParsedSource {
 }
 
 /**
- * Parse the full research response into a standardized format
+ * Parse the full research response into a standardized format for templates.
+ * 
+ * Now uses direct field access since backend properly stores all structured fields.
+ * Falls back to nicole_synthesis JSON parsing for legacy data.
  */
 export function parseResearchData(data: ResearchResponse): ParsedResearchData {
-  // Parse nicole_synthesis JSON if it's a string
+  // Parse nicole_synthesis as fallback for legacy records that don't have structured fields
   const parsedSynthesis = (() => {
     try {
       const raw = data.nicole_synthesis || '';
@@ -133,21 +136,51 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
     }
   })();
 
-  // Extract structured content
-  const title = data.article_title || parsedSynthesis.article_title || parsedSynthesis.articletitle || toHeadlineCase(data.query);
-  const subtitle = data.subtitle || parsedSynthesis.subtitle || '';
-  const lead = stripMarkdown(parsedSynthesis.lead_paragraph || parsedSynthesis.leadparagraph || data.executive_summary || '');
-  const body = stripMarkdown(parsedSynthesis.body || '');
-  const bottomLine = data.bottom_line || parsedSynthesis.bottom_line || parsedSynthesis.bottomline || '';
+  // Primary: Use direct fields from backend
+  // Fallback: Parse from nicole_synthesis JSON (legacy)
+  // Final fallback: Generate from query
+  const title = data.article_title 
+    || parsedSynthesis.article_title 
+    || parsedSynthesis.articletitle 
+    || toHeadlineCase(data.query);
+  
+  const subtitle = data.subtitle 
+    || parsedSynthesis.subtitle 
+    || '';
+  
+  const lead = stripMarkdown(
+    data.lead_paragraph 
+    || parsedSynthesis.lead_paragraph 
+    || parsedSynthesis.leadparagraph 
+    || data.executive_summary 
+    || ''
+  );
+  
+  const body = stripMarkdown(
+    data.body 
+    || parsedSynthesis.body 
+    || ''
+  );
+  
+  const bottomLine = data.bottom_line 
+    || parsedSynthesis.bottom_line 
+    || parsedSynthesis.bottomline 
+    || '';
 
-  // Get findings
-  const rawFindings = parsedSynthesis.key_findings || parsedSynthesis.keyfindings || data.findings || [];
+  // Get findings - prefer data.findings, then synthesis
+  const rawFindings = data.findings?.length > 0 
+    ? data.findings 
+    : (parsedSynthesis.key_findings || parsedSynthesis.keyfindings || []);
+  
   const findings = (Array.isArray(rawFindings) ? rawFindings : [])
     .map(parseFinding)
     .filter(f => f.body.length > 0);
 
-  // Get recommendations
-  const rawRecommendations = parsedSynthesis.recommendations || data.recommendations || [];
+  // Get recommendations - prefer data.recommendations, then synthesis
+  const rawRecommendations = data.recommendations?.length > 0 
+    ? data.recommendations 
+    : (parsedSynthesis.recommendations || []);
+  
   const recommendations = (Array.isArray(rawRecommendations) ? rawRecommendations : [])
     .map(r => {
       let text = stripMarkdown(typeof r === 'string' ? r : JSON.stringify(r));
@@ -156,8 +189,8 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
     })
     .filter(r => r.length > 0);
 
-  // Sources
-  const rawSources = data.sources && data.sources.length > 0
+  // Sources - prefer data.sources, then synthesis
+  const rawSources = data.sources?.length > 0
     ? data.sources
     : (parsedSynthesis.sources || []);
   
@@ -173,7 +206,7 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
     })
     .filter((s): s is ParsedSource => s !== null);
 
-  // Metadata
+  // Metadata - format dates nicely
   const date = data.completed_at
     ? new Date(data.completed_at).toLocaleDateString('en-US', {
         weekday: 'long',
@@ -188,6 +221,7 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
         year: 'numeric',
       });
 
+  // Calculate word count for template selection
   const allText = [lead, body, ...findings.map(f => f.body), ...recommendations].join(' ');
   const wordCount = allText.split(/\s+/).filter(w => w.length > 0).length;
 
@@ -203,7 +237,7 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
     metadata: {
       date,
       time: (data.metadata?.elapsed_seconds ?? 0).toFixed(1),
-      model: data.metadata?.model || 'gemini-3-pro',
+      model: data.metadata?.model || 'gemini-2.5-pro',
       tokens: (data.metadata?.input_tokens ?? 0) + (data.metadata?.output_tokens ?? 0),
       cost: data.metadata?.cost_usd ?? 0,
     },
