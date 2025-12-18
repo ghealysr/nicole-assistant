@@ -63,6 +63,21 @@ export interface ResearchResponse {
   recommendations: string[];
   sources: ResearchSource[];
   
+  // Image data
+  hero_image?: string;       // Primary hero image URL (first screenshot)
+  images?: Array<{           // Array of all images
+    url: string;
+    caption: string;
+    source: string;
+    type: 'screenshot' | 'generated';
+  }>;
+  screenshots?: Array<{      // Array of captured screenshots
+    url: string;
+    source_url: string;
+    caption: string;
+    captured_at: string;
+  }>;
+  
   // Metadata
   metadata: {
     model: string;
@@ -71,6 +86,7 @@ export interface ResearchResponse {
     cost_usd: number;
     elapsed_seconds: number;
     timestamp: string | null;
+    screenshot_count?: number;
   };
   
   // Optional context

@@ -25,12 +25,24 @@ export interface ParsedResearchData {
   recommendations: string[];
   bottomLine: string;
   sources: ParsedSource[];
+  heroImage?: string;
+  images: Array<{
+    url: string;
+    caption: string;
+    source: string;
+  }>;
+  screenshots: Array<{
+    url: string;
+    sourceUrl: string;
+    caption: string;
+  }>;
   metadata: {
     date: string;
     time: string;
     model: string;
     tokens: number;
     cost: number;
+    imageCount: number;
   };
   wordCount: number;
 }
@@ -225,6 +237,20 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
   const allText = [lead, body, ...findings.map(f => f.body), ...recommendations].join(' ');
   const wordCount = allText.split(/\s+/).filter(w => w.length > 0).length;
 
+  // Parse images - from data.images or empty array
+  const images = (data.images || []).map(img => ({
+    url: img.url,
+    caption: img.caption || '',
+    source: img.source || '',
+  }));
+
+  // Parse screenshots - from data.screenshots or empty array
+  const screenshots = (data.screenshots || []).map(shot => ({
+    url: shot.url,
+    sourceUrl: shot.source_url,
+    caption: shot.caption || '',
+  }));
+
   return {
     title,
     subtitle,
@@ -234,12 +260,16 @@ export function parseResearchData(data: ResearchResponse): ParsedResearchData {
     recommendations,
     bottomLine,
     sources,
+    heroImage: data.hero_image,
+    images,
+    screenshots,
     metadata: {
       date,
       time: (data.metadata?.elapsed_seconds ?? 0).toFixed(1),
       model: data.metadata?.model || 'gemini-2.5-pro',
       tokens: (data.metadata?.input_tokens ?? 0) + (data.metadata?.output_tokens ?? 0),
       cost: data.metadata?.cost_usd ?? 0,
+      imageCount: (data.metadata?.screenshot_count || images.length || screenshots.length) || 0,
     },
     wordCount,
   };

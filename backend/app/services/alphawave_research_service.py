@@ -195,13 +195,26 @@ class ResearchOrchestrator:
                 research_type=research_type
             )
             
-            # 5. Store final report
-            await self._store_report(request_id, gemini_result, synthesis)
+            # 5. Capture screenshots of top sources for visual context
+            yield ResearchStatusUpdate(
+                status=ResearchStatus.SYNTHESIZING,
+                message="Capturing screenshots of key sources...",
+                progress=80
+            )
+            sources = gemini_result.get("sources", [])
+            screenshots = await self._capture_screenshots(
+                sources=sources,
+                request_id=request_id,
+                max_screenshots=3  # Capture top 3 sources
+            )
             
-            # 6. Update request status
+            # 6. Store final report with screenshots
+            await self._store_report(request_id, gemini_result, synthesis, screenshots)
+            
+            # 7. Update request status
             await self._update_request_status(request_id, ResearchStatus.COMPLETE)
             
-            # 7. Save research findings to Nicole's memory for future reference
+            # 8. Save research findings to Nicole's memory for future reference
             await self._save_to_memory(
                 user_id=user_id,
                 query=query,
@@ -216,6 +229,18 @@ class ResearchOrchestrator:
             
             # Extract structured synthesis data (now returns dict)
             synthesis_data = synthesis if isinstance(synthesis, dict) else {}
+            
+            # Build images array for frontend
+            images = []
+            hero_image = None
+            if screenshots and len(screenshots) > 0:
+                hero_image = screenshots[0].get("url")
+                images = [{
+                    "url": s["url"],
+                    "caption": s.get("caption", ""),
+                    "source": s.get("source_url", ""),
+                    "type": "screenshot"
+                } for s in screenshots]
             
             yield ResearchStatusUpdate(
                 status=ResearchStatus.COMPLETE,
@@ -238,6 +263,10 @@ class ResearchOrchestrator:
                     # Full article body
                     "nicole_synthesis": synthesis_data.get("body", str(synthesis) if not isinstance(synthesis, dict) else ""),
                     "bottom_line": synthesis_data.get("bottom_line", ""),
+                    # Image data
+                    "hero_image": hero_image,
+                    "images": images,
+                    "screenshots": screenshots or [],
                     "completed_at": datetime.now().isoformat(),
                     "metadata": {
                         "model": gemini_metadata.get("model", "gemini-3-pro-preview"),
@@ -245,7 +274,8 @@ class ResearchOrchestrator:
                         "output_tokens": gemini_metadata.get("output_tokens", 0),
                         "cost_usd": gemini_metadata.get("cost_usd", 0.0),
                         "elapsed_seconds": gemini_metadata.get("elapsed_seconds", 0.0),
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
+                        "screenshot_count": len(screenshots) if screenshots else 0
                     }
                 }
             )
@@ -416,11 +446,107 @@ Respond ONLY with valid JSON, no markdown code blocks."""
         except Exception as e:
             logger.error(f"[RESEARCH] Failed to store raw results: {e}")
     
+    async def _capture_screenshots(
+        self,
+        sources: List[Dict[str, Any]],
+        request_id: int,
+        max_screenshots: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Capture screenshots of top research sources for visual context.
+        
+        Flow:
+        1. Select top sources (up to max_screenshots)
+        2. Try Docker MCP Gateway Puppeteer
+        3. Fall back to legacy Playwright MCP
+        4. Upload to Cloudinary
+        5. Return array of screenshot objects
+        
+        Returns:
+            List of dicts: [{"url": cloudinary_url, "source_url": original_url, "caption": source_title}]
+        """
+        screenshots = []
+        
+        # Select top sources to screenshot (prioritize those with titles)
+        sources_to_capture = [s for s in sources if s.get("url")][:max_screenshots]
+        
+        if not sources_to_capture:
+            logger.info("[RESEARCH] No sources available for screenshots")
+            return screenshots
+        
+        logger.info(f"[RESEARCH] Capturing {len(sources_to_capture)} screenshots for request {request_id}")
+        
+        for source in sources_to_capture:
+            try:
+                url = source.get("url", "")
+                title = source.get("title", url)
+                
+                if not url:
+                    continue
+                
+                # Try Docker MCP Gateway first (Puppeteer)
+                base64_data = None
+                try:
+                    from app.mcp.docker_mcp_client import get_mcp_client
+                    mcp = await get_mcp_client()
+                    
+                    if mcp.is_connected:
+                        tools = await mcp.list_tools()
+                        puppeteer_tools = [t for t in tools if "puppeteer" in t.name.lower()]
+                        
+                        if puppeteer_tools:
+                            # Navigate and screenshot
+                            nav_result = await mcp.call_tool("puppeteer_navigate", {"url": url})
+                            if not nav_result.is_error:
+                                screenshot_result = await mcp.call_tool("puppeteer_screenshot", {})
+                                
+                                if not screenshot_result.is_error and screenshot_result.content:
+                                    content = screenshot_result.content
+                                    if isinstance(content, str):
+                                        try:
+                                            data = json.loads(content)
+                                            base64_data = data.get("data") or data.get("screenshot")
+                                        except:
+                                            if len(content) > 100 and "," not in content[:50]:
+                                                base64_data = content
+                                    logger.info(f"[RESEARCH] Screenshot captured via Docker MCP Gateway: {url}")
+                except Exception as e:
+                    logger.warning(f"[RESEARCH] Docker MCP screenshot failed for {url}: {e}")
+                
+                # Upload to Cloudinary if we got base64 data
+                if base64_data:
+                    try:
+                        cloudinary_url = await cloudinary_service.upload_screenshot(
+                            base64_image=base64_data,
+                            folder=f"research/{request_id}",
+                            public_id=f"source_{len(screenshots) + 1}",
+                            context={"url": url, "title": title}
+                        )
+                        
+                        if cloudinary_url:
+                            screenshots.append({
+                                "url": cloudinary_url,
+                                "source_url": url,
+                                "caption": title,
+                                "captured_at": datetime.now().isoformat()
+                            })
+                            logger.info(f"[RESEARCH] Screenshot uploaded to Cloudinary: {cloudinary_url}")
+                    except Exception as e:
+                        logger.error(f"[RESEARCH] Failed to upload screenshot to Cloudinary: {e}")
+                
+            except Exception as e:
+                logger.error(f"[RESEARCH] Screenshot capture failed for {source.get('url')}: {e}")
+                continue
+        
+        logger.info(f"[RESEARCH] Successfully captured {len(screenshots)} screenshots")
+        return screenshots
+    
     async def _store_report(
         self,
         request_id: int,
         results: Dict[str, Any],
-        synthesis: Any
+        synthesis: Any,
+        screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """
         Store synthesized report with all structured fields for template rendering.
@@ -434,6 +560,9 @@ Respond ONLY with valid JSON, no markdown code blocks."""
         - executive_summary: Gemini's raw summary (fallback)
         - findings: Key findings array
         - recommendations: Actionable recommendations
+        - hero_image_url: Primary hero image (first screenshot)
+        - images: Array of image objects
+        - screenshots: Array of screenshot objects with source URLs
         """
         if not request_id:
             return
@@ -466,12 +595,31 @@ Respond ONLY with valid JSON, no markdown code blocks."""
             # Use Gemini's executive_summary as fallback if no lead_paragraph
             executive_summary = parsed.get("executive_summary", "") or lead_paragraph
             
+            # Prepare image data
+            hero_image_url = None
+            images = []
+            screenshots_json = []
+            
+            if screenshots and len(screenshots) > 0:
+                # Use first screenshot as hero image
+                hero_image_url = screenshots[0].get("url")
+                # Store all screenshots
+                screenshots_json = screenshots
+                # Also add to images array for template flexibility
+                images = [{
+                    "url": s["url"],
+                    "caption": s.get("caption", ""),
+                    "source": s.get("source_url", ""),
+                    "type": "screenshot"
+                } for s in screenshots]
+            
             await db.execute(
                 """
                 INSERT INTO research_reports (
                     request_id, article_title, subtitle, lead_paragraph, body, bottom_line,
-                    executive_summary, findings, recommendations, nicole_synthesis, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                    executive_summary, findings, recommendations, nicole_synthesis,
+                    hero_image_url, images, screenshots, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
                 ON CONFLICT (request_id) DO UPDATE SET
                     article_title = EXCLUDED.article_title,
                     subtitle = EXCLUDED.subtitle,
@@ -481,7 +629,10 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                     executive_summary = EXCLUDED.executive_summary,
                     findings = EXCLUDED.findings,
                     recommendations = EXCLUDED.recommendations,
-                    nicole_synthesis = EXCLUDED.nicole_synthesis
+                    nicole_synthesis = EXCLUDED.nicole_synthesis,
+                    hero_image_url = EXCLUDED.hero_image_url,
+                    images = EXCLUDED.images,
+                    screenshots = EXCLUDED.screenshots
                 """,
                 request_id,
                 article_title,
@@ -492,9 +643,14 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                 executive_summary,
                 json.dumps(key_findings),
                 json.dumps(recommendations),
-                nicole_synthesis
+                nicole_synthesis,
+                hero_image_url,
+                json.dumps(images),
+                json.dumps(screenshots_json)
             )
-            logger.info(f"[RESEARCH] Stored report for request {request_id} with title: {article_title[:50]}...")
+            
+            image_count = len(screenshots) if screenshots else 0
+            logger.info(f"[RESEARCH] Stored report for request {request_id} with title: {article_title[:50]}... ({image_count} images)")
         except Exception as e:
             logger.error(f"[RESEARCH] Failed to store report: {e}", exc_info=True)
     
@@ -594,6 +750,7 @@ Bottom Line: {bottom_line}
                     rr.id, rr.type, rr.query, rr.status, rr.created_at, rr.completed_at,
                     rep.article_title, rep.subtitle, rep.lead_paragraph, rep.body, rep.bottom_line,
                     rep.executive_summary, rep.findings, rep.recommendations, rep.nicole_synthesis,
+                    rep.hero_image_url, rep.images, rep.screenshots,
                     res.raw_gemini_output, res.sources
                 FROM research_requests rr
                 LEFT JOIN research_reports rep ON rep.request_id = rr.id
@@ -630,6 +787,22 @@ Bottom Line: {bottom_line}
                 except:
                     recommendations = []
             
+            # Parse images
+            images = []
+            if row.get("images"):
+                try:
+                    images = json.loads(row["images"]) if isinstance(row["images"], str) else row["images"]
+                except:
+                    images = []
+            
+            # Parse screenshots
+            screenshots = []
+            if row.get("screenshots"):
+                try:
+                    screenshots = json.loads(row["screenshots"]) if isinstance(row["screenshots"], str) else row["screenshots"]
+                except:
+                    screenshots = []
+            
             return {
                 # Request metadata
                 "request_id": row["id"],
@@ -653,6 +826,11 @@ Bottom Line: {bottom_line}
                 "recommendations": recommendations,
                 "sources": sources,
                 
+                # Image data
+                "hero_image": row.get("hero_image_url") or "",
+                "images": images,
+                "screenshots": screenshots,
+                
                 # Metadata for templates
                 "metadata": {
                     "model": "gemini-2.5-pro",
@@ -660,7 +838,8 @@ Bottom Line: {bottom_line}
                     "output_tokens": 0,
                     "cost_usd": 0.0,
                     "elapsed_seconds": 0.0,
-                    "timestamp": row["completed_at"].isoformat() if row["completed_at"] else None
+                    "timestamp": row["completed_at"].isoformat() if row["completed_at"] else None,
+                    "screenshot_count": len(screenshots)
                 },
                 
                 # Timestamps
