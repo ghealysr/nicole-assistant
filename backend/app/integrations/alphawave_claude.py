@@ -698,22 +698,14 @@ class AlphawaveClaudeClient:
                         yield {"type": "done"}
                         return
                 
-                # Build assistant message with all content (text, thinking, tool_use)
-                # NOTE: Anthropic API now requires 'signature' field for thinking blocks
+                # Build assistant message with text and tool_use content
+                # NOTE: Do NOT include thinking blocks in conversation history
+                # Thinking blocks are for display only - including them causes API errors
+                # because signature field handling is complex and version-dependent
                 assistant_content = []
                 for block in final_message.content:
                     if block.type == "text":
                         assistant_content.append({"type": "text", "text": block.text})
-                    elif block.type == "thinking":
-                        # Include signature - required by Anthropic API for multi-turn thinking
-                        thinking_block = {
-                            "type": "thinking", 
-                            "thinking": block.thinking
-                        }
-                        # Add signature if present (required for conversation continuity)
-                        if hasattr(block, 'signature') and block.signature:
-                            thinking_block["signature"] = block.signature
-                        assistant_content.append(thinking_block)
                     elif block.type == "tool_use":
                         assistant_content.append({
                             "type": "tool_use",
@@ -721,6 +713,8 @@ class AlphawaveClaudeClient:
                             "name": block.name,
                             "input": block.input
                         })
+                    # Skip thinking blocks - they cause signature errors and aren't needed
+                    # for conversation continuity
                 
                 conversation.append({"role": "assistant", "content": assistant_content})
                 
