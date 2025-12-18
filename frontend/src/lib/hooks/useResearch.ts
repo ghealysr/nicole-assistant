@@ -135,6 +135,7 @@ interface UseResearchReturn {
   executeVibeInspiration: (projectId: number, query: string, brief?: object, feedback?: ImageFeedback[]) => Promise<VibeInspirationResponse | null>;
   analyzeCompetitor: (projectId: number, url: string, focus?: string[]) => Promise<ResearchResponse | null>;
   getResearch: (requestId: number) => Promise<ResearchResponse | null>;
+  loadResearch: (requestId: number) => Promise<ResearchResponse | null>;
   loadHistory: () => Promise<void>;
   clearResearch: () => void;
   cancelResearch: () => void;
@@ -391,7 +392,7 @@ export function useResearch(config: UseResearchConfig = {}): UseResearchReturn {
   }, [apiRequest, onError]);
 
   /**
-   * Get research by ID
+   * Get research by ID (returns data without setting state)
    */
   const getResearch = useCallback(async (requestId: number): Promise<ResearchResponse | null> => {
     try {
@@ -406,6 +407,43 @@ export function useResearch(config: UseResearchConfig = {}): UseResearchReturn {
       return result.data;
     } catch (err) {
       const errorMessage = (err as Error).message || 'Failed to fetch research';
+      onError?.(errorMessage);
+      return null;
+    }
+  }, [apiRequest, onError]);
+
+  /**
+   * Load research by ID and set it to state (for history click-to-load)
+   */
+  const loadResearch = useCallback(async (requestId: number): Promise<ResearchResponse | null> => {
+    setStatus('pending');
+    setStatusMessage('Loading research...');
+    setProgress(50);
+    setError(null);
+    setResearch(null);
+    setVibeInspirations(null);
+
+    try {
+      const result = await apiRequest<ResearchResponse>(`/research/${requestId}`, {
+        method: 'GET',
+      });
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Failed to load research');
+      }
+
+      // Set the research data to state
+      setResearch(result.data);
+      setStatus('complete');
+      setStatusMessage('Research loaded!');
+      setProgress(100);
+
+      return result.data;
+    } catch (err) {
+      const errorMessage = (err as Error).message || 'Failed to load research';
+      setError(errorMessage);
+      setStatus('failed');
+      setStatusMessage('Failed to load');
       onError?.(errorMessage);
       return null;
     }
@@ -473,6 +511,7 @@ export function useResearch(config: UseResearchConfig = {}): UseResearchReturn {
     executeVibeInspiration,
     analyzeCompetitor,
     getResearch,
+    loadResearch,
     loadHistory,
     clearResearch,
     cancelResearch,

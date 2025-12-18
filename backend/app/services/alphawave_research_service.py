@@ -22,6 +22,7 @@ from app.database import db
 from app.integrations.alphawave_gemini import gemini_client, ResearchType
 from app.integrations.alphawave_claude import claude_client
 from app.services.alphawave_cloudinary_service import cloudinary_service
+from app.services.alphawave_memory_service import memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,15 @@ class ResearchOrchestrator:
             
             # 6. Update request status
             await self._update_request_status(request_id, ResearchStatus.COMPLETE)
+            
+            # 7. Save research findings to Nicole's memory for future reference
+            await self._save_to_memory(
+                user_id=user_id,
+                query=query,
+                synthesis=synthesis,
+                research_type=research_type,
+                request_id=request_id
+            )
             
             # Build response matching frontend ResearchResponse interface
             research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
@@ -455,6 +465,66 @@ Respond ONLY with valid JSON, no markdown code blocks."""
             )
         except Exception as e:
             logger.error(f"[RESEARCH] Failed to update status: {e}")
+    
+    async def _save_to_memory(
+        self,
+        user_id: int,
+        query: str,
+        synthesis: dict,
+        research_type: ResearchType,
+        request_id: int
+    ) -> None:
+        """
+        Save research findings to Nicole's memory system.
+        
+        This ensures Nicole remembers research she's done and can reference it
+        in future conversations without the user needing to re-research.
+        """
+        if not user_id or user_id == 0:
+            logger.info("[RESEARCH] Skipping memory save - no user_id")
+            return
+        
+        try:
+            research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
+            
+            # Build comprehensive memory content
+            title = synthesis.get("article_title", "Research Findings")
+            bottom_line = synthesis.get("bottom_line", "")
+            lead = synthesis.get("lead_paragraph", "")
+            findings = synthesis.get("key_findings", [])
+            
+            # Create a concise but informative memory entry
+            findings_text = "\n".join([f"- {f}" for f in findings[:5]]) if findings else ""
+            
+            memory_content = f"""Research on "{query}":
+
+{title}
+
+{lead}
+
+Key Findings:
+{findings_text}
+
+Bottom Line: {bottom_line}
+
+[Research ID: {request_id} | Type: {research_type_str}]"""
+
+            # Save to memory with high importance (research is valuable)
+            await memory_service.save_memory(
+                user_id=user_id,
+                memory_type="fact",  # Research findings are factual knowledge
+                content=memory_content,
+                context="research",
+                importance=0.8,  # High importance - research is valuable
+                source="nicole",  # Nicole conducted the research
+                is_shared=False,
+            )
+            
+            logger.info(f"[RESEARCH] Saved research to memory for user {user_id}: {query[:50]}...")
+            
+        except Exception as e:
+            # Don't fail the research if memory save fails
+            logger.error(f"[RESEARCH] Failed to save to memory: {e}")
     
     async def get_research(self, request_id: int) -> Optional[Dict[str, Any]]:
         """Get research results by ID."""
