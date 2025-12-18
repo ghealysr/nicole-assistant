@@ -224,6 +224,12 @@ class GeminiClient:
             
             response = await _execute_research()
             
+            # Debug: Log response structure
+            logger.info(f"[GEMINI] Response type: {type(response)}")
+            logger.info(f"[GEMINI] Response has attributes: {dir(response)[:10]}...")  # First 10 attributes
+            if hasattr(response, 'candidates') and response.candidates:
+                logger.info(f"[GEMINI] First candidate has: {dir(response.candidates[0])[:10]}...")
+            
             # Parse response
             result = self._parse_research_response(response)
             
@@ -375,11 +381,15 @@ TECHNICAL RESEARCH MODE:
             json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
             if json_match:
                 parsed = json.loads(json_match.group(1))
+                logger.info(f"[GEMINI] Parsed JSON from code block, has sources: {'sources' in parsed}, count: {len(parsed.get('sources', []))}")
             else:
                 # Try direct parse
                 try:
                     parsed = json.loads(text)
+                    logger.info(f"[GEMINI] Parsed JSON directly, has sources: {'sources' in parsed}, count: {len(parsed.get('sources', []))}")
                 except json.JSONDecodeError:
+                    logger.warning("[GEMINI] Failed to parse as JSON, using fallback structure")
+                    logger.debug(f"[GEMINI] Response text preview: {text[:300]}...")
                     # Return as plain text
                     parsed = {
                         "executive_summary": text[:500],
@@ -422,7 +432,20 @@ TECHNICAL RESEARCH MODE:
                 else:
                     logger.warning("[GEMINI] No grounding_chunks found in grounding_metadata")
             else:
-                logger.warning("[GEMINI] No grounding_metadata in response - sources will be empty")
+                logger.warning("[GEMINI] No grounding_metadata in response - attempting fallback URL extraction")
+                # Fallback: Extract URLs from response text
+                import re
+                url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+                urls = re.findall(url_pattern, text)
+                if urls:
+                    fallback_sources = [{"url": url, "title": url} for url in list(set(urls))[:10]]
+                    logger.info(f"[GEMINI] Extracted {len(fallback_sources)} URLs from response text as fallback sources")
+                    if "sources" not in parsed or not parsed["sources"]:
+                        parsed["sources"] = fallback_sources
+                    else:
+                        parsed["sources"].extend(fallback_sources)
+                else:
+                    logger.warning("[GEMINI] No URLs found in response text either - sources will be empty")
             
             return parsed
             
