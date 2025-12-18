@@ -623,23 +623,31 @@ class AlphawaveClaudeClient:
                 final_message = None
                 
                 # Use ASYNC streaming for true real-time delivery
+                logger.info(f"[CLAUDE] Starting async stream...")
+                event_count = 0
+                
                 async with self.async_client.messages.stream(**kwargs) as stream:
                     async for event in stream:
+                        event_count += 1
+                        
                         # Handle content block start
                         if event.type == 'content_block_start':
                             block = event.content_block
                             block_type = getattr(block, 'type', None)
+                            logger.debug(f"[CLAUDE] Event {event_count}: block_start type={block_type}")
                             
                             if block_type == 'thinking':
                                 in_thinking = True
                                 thinking_start_time = time.time()
                                 if not thinking_emitted:
+                                    logger.info(f"[CLAUDE] Emitting thinking_start")
                                     yield {"type": "thinking_start"}
                                     thinking_emitted = True
                             
                             elif block_type == 'tool_use':
                                 tool_id = getattr(block, 'id', '')
                                 tool_name = getattr(block, 'name', '')
+                                logger.info(f"[CLAUDE] Tool use start: {tool_name}")
                                 yield {"type": "tool_use_start", "tool_name": tool_name, "tool_id": tool_id}
                         
                         # Handle content deltas (thinking, text, tool input)
@@ -651,6 +659,9 @@ class AlphawaveClaudeClient:
                                 # Stream thinking content in real-time
                                 thinking_text = getattr(delta, 'thinking', '')
                                 if thinking_text:
+                                    # Log first few thinking deltas
+                                    if event_count < 10:
+                                        logger.debug(f"[CLAUDE] Thinking delta: {thinking_text[:50]}...")
                                     yield {"type": "thinking_delta", "content": thinking_text}
                             
                             elif delta_type == 'text_delta':
@@ -663,10 +674,13 @@ class AlphawaveClaudeClient:
                         elif event.type == 'content_block_stop':
                             if in_thinking:
                                 duration = time.time() - thinking_start_time if thinking_start_time else 0
+                                logger.info(f"[CLAUDE] Thinking complete: {duration:.1f}s")
                                 yield {"type": "thinking_stop", "duration": round(duration, 1)}
                                 in_thinking = False
+                
+                    logger.info(f"[CLAUDE] Stream complete: {event_count} events")
                     
-                    # Get the final message for tool processing
+                    # Get the final message for tool processing (inside async with)
                     final_message = await stream.get_final_message()
                 
                 if not final_message:
