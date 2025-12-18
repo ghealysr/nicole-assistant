@@ -61,7 +61,9 @@ class ImageGenerationService:
         "flux_pro": 0.055,
         "flux_schnell": 0.003,
         "ideogram": 0.08,
-        "gemini": 0.134,  # Per image, 1K-2K resolution
+        "imagen4": 0.04,  # Imagen 4 standard
+        "imagen4_ultra": 0.06,  # Imagen 4 Ultra (higher precision)
+        "gemini": 0.134,  # Legacy Gemini 3 Pro Image
     }
 
     # Model configurations with provider-specific settings
@@ -120,9 +122,38 @@ class ImageGenerationService:
             },
             "style_types": ["Auto", "General", "Realistic", "Design", "Render 3D", "Anime"],
         },
-        "gemini": {
-            "name": "Gemini 3 Pro Image",
+        "imagen4": {
+            "name": "Imagen 4",
             "mode": "gemini",
+            "gemini_model": "imagen-4",
+            "supports_batch": True,
+            "max_batch": 4,
+            "supports_thinking": False,
+            "supports_image_input": True,
+            "default_params": {
+                "aspect_ratio": "1:1",
+            },
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "cost_per_image": 0.04,  # $0.04 per output image
+        },
+        "imagen4_ultra": {
+            "name": "Imagen 4 Ultra",
+            "mode": "gemini",
+            "gemini_model": "imagen-4-ultra",
+            "supports_batch": True,
+            "max_batch": 4,
+            "supports_thinking": False,
+            "supports_image_input": True,
+            "default_params": {
+                "aspect_ratio": "1:1",
+            },
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "cost_per_image": 0.06,  # $0.06 per output image (higher precision)
+        },
+        "gemini": {
+            "name": "Gemini 3 Pro Image (Legacy)",
+            "mode": "gemini",
+            "gemini_model": "gemini-3-pro-image-preview",
             "supports_batch": False,
             "supports_thinking": True,
             "supports_image_input": True,
@@ -536,7 +567,7 @@ Rules:
         }
 
     # ------------------------------------------------------------------ #
-    # Gemini-based generation (Gemini 3 Pro Image)
+    # Gemini/Imagen-based generation
     # ------------------------------------------------------------------ #
     async def _generate_via_gemini(
         self,
@@ -548,85 +579,192 @@ Rules:
         batch_count: int,
         model_key: str,
     ) -> Dict:
-        """Generate images using Gemini 3 Pro Image."""
+        """Generate images using Imagen 4 or legacy Gemini 3 Pro Image."""
+        import time
         from app.integrations.alphawave_gemini import gemini_client
         from app.services.alphawave_cloudinary_service import cloudinary_service
         import base64
         
         start_time = time.time()
         model_cfg = self.MODEL_CONFIGS[model_key]
-        cost_per_image = model_cfg.get("cost_per_image", {}).get(
-            parameters.get("size", "1024x1024"), 0.134
-        )
+        
+        # Get the actual Gemini model name
+        gemini_model = model_cfg.get("gemini_model", "imagen-4")
+        
+        # Get cost per image
+        cost_config = model_cfg.get("cost_per_image")
+        if isinstance(cost_config, dict):
+            cost_per_image = cost_config.get(parameters.get("size", "1024x1024"), 0.134)
+        else:
+            cost_per_image = cost_config or 0.04
         
         variants = []
         
-        for i in range(batch_count):
+        # For Imagen 4, we can generate multiple images in one call
+        is_imagen4 = gemini_model.startswith("imagen-4")
+        
+        if is_imagen4:
+            # Imagen 4 supports batch generation natively
             try:
-                # Generate image via Gemini
                 result = await gemini_client.generate_image(
                     prompt=prompt,
-                    size=parameters.get("size", "1024x1024"),
+                    model=gemini_model,
+                    aspect_ratio=parameters.get("aspect_ratio", "1:1"),
                     style=parameters.get("style"),
-                    enable_thinking=False
+                    num_images=batch_count
                 )
                 
                 if not result.get("success"):
-                    logger.warning(f"[IMAGE] Gemini generation {i+1} failed: {result.get('error')}")
-                    continue
+                    logger.warning(f"[IMAGE] Imagen 4 generation failed: {result.get('error')}")
+                    return {
+                        "job_id": job_id,
+                        "variants": [],
+                        "count": 0,
+                        "model_key": model_key,
+                        "elapsed_ms": int((time.time() - start_time) * 1000),
+                        "total_cost_usd": 0,
+                        "error": result.get("error")
+                    }
                 
-                # Upload to Cloudinary
-                image_data = result.get("image_data")
-                if image_data:
-                    upload_result = cloudinary_service.upload_from_base64(
-                        image_data,
-                        folder=f"image_gen/{user_id}",
-                        public_id=f"gemini_{job_id}_{i+1}"
-                    )
-                    url = upload_result.get("secure_url") or upload_result.get("url", "")
-                else:
-                    url = ""
-                
-                # Parse size
-                size = parameters.get("size", "1024x1024")
-                width, height = map(int, size.split("x"))
-                
-                elapsed_ms = int((time.time() - start_time) * 1000)
-                
-                # Store variant
-                variant = await db.fetchrow(
-                    """
-                    INSERT INTO image_variants 
-                    (job_id, variant_number, model_key, model_name, original_prompt,
-                     revised_prompt, parameters_json, url, thumbnail_url, width, height,
-                     seed, elapsed_ms, cost_usd, hash)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                    RETURNING *
-                    """,
-                    job_id,
-                    i + 1,
-                    model_key,
-                    "gemini-3-pro-image-preview",
-                    original_prompt,
-                    parameters.get("enhanced_prompt", prompt),
-                    json.dumps(parameters),
-                    url,
-                    url,
-                    width,
-                    height,
-                    None,  # No seed for Gemini
-                    elapsed_ms,
-                    cost_per_image,
-                    None,  # No hash computed
-                )
-                variants.append(dict(variant))
-                
+                # Process all generated images
+                images = result.get("images", [])
+                for i, img in enumerate(images):
+                    try:
+                        image_data = img.get("data")
+                        if image_data:
+                            # Upload to Cloudinary
+                            upload_result = cloudinary_service.upload_from_base64(
+                                image_data,
+                                folder=f"image_gen/{user_id}",
+                                public_id=f"imagen4_{job_id}_{i+1}"
+                            )
+                            url = upload_result.get("secure_url") or upload_result.get("url", "")
+                        else:
+                            continue
+                        
+                        # Get dimensions from aspect ratio
+                        aspect = parameters.get("aspect_ratio", "1:1")
+                        width, height = self.ASPECT_RATIOS.get(aspect, (1024, 1024))
+                        
+                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        
+                        # Store variant
+                        variant = await db_manager.pool.fetchrow(
+                            """
+                            INSERT INTO image_variants (
+                                job_id, user_id, version_number,
+                                model_key, model_version,
+                                original_prompt, enhanced_prompt,
+                                parameters, cdn_url, thumbnail_url,
+                                width, height, seed,
+                                generation_time_ms, cost_usd, image_hash
+                            ) VALUES (
+                                $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
+                                $11, $12, $13, $14, $15, $16
+                            )
+                            RETURNING *
+                            """,
+                            job_id,
+                            user_id,
+                            i + 1,
+                            model_key,
+                            gemini_model,
+                            original_prompt,
+                            parameters.get("enhanced_prompt", prompt),
+                            json.dumps(parameters),
+                            url,
+                            url,
+                            width,
+                            height,
+                            None,  # No seed for Imagen
+                            elapsed_ms,
+                            cost_per_image,
+                            None,
+                        )
+                        variants.append(dict(variant))
+                        logger.info(f"[IMAGE] Imagen 4 variant {i+1}/{len(images)} uploaded")
+                        
+                    except Exception as e:
+                        logger.error(f"[IMAGE] Failed to process Imagen 4 image {i+1}: {e}")
+                        continue
+                        
             except Exception as e:
-                logger.error(f"[IMAGE] Gemini generation {i+1} error: {e}", exc_info=True)
-                continue
+                logger.error(f"[IMAGE] Imagen 4 generation error: {e}", exc_info=True)
+        else:
+            # Legacy Gemini 3 Pro Image - generate one at a time
+            for i in range(batch_count):
+                try:
+                    result = await gemini_client.generate_image(
+                        prompt=prompt,
+                        model=gemini_model,
+                        aspect_ratio=parameters.get("aspect_ratio", "1:1"),
+                        style=parameters.get("style"),
+                        enable_thinking=False
+                    )
+                    
+                    if not result.get("success"):
+                        logger.warning(f"[IMAGE] Gemini generation {i+1} failed: {result.get('error')}")
+                        continue
+                    
+                    # Upload to Cloudinary
+                    image_data = result.get("image_data")
+                    if image_data:
+                        upload_result = cloudinary_service.upload_from_base64(
+                            image_data,
+                            folder=f"image_gen/{user_id}",
+                            public_id=f"gemini_{job_id}_{i+1}"
+                        )
+                        url = upload_result.get("secure_url") or upload_result.get("url", "")
+                    else:
+                        url = ""
+                    
+                    # Get dimensions
+                    aspect = parameters.get("aspect_ratio", "1:1")
+                    width, height = self.ASPECT_RATIOS.get(aspect, (1024, 1024))
+                    
+                    elapsed_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Store variant
+                    variant = await db_manager.pool.fetchrow(
+                        """
+                        INSERT INTO image_variants (
+                            job_id, user_id, version_number,
+                            model_key, model_version,
+                            original_prompt, enhanced_prompt,
+                            parameters, cdn_url, thumbnail_url,
+                            width, height, seed,
+                            generation_time_ms, cost_usd, image_hash
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
+                            $11, $12, $13, $14, $15, $16
+                        )
+                        RETURNING *
+                        """,
+                        job_id,
+                        user_id,
+                        i + 1,
+                        model_key,
+                        gemini_model,
+                        original_prompt,
+                        parameters.get("enhanced_prompt", prompt),
+                        json.dumps(parameters),
+                        url,
+                        url,
+                        width,
+                        height,
+                        None,
+                        elapsed_ms,
+                        cost_per_image,
+                        None,
+                    )
+                    variants.append(dict(variant))
+                    
+                except Exception as e:
+                    logger.error(f"[IMAGE] Gemini generation {i+1} error: {e}", exc_info=True)
+                    continue
         
         elapsed_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"[IMAGE] Gemini generated {len(variants)} variants in {elapsed_ms}ms")
+        logger.info(f"[IMAGE] Generated {len(variants)} variants in {elapsed_ms}ms using {gemini_model}")
         
         return {
             "job_id": job_id,

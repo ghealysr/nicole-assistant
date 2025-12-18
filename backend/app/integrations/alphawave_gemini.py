@@ -655,20 +655,24 @@ TECHNICAL RESEARCH MODE:
     async def generate_image(
         self,
         prompt: str,
-        size: str = "1024x1024",
+        model: str = "imagen-4",
+        aspect_ratio: str = "1:1",
         style: Optional[str] = None,
         reference_image: Optional[bytes] = None,
+        num_images: int = 1,
         enable_thinking: bool = False
     ) -> Dict[str, Any]:
         """
-        Generate image using Gemini 3 Pro Image.
+        Generate image using Imagen 4 or legacy Gemini 3 Pro Image.
         
         Args:
             prompt: Image description
-            size: Output size (1024x1024, 2048x2048, 4096x4096)
+            model: Model to use (imagen-4, imagen-4-ultra, gemini-3-pro-image-preview)
+            aspect_ratio: Output aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4)
             style: Optional style guidance
             reference_image: Optional reference image for modification
-            enable_thinking: Enable thinking for better generation
+            num_images: Number of images to generate (1-4)
+            enable_thinking: Enable thinking (only for legacy Gemini model)
             
         Returns:
             Generated image data with metadata
@@ -678,81 +682,142 @@ TECHNICAL RESEARCH MODE:
         
         start_time = datetime.now()
         
+        # Determine model and cost
+        is_imagen4 = model.startswith("imagen-4")
+        cost_per_image = 0.04 if model == "imagen-4" else (0.06 if model == "imagen-4-ultra" else 0.134)
+        
         try:
             # Build prompt with style
             full_prompt = prompt
             if style:
                 full_prompt = f"[Style: {style}] {prompt}"
             
-            # Configure generation
-            config = types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            )
+            logger.info(f"[GEMINI] Generating {num_images} image(s) with {model}, aspect_ratio={aspect_ratio}")
             
-            if enable_thinking:
-                config.thinking_config = types.ThinkingConfig(
-                    thinking_budget=4000
-                )
-            
-            # Build content
-            contents = [full_prompt]
-            if reference_image:
-                # Add reference image
-                contents = [
-                    types.Part.from_bytes(reference_image, mime_type="image/png"),
-                    full_prompt
-                ]
-            
-            # Generate with retry
-            @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
-            async def _execute_image_gen():
-                return await asyncio.to_thread(
-                    self._client.models.generate_content,
-                    model=settings.GEMINI_IMAGE_MODEL,
-                    contents=contents,
-                    config=config
-                )
-            
-            response = await _execute_image_gen()
-            
-            # Extract image from response
-            image_data = None
-            text_response = ""
-            
-            for candidate in response.candidates:
-                for part in candidate.content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        image_data = part.inline_data.data
-                    if hasattr(part, 'text'):
-                        text_response += part.text
-            
-            if not image_data:
+            if is_imagen4:
+                # Use Imagen 4 API
+                # Imagen 4 uses the images.generate endpoint
+                @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
+                async def _execute_imagen4():
+                    return await asyncio.to_thread(
+                        self._client.models.generate_images,
+                        model=model,
+                        prompt=full_prompt,
+                        config=types.GenerateImagesConfig(
+                            number_of_images=min(num_images, 4),
+                            aspect_ratio=aspect_ratio,
+                            person_generation="allow_adult",  # Allow adult persons
+                            safety_filter_level="block_only_high",  # Less restrictive
+                        )
+                    )
+                
+                response = await _execute_imagen4()
+                
+                # Extract images from Imagen 4 response
+                images = []
+                for image in response.generated_images:
+                    if hasattr(image, 'image') and image.image:
+                        # Image data is base64 encoded
+                        images.append({
+                            "data": image.image.image_bytes if hasattr(image.image, 'image_bytes') else image.image,
+                            "mime_type": "image/png"
+                        })
+                
+                if not images:
+                    return {
+                        "success": False,
+                        "error": "No images generated",
+                        "prompt": prompt
+                    }
+                
+                elapsed = (datetime.now() - start_time).total_seconds()
+                total_cost = cost_per_image * len(images)
+                
+                logger.info(f"[GEMINI] Imagen 4 generated {len(images)} image(s) in {elapsed:.1f}s, cost: ${total_cost}")
+                
                 return {
-                    "success": False,
-                    "error": "No image generated",
-                    "text_response": text_response
+                    "success": True,
+                    "images": images,  # List of image data
+                    "image_data": images[0]["data"] if images else None,  # First image for backwards compatibility
+                    "mime_type": "image/png",
+                    "prompt": prompt,
+                    "aspect_ratio": aspect_ratio,
+                    "style": style,
+                    "count": len(images),
+                    "metadata": {
+                        "cost_usd": float(total_cost),
+                        "elapsed_seconds": elapsed,
+                        "model": model
+                    }
                 }
-            
-            # Estimate cost
-            cost = self._estimate_image_cost(size)
-            elapsed = (datetime.now() - start_time).total_seconds()
-            
-            logger.info(f"[GEMINI] Image generated in {elapsed:.1f}s, cost: ${cost}")
-            
-            return {
-                "success": True,
-                "image_data": image_data,  # Base64 encoded
-                "mime_type": "image/png",
-                "prompt": prompt,
-                "size": size,
-                "style": style,
-                "text_response": text_response,
-                "metadata": {
-                    "cost_usd": float(cost),
-                    "elapsed_seconds": elapsed,
-                    "model": settings.GEMINI_IMAGE_MODEL
+            else:
+                # Legacy Gemini 3 Pro Image generation
+                config = types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                )
+                
+                if enable_thinking:
+                    config.thinking_config = types.ThinkingConfig(
+                        thinking_budget=4000
+                    )
+                
+                # Build content
+                contents = [full_prompt]
+                if reference_image:
+                    contents = [
+                        types.Part.from_bytes(reference_image, mime_type="image/png"),
+                        full_prompt
+                    ]
+                
+                @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
+                async def _execute_image_gen():
+                    return await asyncio.to_thread(
+                        self._client.models.generate_content,
+                        model="gemini-3-pro-image-preview",
+                        contents=contents,
+                        config=config
+                    )
+                
+                response = await _execute_image_gen()
+                
+                # Extract image from response
+                image_data = None
+                text_response = ""
+                
+                for candidate in response.candidates:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            image_data = part.inline_data.data
+                        if hasattr(part, 'text'):
+                            text_response += part.text
+                
+                if not image_data:
+                    return {
+                        "success": False,
+                        "error": "No image generated",
+                        "text_response": text_response
+                    }
+                
+                elapsed = (datetime.now() - start_time).total_seconds()
+                
+                logger.info(f"[GEMINI] Legacy image generated in {elapsed:.1f}s, cost: ${cost_per_image}")
+                
+                return {
+                    "success": True,
+                    "image_data": image_data,
+                    "images": [{"data": image_data, "mime_type": "image/png"}],
+                    "mime_type": "image/png",
+                    "prompt": prompt,
+                    "aspect_ratio": aspect_ratio,
+                    "style": style,
+                    "text_response": text_response,
+                    "count": 1,
+                    "metadata": {
+                        "cost_usd": float(cost_per_image),
+                        "elapsed_seconds": elapsed,
+                        "model": "gemini-3-pro-image-preview"
+                    }
                 }
-            }
             
         except Exception as e:
             logger.error(f"[GEMINI] Image generation failed: {e}", exc_info=True)

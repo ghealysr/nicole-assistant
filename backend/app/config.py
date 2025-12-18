@@ -103,10 +103,11 @@ class Settings(BaseSettings):
     BRAVE_API_KEY: str = ""
     RECRAFT_API_KEY: str = ""  # For image generation via MCP bridge
 
-    # Gemini 3 Pro API
+    # Gemini API
     GEMINI_API_KEY: str = ""
     GEMINI_PRO_MODEL: str = "gemini-3-pro-preview"
-    GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
+    GEMINI_IMAGE_MODEL: str = "imagen-4"  # Latest Imagen 4 model
+    GEMINI_IMAGE_MODEL_ULTRA: str = "imagen-4-ultra"  # High-precision version
     
     # PageSpeed Insights API (for Lighthouse scores)
     PAGESPEED_API_KEY: str = "AIzaSyBCHN4ej7qDAwsGhLmZMs_wqd7fi5kSM6c"

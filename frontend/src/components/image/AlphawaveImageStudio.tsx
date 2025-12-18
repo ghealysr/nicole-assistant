@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { useImageGeneration, ImageVariant } from '@/lib/hooks/useImageGeneration';
+import { useImageGeneration, ImageVariant, ImageModel } from '@/lib/hooks/useImageGeneration';
 
 interface AlphawaveImageStudioProps {
   isOpen: boolean;
@@ -11,20 +11,27 @@ interface AlphawaveImageStudioProps {
   initialPreset?: string;
 }
 
-const MIN_WIDTH = 480;
-const MAX_WIDTH_PERCENT = 0.5;
+const MIN_WIDTH = 520;
+const MAX_WIDTH_PERCENT = 0.55;
+
+// Multi-model configuration type
+interface ModelSlotConfig {
+  modelKey: string;
+  enabled: boolean;
+}
 
 /**
  * Image Studio - Professional Image Generation Dashboard
  * 
  * Features:
+ * - Inset gradient image display area with 1-4 slots
+ * - Multi-model selection (compare outputs from different models)
  * - Preset selection with model-specific defaults
  * - Smart prompt enhancement toggle
  * - Batch generation (1-4 variants)
  * - Real-time SSE progress updates
  * - Variant gallery with favorites/ratings
  * - Job history sidebar
- * - Slash command integration
  */
 export function AlphawaveImageStudio({ 
   isOpen, 
@@ -32,19 +39,30 @@ export function AlphawaveImageStudio({
   initialPrompt = '',
   initialPreset 
 }: AlphawaveImageStudioProps) {
-  const [width, setWidth] = useState(Math.min(window.innerWidth * 0.4, 600));
+  const [width, setWidth] = useState(Math.min(typeof window !== 'undefined' ? window.innerWidth * 0.45 : 600, 700));
   const [isResizing, setIsResizing] = useState(false);
   const [activeTab, setActiveTab] = useState<'create' | 'history' | 'presets'>('create');
   
   // Generation state
   const [prompt, setPrompt] = useState(initialPrompt);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(initialPreset || null);
-  const [selectedModel, setSelectedModel] = useState('recraft-v3');
   const [smartPrompt, setSmartPrompt] = useState(true);
-  const [batchCount, setBatchCount] = useState(1);
-  const [width_px, setWidthPx] = useState(1024);
-  const [height_px, setHeightPx] = useState(1024);
+  const [aspectRatio, setAspectRatio] = useState('1:1');
   const [style, setStyle] = useState('');
+  
+  // Image slots configuration (1-4 slots)
+  const [slotCount, setSlotCount] = useState(1);
+  const [multiModelMode, setMultiModelMode] = useState(false); // false = one model, all slots; true = different model per slot
+  const [singleModel, setSingleModel] = useState('imagen4');
+  const [modelSlots, setModelSlots] = useState<ModelSlotConfig[]>([
+    { modelKey: 'imagen4', enabled: true },
+    { modelKey: 'recraft', enabled: false },
+    { modelKey: 'flux_pro', enabled: false },
+    { modelKey: 'ideogram', enabled: false },
+  ]);
+  
+  // Generated images for display slots
+  const [slotImages, setSlotImages] = useState<(ImageVariant | null)[]>([null, null, null, null]);
   
   // Active job tracking
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
@@ -87,19 +105,30 @@ export function AlphawaveImageStudio({
     if (selectedPreset && presets.length > 0) {
       const preset = presets.find(p => p.id === parseInt(selectedPreset));
       if (preset) {
-        setSelectedModel(preset.default_model);
-        setWidthPx(preset.default_width);
-        setHeightPx(preset.default_height);
+        setSingleModel(preset.default_model);
         if (preset.default_style) setStyle(preset.default_style);
       }
     }
   }, [selectedPreset, presets]);
 
+  // Update slot images when variants change
+  useEffect(() => {
+    if (variants.length > 0) {
+      const newSlotImages: (ImageVariant | null)[] = [null, null, null, null];
+      // Get the most recent variants (up to slotCount)
+      const recentVariants = variants.slice(-slotCount);
+      recentVariants.forEach((v, i) => {
+        newSlotImages[i] = v;
+      });
+      setSlotImages(newSlotImages);
+    }
+  }, [variants, slotCount]);
+
   // Handle resize
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     const diff = startXRef.current - e.clientX;
-    const maxWidth = window.innerWidth * MAX_WIDTH_PERCENT;
+    const maxWidth = typeof window !== 'undefined' ? window.innerWidth * MAX_WIDTH_PERCENT : 800;
     const newWidth = Math.max(MIN_WIDTH, Math.min(maxWidth, startWidthRef.current + diff));
     setWidth(newWidth);
   }, [isResizing]);
@@ -129,19 +158,39 @@ export function AlphawaveImageStudio({
   };
 
   // Handle generation
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
-    // Start SSE generation stream with all parameters
-    startGeneration({
-      prompt: prompt.trim(),
-      model: selectedModel,
-      width: width_px,
-      height: height_px,
-      style: style || undefined,
-      batch_count: batchCount,
-      enhance_prompt: smartPrompt,
-    });
+    // Clear previous slot images
+    setSlotImages([null, null, null, null]);
+    
+    if (multiModelMode) {
+      // Multi-model mode: generate one image per enabled model slot
+      const enabledSlots = modelSlots.filter(s => s.enabled).slice(0, slotCount);
+      
+      for (const slot of enabledSlots) {
+        startGeneration({
+          prompt: prompt.trim(),
+          model: slot.modelKey,
+          width: 1024,
+          height: 1024,
+          style: style || undefined,
+          batch_count: 1,
+          enhance_prompt: smartPrompt,
+        });
+      }
+    } else {
+      // Single model mode: generate slotCount images from one model
+      startGeneration({
+        prompt: prompt.trim(),
+        model: singleModel,
+        width: 1024,
+        height: 1024,
+        style: style || undefined,
+        batch_count: slotCount,
+        enhance_prompt: smartPrompt,
+      });
+    }
   };
 
   // Handle variant selection
@@ -160,20 +209,24 @@ export function AlphawaveImageStudio({
     document.body.removeChild(link);
   };
 
-  // Get active job variants
-  // Show variants for active job, or show all recent variants if no job selected
-  const activeJobVariants = activeJobId 
-    ? variants.filter(v => v.job_id === activeJobId)
-    : variants; // Show all variants when no specific job is selected
+  // Get model by key
+  const getModelByKey = (key: string): ImageModel | undefined => {
+    return models.find(m => m.key === key);
+  };
 
-  // Render aspect ratio selector
-  const aspectRatios = [
-    { label: '1:1', width: 1024, height: 1024 },
-    { label: '16:9', width: 1920, height: 1080 },
-    { label: '9:16', width: 1080, height: 1920 },
-    { label: '4:3', width: 1365, height: 1024 },
-    { label: '3:4', width: 1024, height: 1365 },
-  ];
+  // Render aspect ratio options
+  const aspectRatios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
+
+  // Calculate grid layout based on slot count
+  const getGridClass = () => {
+    switch (slotCount) {
+      case 1: return 'img-slots-1';
+      case 2: return 'img-slots-2';
+      case 3: return 'img-slots-3';
+      case 4: return 'img-slots-4';
+      default: return 'img-slots-1';
+    }
+  };
 
   return (
     <aside 
@@ -201,7 +254,7 @@ export function AlphawaveImageStudio({
             <div className="img-studio-titles">
               <span className="img-studio-title">Image Studio</span>
               <span className="img-studio-subtitle">
-                {isGenerating ? 'Generating...' : 'Ready'}
+                {isGenerating ? 'Generating...' : 'Imagen 4 • Recraft • FLUX • Ideogram'}
               </span>
             </div>
           </div>
@@ -244,6 +297,88 @@ export function AlphawaveImageStudio({
           ))}
         </div>
 
+        {/* IMAGE SLOTS DISPLAY AREA */}
+        <div className={`img-slots-container ${getGridClass()}`}>
+          {Array.from({ length: slotCount }).map((_, index) => {
+            const slotImage = slotImages[index];
+            const slotModel = multiModelMode 
+              ? modelSlots[index]?.modelKey 
+              : singleModel;
+            const modelInfo = getModelByKey(slotModel);
+            
+            return (
+              <div 
+                key={index} 
+                className="img-slot"
+                onClick={() => slotImage && handleVariantClick(slotImage)}
+              >
+                <div className="img-slot-inner">
+                  {slotImage?.image_url ? (
+                    <Image
+                      src={slotImage.image_url}
+                      alt={`Generated image ${index + 1}`}
+                      fill
+                      className="img-slot-image"
+                      unoptimized
+                    />
+                  ) : isGenerating ? (
+                    <div className="img-slot-loading">
+                      <div className="img-slot-spinner" />
+                      <span>Generating...</span>
+                    </div>
+                  ) : (
+                    <div className="img-slot-empty">
+                      <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.5}>
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                      </svg>
+                      <span>Slot {index + 1}</span>
+                    </div>
+                  )}
+                  
+                  {/* Model badge */}
+                  <div className="img-slot-badge">
+                    {modelInfo?.name || slotModel}
+                  </div>
+                  
+                  {/* Actions overlay */}
+                  {slotImage?.image_url && (
+                    <div className="img-slot-actions">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(slotImage.id);
+                        }}
+                        className={`img-slot-action ${slotImage.is_favorite ? 'img-favorited' : ''}`}
+                        title="Favorite"
+                      >
+                        <svg viewBox="0 0 24 24" fill={slotImage.is_favorite ? 'currentColor' : 'none'} strokeWidth={2}>
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownload(slotImage);
+                        }}
+                        className="img-slot-action"
+                        title="Download"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/>
+                          <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
         {/* Content */}
         <div className="img-studio-content">
           {/* Error Banner */}
@@ -261,48 +396,98 @@ export function AlphawaveImageStudio({
           {/* Create Tab */}
           {activeTab === 'create' && (
             <div className="img-create-tab">
-              {/* Preset Selector */}
+              {/* Slot Count Selector */}
               <div className="img-form-group">
                 <label className="img-label">
                   <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
                   </svg>
-                  Preset
+                  Image Slots
                 </label>
-                <select
-                  value={selectedPreset || ''}
-                  onChange={(e) => setSelectedPreset(e.target.value || null)}
-                  className="img-select"
-                >
-                  <option value="">Custom</option>
-                  {presets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
+                <div className="img-slot-count-grid">
+                  {[1, 2, 3, 4].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setSlotCount(count)}
+                      className={`img-slot-count-btn ${slotCount === count ? 'img-slot-count-active' : ''}`}
+                    >
+                      {count}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
 
-              {/* Model Selector */}
+              {/* Model Mode Toggle */}
               <div className="img-form-group">
                 <label className="img-label">
                   <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                   </svg>
-                  Model
+                  Model Selection
                 </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="img-select"
-                >
-                  {models.map((model) => (
-                    <option key={model.key} value={model.key}>
-                      {model.name} (${model.cost_per_image.toFixed(3)})
-                    </option>
-                  ))}
-                </select>
+                <div className="img-model-mode-toggle">
+                  <button
+                    onClick={() => setMultiModelMode(false)}
+                    className={`img-mode-btn ${!multiModelMode ? 'img-mode-active' : ''}`}
+                  >
+                    Single Model
+                  </button>
+                  <button
+                    onClick={() => setMultiModelMode(true)}
+                    className={`img-mode-btn ${multiModelMode ? 'img-mode-active' : ''}`}
+                    disabled={slotCount === 1}
+                  >
+                    Compare Models
+                  </button>
+                </div>
               </div>
+
+              {/* Model Selector(s) */}
+              {!multiModelMode ? (
+                <div className="img-form-group">
+                  <label className="img-label">Model</label>
+                  <select
+                    value={singleModel}
+                    onChange={(e) => setSingleModel(e.target.value)}
+                    className="img-select"
+                  >
+                    {models.map((model) => (
+                      <option key={model.key} value={model.key}>
+                        {model.name} (${model.cost_per_image.toFixed(3)}/img)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="img-form-group">
+                  <label className="img-label">Models per Slot</label>
+                  <div className="img-multi-model-grid">
+                    {modelSlots.slice(0, slotCount).map((slot, index) => (
+                      <div key={index} className="img-model-slot-select">
+                        <span className="img-slot-label">Slot {index + 1}</span>
+                        <select
+                          value={slot.modelKey}
+                          onChange={(e) => {
+                            const newSlots = [...modelSlots];
+                            newSlots[index] = { ...newSlots[index], modelKey: e.target.value, enabled: true };
+                            setModelSlots(newSlots);
+                          }}
+                          className="img-select-small"
+                        >
+                          {models.map((model) => (
+                            <option key={model.key} value={model.key}>
+                              {model.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Prompt Input */}
               <div className="img-form-group">
@@ -332,7 +517,7 @@ export function AlphawaveImageStudio({
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe the image you want to create..."
                   className="img-textarea"
-                  rows={4}
+                  rows={3}
                 />
                 {smartPrompt && (
                   <div className="img-enhance-hint">
@@ -352,18 +537,11 @@ export function AlphawaveImageStudio({
                 <div className="img-aspect-grid">
                   {aspectRatios.map((ratio) => (
                     <button
-                      key={ratio.label}
-                      onClick={() => {
-                        setWidthPx(ratio.width);
-                        setHeightPx(ratio.height);
-                      }}
-                      className={`img-aspect-btn ${
-                        width_px === ratio.width && height_px === ratio.height
-                          ? 'img-aspect-active'
-                          : ''
-                      }`}
+                      key={ratio}
+                      onClick={() => setAspectRatio(ratio)}
+                      className={`img-aspect-btn ${aspectRatio === ratio ? 'img-aspect-active' : ''}`}
                     >
-                      {ratio.label}
+                      {ratio}
                     </button>
                   ))}
                 </div>
@@ -386,32 +564,6 @@ export function AlphawaveImageStudio({
                 />
               </div>
 
-              {/* Batch Count */}
-              <div className="img-form-group">
-                <label className="img-label">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <rect x="3" y="3" width="7" height="7"/>
-                    <rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/>
-                    <rect x="3" y="14" width="7" height="7"/>
-                  </svg>
-                  Variants
-                </label>
-                <div className="img-batch-grid">
-                  {[1, 2, 3, 4].map((count) => (
-                    <button
-                      key={count}
-                      onClick={() => setBatchCount(count)}
-                      className={`img-batch-btn ${
-                        batchCount === count ? 'img-batch-active' : ''
-                      }`}
-                    >
-                      {count}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Generate Button */}
               <button
                 onClick={handleGenerate}
@@ -428,7 +580,10 @@ export function AlphawaveImageStudio({
                     <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
                       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                     </svg>
-                    <span>Generate {batchCount > 1 ? `${batchCount} Images` : 'Image'}</span>
+                    <span>
+                      Generate {slotCount > 1 ? `${slotCount} Images` : 'Image'}
+                      {multiModelMode && slotCount > 1 && ' (Multi-Model)'}
+                    </span>
                   </>
                 )}
               </button>
@@ -456,73 +611,20 @@ export function AlphawaveImageStudio({
                 </div>
               )}
 
-              {/* Variants Gallery */}
-              {activeJobVariants.length > 0 && (
-                <div className="img-variants-section">
-                  <h3 className="img-section-title">Results</h3>
-                  <div className="img-variants-grid">
-                    {activeJobVariants.map((variant) => (
-                      <div
-                        key={variant.id}
-                        className={`img-variant-card ${
-                          selectedVariant?.id === variant.id ? 'img-variant-selected' : ''
-                        }`}
-                        onClick={() => handleVariantClick(variant)}
-                      >
-                        {variant.image_url ? (
-                          <Image
-                            src={variant.image_url}
-                            alt={`Variant ${variant.variant_number}`}
-                            className="img-variant-image"
-                            fill
-                            unoptimized
-                          />
-                        ) : variant.status === 'generating' ? (
-                          <div className="img-variant-loading">
-                            <span className="img-spinner-lg" />
-                          </div>
-                        ) : (
-                          <div className="img-variant-error">
-                            <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                              <circle cx="12" cy="12" r="10"/>
-                              <line x1="12" y1="8" x2="12" y2="12"/>
-                              <line x1="12" y1="16" x2="12.01" y2="16"/>
-                            </svg>
-                          </div>
-                        )}
-                        <div className="img-variant-actions">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(variant.id);
-                            }}
-                            className={`img-action-btn ${variant.is_favorite ? 'img-favorited' : ''}`}
-                            title="Favorite"
-                          >
-                            <svg viewBox="0 0 24 24" fill={variant.is_favorite ? 'currentColor' : 'none'} strokeWidth={2}>
-                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload(variant);
-                            }}
-                            className="img-action-btn"
-                            title="Download"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                              <polyline points="7 10 12 15 17 10"/>
-                              <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Cost Estimate */}
+              <div className="img-cost-estimate">
+                <span>Estimated cost: </span>
+                <strong>
+                  ${(
+                    multiModelMode 
+                      ? modelSlots.slice(0, slotCount).reduce((sum, slot) => {
+                          const model = getModelByKey(slot.modelKey);
+                          return sum + (model?.cost_per_image || 0.04);
+                        }, 0)
+                      : (getModelByKey(singleModel)?.cost_per_image || 0.04) * slotCount
+                  ).toFixed(3)}
+                </strong>
+              </div>
             </div>
           )}
 
@@ -694,4 +796,3 @@ export function AlphawaveImageStudio({
     </aside>
   );
 }
-
