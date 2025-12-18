@@ -436,10 +436,16 @@ async def send_message(
         
         full_response = ""
         
-        # Send immediate acknowledgment
+        # Send immediate acknowledgment - this should appear instantly
         yield f"data: {json.dumps({'type': 'start', 'conversation_id': conversation_id})}\n\n"
         
+        # DEBUG: Send a test event to verify streaming works
+        import time as time_module
+        yield f"data: {json.dumps({'type': 'status', 'text': 'Stream connected at ' + str(time_module.time())})}\n\n"
+        
         try:
+            import time as perf_time
+            
             # ================================================================
             # MEMORY RETRIEVAL
             # ================================================================
@@ -451,6 +457,7 @@ async def send_message(
             yield f"data: {json.dumps({'type': 'status', 'text': 'Gathering context...'})}\n\n"
             
             try:
+                mem_start = perf_time.time()
                 logger.info(f"[MEMORY RETRIEVAL] Searching for user {tiger_user_id}...")
                 memories = await memory_service.search_memory(
                     user_id=tiger_user_id,
@@ -458,6 +465,7 @@ async def send_message(
                     limit=10,
                     min_confidence=0.3,
                 )
+                logger.info(f"[PERF] Memory search took {perf_time.time() - mem_start:.2f}s")
                 
                 if memories:
                     relevant_memories = memories
@@ -498,11 +506,13 @@ async def send_message(
             
             
             try:
+                doc_start = perf_time.time()
                 doc_results = await document_service.search_documents(
                     user_id=tiger_user_id,
                     query=chat_request.text,
                     limit=3,
                 )
+                logger.info(f"[PERF] Document search took {perf_time.time() - doc_start:.2f}s")
                 
                 if doc_results:
                     logger.info(f"[DOCUMENT] Found {len(doc_results)} relevant documents")
@@ -551,6 +561,7 @@ async def send_message(
             # - Older context is captured in memory system for long-term recall
             #
             
+            hist_start = perf_time.time()
             history_rows = await db.fetch(
                 f"""
                 SELECT message_role, content, created_at
@@ -561,6 +572,7 @@ async def send_message(
                 """,
                 conversation_id,
             )
+            logger.info(f"[PERF] History fetch took {perf_time.time() - hist_start:.2f}s")
             
             logger.info(f"[STREAM] Raw history rows fetched: {len(history_rows)} for conversation {conversation_id}")
             
@@ -622,6 +634,7 @@ async def send_message(
             
             # Generate streaming response
             logger.info(f"[STREAM] Starting Claude streaming...")
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Connecting to Claude...'})}\n\n"
             
             
             # Send conversation_id for new conversations so frontend can track
