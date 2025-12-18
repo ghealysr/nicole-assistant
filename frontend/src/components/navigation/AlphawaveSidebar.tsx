@@ -55,8 +55,8 @@ export function AlphawaveSidebar({
         <Image 
           src="/images/alph_wave_logo.png" 
           alt="AlphaWave" 
-          width={120} 
-          height={120}
+          width={240} 
+          height={240}
           className="object-contain"
           priority
         />
