@@ -256,6 +256,33 @@ class AlphawaveConversationListResponse(BaseModel):
 
 
 # ============================================================================
+# DEBUG: Streaming Test Endpoint
+# ============================================================================
+
+@router.get("/stream-test")
+async def stream_test():
+    """Test endpoint to verify SSE streaming works with no buffering."""
+    import time
+    import asyncio
+    
+    async def generate():
+        for i in range(5):
+            yield f"data: {json.dumps({'type': 'tick', 'count': i, 'time': time.time()})}\n\n"
+            await asyncio.sleep(1)
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# ============================================================================
 # MAIN CHAT ENDPOINT
 # ============================================================================
 
@@ -445,74 +472,96 @@ async def send_message(
         
         try:
             import time as perf_time
+            import asyncio
             
             # ================================================================
-            # MEMORY RETRIEVAL
+            # PARALLEL CONTEXT GATHERING (memory + documents in parallel)
             # ================================================================
+            # These both call OpenAI for embeddings, so parallelizing saves ~5-10s
             
             relevant_memories = []
             memory_context = ""
-            
-            # Quick status for context gathering (not thinking yet)
-            yield f"data: {json.dumps({'type': 'status', 'text': 'Gathering context...'})}\n\n"
-            
-            try:
-                mem_start = perf_time.time()
-                logger.info(f"[MEMORY RETRIEVAL] Searching for user {tiger_user_id}...")
-                memories = await memory_service.search_memory(
-                    user_id=tiger_user_id,
-                    query=chat_request.text,
-                    limit=10,
-                    min_confidence=0.3,
-                )
-                logger.info(f"[PERF] Memory search took {perf_time.time() - mem_start:.2f}s")
-                
-                if memories:
-                    relevant_memories = memories
-                    logger.info(f"[MEMORY RETRIEVAL] ✅ Found {len(memories)} memories!")
-                    
-                    memory_items = []
-                    for mem in memories[:7]:
-                        mem_type = mem.get("memory_type", "info")
-                        content = mem.get("content", "")
-                        confidence = mem.get("confidence_score", 0.5)
-                        
-                        if confidence >= 0.7:
-                            memory_items.append(f"• [{mem_type.upper()}] {content}")
-                        else:
-                            memory_items.append(f"• [{mem_type}] {content} (less certain)")
-                    
-                    if memory_items:
-                        memory_context = "\n\n## 🧠 RELEVANT MEMORIES:\n" + "\n".join(memory_items)
-                        
-                    # Boost accessed memories
-                    for mem in memories[:5]:
-                        if mem.get("memory_id"):
-                            try:
-                                await memory_service.bump_confidence(mem["memory_id"], 0.05)
-                            except Exception:
-                                pass
-                else:
-                    logger.info(f"[MEMORY RETRIEVAL] No memories found for query")
-                    
-            except Exception as mem_err:
-                logger.error(f"[MEMORY RETRIEVAL] ERROR: {mem_err}")
-            
-            # ================================================================
-            # DOCUMENT SEARCH
-            # ================================================================
-            
             document_context = ""
             
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Gathering context...'})}\n\n"
             
+            context_start = perf_time.time()
+            
+            async def fetch_memories():
+                """Fetch relevant memories for the query."""
+                try:
+                    memories = await memory_service.search_memory(
+                        user_id=tiger_user_id,
+                        query=chat_request.text,
+                        limit=10,
+                        min_confidence=0.3,
+                    )
+                    return memories or []
+                except Exception as e:
+                    logger.error(f"[MEMORY RETRIEVAL] ERROR: {e}")
+                    return []
+            
+            async def fetch_documents():
+                """Fetch relevant documents for the query."""
+                try:
+                    docs = await document_service.search_documents(
+                        user_id=tiger_user_id,
+                        query=chat_request.text,
+                        limit=3,
+                    )
+                    return docs or []
+                except Exception as e:
+                    logger.debug(f"[DOCUMENT] Error searching documents: {e}")
+                    return []
+            
+            # Run both searches in parallel
+            memories, doc_results = await asyncio.gather(
+                fetch_memories(),
+                fetch_documents(),
+                return_exceptions=True
+            )
+            
+            # Handle exceptions from gather
+            if isinstance(memories, Exception):
+                logger.error(f"[MEMORY] Parallel fetch failed: {memories}")
+                memories = []
+            if isinstance(doc_results, Exception):
+                logger.debug(f"[DOCUMENT] Parallel fetch failed: {doc_results}")
+                doc_results = []
+            
+            logger.info(f"[PERF] Parallel context fetch took {perf_time.time() - context_start:.2f}s (memories: {len(memories)}, docs: {len(doc_results)})")
+            
+            # Process memories
+            if memories:
+                relevant_memories = memories
+                logger.info(f"[MEMORY RETRIEVAL] ✅ Found {len(memories)} memories!")
+                
+                memory_items = []
+                for mem in memories[:7]:
+                    mem_type = mem.get("memory_type", "info")
+                    content = mem.get("content", "")
+                    confidence = mem.get("confidence_score", 0.5)
+                    
+                    if confidence >= 0.7:
+                        memory_items.append(f"• [{mem_type.upper()}] {content}")
+                    else:
+                        memory_items.append(f"• [{mem_type}] {content} (less certain)")
+                
+                if memory_items:
+                    memory_context = "\n\n## 🧠 RELEVANT MEMORIES:\n" + "\n".join(memory_items)
+                    
+                # Boost accessed memories (fire and forget)
+                for mem in memories[:5]:
+                    if mem.get("memory_id"):
+                        try:
+                            asyncio.create_task(memory_service.bump_confidence(mem["memory_id"], 0.05))
+                        except Exception:
+                            pass
+            else:
+                logger.info(f"[MEMORY RETRIEVAL] No memories found for query")
+            
+            # Process documents
             try:
-                doc_start = perf_time.time()
-                doc_results = await document_service.search_documents(
-                    user_id=tiger_user_id,
-                    query=chat_request.text,
-                    limit=3,
-                )
-                logger.info(f"[PERF] Document search took {perf_time.time() - doc_start:.2f}s")
                 
                 if doc_results:
                     logger.info(f"[DOCUMENT] Found {len(doc_results)} relevant documents")
