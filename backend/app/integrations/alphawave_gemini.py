@@ -173,7 +173,13 @@ class GeminiClient:
         enable_thinking: bool = True
     ) -> Dict[str, Any]:
         """
-        Execute deep research using Gemini 3 Pro with Google Search grounding.
+        Execute deep research using Gemini Deep Research Agent via Interactions API.
+        
+        This uses the official Deep Research Agent which has built-in Google Search
+        grounding and returns properly structured results with sources.
+        
+        Falls back to standard generateContent API with Google Search tool if
+        the Interactions API is not available (requires google-genai >= 1.55.0).
         
         Args:
             query: Research query
@@ -194,57 +200,115 @@ class GeminiClient:
             # Build research prompt based on type
             system_prompt = self._build_research_prompt(research_type, context)
             
-            # Configure tools - enable Google Search grounding
-            tools = [
-                types.Tool(google_search=types.GoogleSearch())
-            ]
-            logger.info(f"[GEMINI] Configured {len(tools)} tools for research")
-            logger.info(f"[GEMINI] Tool 0: {tools[0]}")
+            # Build enhanced query for the agent
+            full_query = f"""
+{system_prompt}
+
+RESEARCH QUERY: {query}
+
+Please conduct thorough research on this topic using Google Search and provide:
+1. A comprehensive executive summary
+2. Key findings with specific citations and URLs
+3. All source URLs you referenced (CRITICAL - include full URLs)
+4. Actionable recommendations
+
+Format your response as structured JSON with these fields:
+- executive_summary: 2-3 sentence overview
+- key_findings: array of {{content, source_url, source_title}}
+- sources: array of {{url, title, relevance_score}} (MUST include actual URLs)
+- recommendations: array of actionable insights
+"""
             
-            # Build the request
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                tools=tools,
-                response_modalities=["TEXT"],
-            )
-            logger.info(f"[GEMINI] Config created with tools: {config.tools is not None}")
+            logger.info(f"[GEMINI] Starting research for query: {query[:100]}...")
+            logger.info(f"[GEMINI] Research type: {research_type}")
             
-            # Add thinking if enabled
-            if enable_thinking:
-                config.thinking_config = types.ThinkingConfig(
-                    thinking_budget=8000  # Tokens for thinking
+            # Try to use Deep Research Agent via Interactions API first
+            use_interactions_api = False
+            result_wrapper = None
+            
+            try:
+                # Check if interactions API is available (requires google-genai >= 1.55.0)
+                if hasattr(self._client, 'interactions'):
+                    logger.info("[GEMINI] Using Interactions API with Deep Research Agent")
+                    
+                    @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
+                    async def _execute_deep_research_agent():
+                        interaction = await asyncio.to_thread(
+                            self._client.interactions.create,
+                            agent="deep-research-pro-preview-12-2025",
+                            input=full_query,
+                            store=False  # Don't store for privacy
+                        )
+                        return interaction
+                    
+                    interaction = await _execute_deep_research_agent()
+                    result_wrapper = {"type": "interaction", "data": interaction}
+                    use_interactions_api = True
+                    logger.info("[GEMINI] Deep Research Agent completed successfully")
+                else:
+                    logger.info("[GEMINI] Interactions API not available in SDK")
+                    
+            except Exception as e:
+                logger.warning(f"[GEMINI] Interactions API failed: {e}")
+            
+            # Fallback to standard generateContent with Google Search tool
+            if not use_interactions_api:
+                logger.info("[GEMINI] Using standard generateContent with Google Search tool")
+                
+                tools = [types.Tool(google_search=types.GoogleSearch())]
+                config = types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    tools=tools,
+                    response_modalities=["TEXT"],
                 )
+                
+                if enable_thinking:
+                    try:
+                        config.thinking_config = types.ThinkingConfig(
+                            thinking_budget=8000
+                        )
+                    except Exception as e:
+                        logger.warning(f"[GEMINI] Thinking config not supported: {e}")
+                
+                @async_retry_with_backoff(max_attempts=3, base_delay=1.0)
+                async def _execute_standard_research():
+                    return await asyncio.to_thread(
+                        self._client.models.generate_content,
+                        model=settings.GEMINI_PRO_MODEL,
+                        contents=full_query,
+                        config=config
+                    )
+                
+                response = await _execute_standard_research()
+                result_wrapper = {"type": "generate_content", "data": response}
             
-            # Execute research with retry
-            @async_retry_with_backoff(max_attempts=3, base_delay=1.0)
-            async def _execute_research():
-                logger.info(f"[GEMINI] Executing research with model: {settings.GEMINI_PRO_MODEL}")
-                logger.info(f"[GEMINI] API key set: {bool(settings.GEMINI_API_KEY)}, length: {len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0}")
-                return await asyncio.to_thread(
-                    self._client.models.generate_content,
-                    model=settings.GEMINI_PRO_MODEL,
-                    contents=self._format_research_query(query, research_type, context),
-                    config=config
-                )
-            
-            response = await _execute_research()
-            
-            # Debug: Log response structure
-            logger.info(f"[GEMINI] Response type: {type(response)}")
-            logger.info(f"[GEMINI] Response has __dict__: {hasattr(response, '__dict__')}")
-            if hasattr(response, '__dict__'):
-                logger.info(f"[GEMINI] Response keys: {list(response.__dict__.keys()) if response.__dict__ else 'None'}")
-            logger.info(f"[GEMINI] Response dir (first 15): {dir(response)[:15]}")
-            if hasattr(response, 'candidates') and response.candidates:
-                logger.info(f"[GEMINI] Candidates count: {len(response.candidates)}")
-                logger.info(f"[GEMINI] First candidate dir (first 15): {dir(response.candidates[0])[:15]}")
-            
-            # Parse response
-            result = self._parse_research_response(response)
+            # Parse based on response type
+            if result_wrapper["type"] == "interaction":
+                interaction = result_wrapper["data"]
+                result = self._parse_interaction_response(interaction)
+                
+                # Get usage from interaction
+                usage = getattr(interaction, 'usage', None)
+                input_tokens = getattr(usage, 'input_tokens', 0) if usage else 0
+                output_tokens = getattr(usage, 'output_tokens', 0) if usage else 0
+                model_used = "deep-research-pro-preview-12-2025"
+                
+            else:
+                response = result_wrapper["data"]
+                
+                # Debug: Log response structure
+                logger.info(f"[GEMINI] Response type: {type(response)}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    logger.info(f"[GEMINI] Candidates count: {len(response.candidates)}")
+                
+                result = self._parse_research_response(response)
+                
+                # Get usage from response
+                input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) if hasattr(response, 'usage_metadata') else 0
+                output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) if hasattr(response, 'usage_metadata') else 0
+                model_used = settings.GEMINI_PRO_MODEL
             
             # Calculate cost
-            input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0)
-            output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0)
             cost = self._estimate_cost(
                 settings.GEMINI_PRO_MODEL,
                 input_tokens,
@@ -275,7 +339,7 @@ class GeminiClient:
                     "output_tokens": output_tokens,
                     "cost_usd": float(cost),
                     "elapsed_seconds": elapsed,
-                    "model": settings.GEMINI_PRO_MODEL
+                    "model": model_used
                 }
             }
             
@@ -463,6 +527,89 @@ TECHNICAL RESEARCH MODE:
             return {
                 "raw_response": str(response),
                 "parse_error": str(e)
+            }
+    
+    def _parse_interaction_response(self, interaction) -> Dict[str, Any]:
+        """
+        Parse Deep Research Agent Interaction response into structured format.
+        
+        The Interactions API returns a different structure than generateContent.
+        See: https://ai.google.dev/gemini-api/docs/interactions
+        """
+        try:
+            import re
+            
+            # Get the output text from the interaction
+            text = ""
+            if hasattr(interaction, 'outputs') and interaction.outputs:
+                for output in interaction.outputs:
+                    if hasattr(output, 'text'):
+                        text += output.text
+                    elif hasattr(output, 'content'):
+                        # Content might be a list of parts
+                        if isinstance(output.content, list):
+                            for part in output.content:
+                                if hasattr(part, 'text'):
+                                    text += part.text
+                        elif hasattr(output.content, 'text'):
+                            text += output.content.text
+            
+            logger.info(f"[GEMINI] Interaction response text length: {len(text)}")
+            logger.info(f"[GEMINI] Interaction response preview: {text[:500]}...")
+            
+            # Try to parse as JSON
+            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+            if json_match:
+                parsed = json.loads(json_match.group(1))
+                logger.info(f"[GEMINI] Parsed JSON from interaction, has sources: {'sources' in parsed}, count: {len(parsed.get('sources', []))}")
+            else:
+                # Try direct parse
+                try:
+                    parsed = json.loads(text)
+                    logger.info(f"[GEMINI] Parsed JSON directly from interaction, has sources: {'sources' in parsed}, count: {len(parsed.get('sources', []))}")
+                except json.JSONDecodeError:
+                    logger.warning("[GEMINI] Failed to parse interaction as JSON, using fallback")
+                    parsed = {
+                        "executive_summary": text[:500] if text else "Research completed",
+                        "key_findings": [{"content": text}] if text else [],
+                        "sources": [],
+                        "recommendations": []
+                    }
+            
+            # Extract URLs from text as fallback if no sources in JSON
+            if not parsed.get("sources"):
+                url_pattern = r'https?://[^\s<>"{}|\\^`\[\])]+'
+                urls = re.findall(url_pattern, text)
+                if urls:
+                    # Deduplicate and limit
+                    unique_urls = list(dict.fromkeys(urls))[:15]
+                    parsed["sources"] = [{"url": url, "title": url} for url in unique_urls]
+                    logger.info(f"[GEMINI] Extracted {len(parsed['sources'])} URLs from interaction text")
+            
+            # Check for grounding metadata on the interaction
+            if hasattr(interaction, 'grounding_metadata') and interaction.grounding_metadata:
+                grounding = interaction.grounding_metadata
+                logger.info("[GEMINI] Interaction has grounding_metadata")
+                
+                if hasattr(grounding, 'grounding_chunks'):
+                    for chunk in grounding.grounding_chunks:
+                        if hasattr(chunk, 'web') and hasattr(chunk.web, 'uri'):
+                            source = {
+                                "url": chunk.web.uri,
+                                "title": getattr(chunk.web, 'title', chunk.web.uri)
+                            }
+                            if source not in parsed.get("sources", []):
+                                parsed.setdefault("sources", []).append(source)
+                    logger.info(f"[GEMINI] Added grounding sources, total: {len(parsed.get('sources', []))}")
+            
+            return parsed
+            
+        except Exception as e:
+            logger.error(f"[GEMINI] Interaction parsing failed: {e}", exc_info=True)
+            return {
+                "raw_response": str(interaction),
+                "parse_error": str(e),
+                "sources": []
             }
     
     # =========================================================================
