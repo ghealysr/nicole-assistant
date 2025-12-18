@@ -233,15 +233,51 @@ Format your response as structured JSON with these fields:
                     
                     @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
                     async def _execute_deep_research_agent():
+                        # Deep Research Agent requires background=True
+                        # We need to poll for completion
                         interaction = await asyncio.to_thread(
                             self._client.interactions.create,
                             agent="deep-research-pro-preview-12-2025",
                             input=full_query,
+                            background=True,  # Required for agent interactions
                             store=False  # Don't store for privacy
                         )
                         return interaction
                     
                     interaction = await _execute_deep_research_agent()
+                    
+                    # Poll for completion if background mode
+                    if hasattr(interaction, 'status') and interaction.status != 'completed':
+                        logger.info(f"[GEMINI] Deep Research Agent started, status: {interaction.status}, polling for completion...")
+                        max_polls = 60  # Max 5 minutes (60 * 5 seconds)
+                        poll_count = 0
+                        
+                        while poll_count < max_polls:
+                            await asyncio.sleep(5)  # Wait 5 seconds between polls
+                            poll_count += 1
+                            
+                            # Get updated interaction status
+                            try:
+                                interaction = await asyncio.to_thread(
+                                    self._client.interactions.get,
+                                    interaction.id
+                                )
+                                logger.info(f"[GEMINI] Poll {poll_count}: status={interaction.status}")
+                                
+                                if interaction.status == 'completed':
+                                    logger.info("[GEMINI] Deep Research Agent completed!")
+                                    break
+                                elif interaction.status == 'failed':
+                                    logger.error("[GEMINI] Deep Research Agent failed")
+                                    raise Exception("Deep Research Agent failed")
+                            except Exception as e:
+                                logger.warning(f"[GEMINI] Poll failed: {e}")
+                                if poll_count >= max_polls:
+                                    raise
+                        
+                        if poll_count >= max_polls:
+                            logger.warning("[GEMINI] Deep Research Agent timed out after 5 minutes")
+                    
                     result_wrapper = {"type": "interaction", "data": interaction}
                     use_interactions_api = True
                     logger.info("[GEMINI] Deep Research Agent completed successfully")
