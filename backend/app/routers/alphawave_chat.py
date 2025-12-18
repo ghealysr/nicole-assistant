@@ -456,6 +456,9 @@ async def send_message(
     
     async def generate_safe_response():
         """Generate AI response with streaming safety checks and memory integration."""
+        import sys
+        print(f"[STREAM] ========== NEW REQUEST ==========", file=sys.stderr, flush=True)
+        print(f"[STREAM] Generator started for conversation {conversation_id}", file=sys.stderr, flush=True)
         logger.info(f"[STREAM] ========== NEW REQUEST ==========")
         logger.info(f"[STREAM] Generator started for conversation {conversation_id}")
         logger.info(f"[STREAM] is_new_conversation: {is_new_conversation}")
@@ -468,6 +471,7 @@ async def send_message(
         
         # DEBUG: Send a test event to verify streaming works
         import time as time_module
+        print(f"[STREAM] Yielding status event at {time_module.time()}", file=sys.stderr, flush=True)
         yield f"data: {json.dumps({'type': 'status', 'text': 'Stream connected at ' + str(time_module.time())})}\n\n"
         
         try:
@@ -515,6 +519,7 @@ async def send_message(
                     return []
             
             # Run both searches in parallel
+            print(f"[STREAM] Starting parallel context fetch...", file=sys.stderr, flush=True)
             memories, doc_results = await asyncio.gather(
                 fetch_memories(),
                 fetch_documents(),
@@ -524,12 +529,15 @@ async def send_message(
             # Handle exceptions from gather
             if isinstance(memories, Exception):
                 logger.error(f"[MEMORY] Parallel fetch failed: {memories}")
+                print(f"[ERROR] Memory fetch failed: {memories}", file=sys.stderr, flush=True)
                 memories = []
             if isinstance(doc_results, Exception):
                 logger.debug(f"[DOCUMENT] Parallel fetch failed: {doc_results}")
                 doc_results = []
             
-            logger.info(f"[PERF] Parallel context fetch took {perf_time.time() - context_start:.2f}s (memories: {len(memories)}, docs: {len(doc_results)})")
+            fetch_duration = perf_time.time() - context_start
+            print(f"[PERF] Parallel context fetch took {fetch_duration:.2f}s (memories: {len(memories)}, docs: {len(doc_results)})", file=sys.stderr, flush=True)
+            logger.info(f"[PERF] Parallel context fetch took {fetch_duration:.2f}s (memories: {len(memories)}, docs: {len(doc_results)})")
             
             # Process memories
             if memories:
