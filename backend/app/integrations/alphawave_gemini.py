@@ -655,7 +655,7 @@ TECHNICAL RESEARCH MODE:
     async def generate_image(
         self,
         prompt: str,
-        model: str = "imagen-4",
+        model: str = "imagen-3.0-generate-002",
         aspect_ratio: str = "1:1",
         style: Optional[str] = None,
         reference_image: Optional[bytes] = None,
@@ -663,11 +663,11 @@ TECHNICAL RESEARCH MODE:
         enable_thinking: bool = False
     ) -> Dict[str, Any]:
         """
-        Generate image using Imagen 4 or legacy Gemini 3 Pro Image.
+        Generate image using Imagen 3 or legacy Gemini 3 Pro Image.
         
         Args:
             prompt: Image description
-            model: Model to use (imagen-4, imagen-4-ultra, gemini-3-pro-image-preview)
+            model: Model to use (imagen-3.0-generate-002, imagen-3.0-fast-generate-001, gemini-3-pro-image-preview)
             aspect_ratio: Output aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4)
             style: Optional style guidance
             reference_image: Optional reference image for modification
@@ -682,9 +682,9 @@ TECHNICAL RESEARCH MODE:
         
         start_time = datetime.now()
         
-        # Determine model and cost
-        is_imagen4 = model.startswith("imagen-4")
-        cost_per_image = 0.04 if model == "imagen-4" else (0.06 if model == "imagen-4-ultra" else 0.134)
+        # Determine model and cost - Imagen 3 models
+        is_imagen = model.startswith("imagen-3")
+        cost_per_image = 0.02 if "fast" in model else (0.04 if is_imagen else 0.134)
         
         try:
             # Build prompt with style
@@ -694,11 +694,11 @@ TECHNICAL RESEARCH MODE:
             
             logger.info(f"[GEMINI] Generating {num_images} image(s) with {model}, aspect_ratio={aspect_ratio}")
             
-            if is_imagen4:
-                # Use Imagen 4 API
-                # Imagen 4 uses the images.generate endpoint
+            if is_imagen:
+                # Use Imagen 3 API
+                # Imagen 3 uses the images.generate endpoint
                 @async_retry_with_backoff(max_attempts=3, base_delay=2.0)
-                async def _execute_imagen4():
+                async def _execute_imagen():
                     return await asyncio.to_thread(
                         self._client.models.generate_images,
                         model=model,
@@ -711,9 +711,9 @@ TECHNICAL RESEARCH MODE:
                         )
                     )
                 
-                response = await _execute_imagen4()
+                response = await _execute_imagen()
                 
-                # Extract images from Imagen 4 response
+                # Extract images from Imagen 3 response
                 images = []
                 for image in response.generated_images:
                     if hasattr(image, 'image') and image.image:
@@ -733,7 +733,7 @@ TECHNICAL RESEARCH MODE:
                 elapsed = (datetime.now() - start_time).total_seconds()
                 total_cost = cost_per_image * len(images)
                 
-                logger.info(f"[GEMINI] Imagen 4 generated {len(images)} image(s) in {elapsed:.1f}s, cost: ${total_cost}")
+                logger.info(f"[GEMINI] Imagen 3 generated {len(images)} image(s) in {elapsed:.1f}s, cost: ${total_cost}")
                 
                 return {
                     "success": True,

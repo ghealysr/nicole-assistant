@@ -106,8 +106,10 @@ class Settings(BaseSettings):
     # Gemini API
     GEMINI_API_KEY: str = ""
     GEMINI_PRO_MODEL: str = "gemini-3-pro-preview"
-    GEMINI_IMAGE_MODEL: str = "imagen-4"  # Latest Imagen 4 model
-    GEMINI_IMAGE_MODEL_ULTRA: str = "imagen-4-ultra"  # High-precision version
+    # Imagen 4 model - use the preview version available in the API
+    # See: https://ai.google.dev/gemini-api/docs/imagen
+    GEMINI_IMAGE_MODEL: str = "imagen-3.0-generate-002"  # Stable Imagen 3 model
+    GEMINI_IMAGE_MODEL_FAST: str = "imagen-3.0-fast-generate-001"  # Fast version
     
     # PageSpeed Insights API (for Lighthouse scores)
     PAGESPEED_API_KEY: str = "AIzaSyBCHN4ej7qDAwsGhLmZMs_wqd7fi5kSM6c"

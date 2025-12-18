@@ -187,8 +187,8 @@ export function useImageGeneration() {
       console.error('Failed to fetch models:', err);
       // Use default models if API fails
       setModels([
-        { key: 'imagen4', name: 'Imagen 4', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: false },
-        { key: 'imagen4_ultra', name: 'Imagen 4 Ultra', cost_per_image: 0.06, max_width: 2048, max_height: 2048, supports_style: false },
+        { key: 'imagen3', name: 'Imagen 3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: false },
+        { key: 'imagen3_fast', name: 'Imagen 3 Fast', cost_per_image: 0.02, max_width: 2048, max_height: 2048, supports_style: false },
         { key: 'recraft', name: 'Recraft V3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['realistic_image', 'digital_illustration', 'vector_illustration', 'icon'] },
         { key: 'flux_pro', name: 'FLUX Pro', cost_per_image: 0.055, max_width: 1440, max_height: 1440, supports_style: false },
         { key: 'flux_schnell', name: 'FLUX Schnell', cost_per_image: 0.003, max_width: 1440, max_height: 1440, supports_style: false },

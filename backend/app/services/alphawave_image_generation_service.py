@@ -61,8 +61,8 @@ class ImageGenerationService:
         "flux_pro": 0.055,
         "flux_schnell": 0.003,
         "ideogram": 0.08,
-        "imagen4": 0.04,  # Imagen 4 standard
-        "imagen4_ultra": 0.06,  # Imagen 4 Ultra (higher precision)
+        "imagen3": 0.04,  # Imagen 3 standard
+        "imagen3_fast": 0.02,  # Imagen 3 Fast (cheaper)
         "gemini": 0.134,  # Legacy Gemini 3 Pro Image
     }
 
@@ -122,33 +122,33 @@ class ImageGenerationService:
             },
             "style_types": ["Auto", "General", "Realistic", "Design", "Render 3D", "Anime"],
         },
-        "imagen4": {
-            "name": "Imagen 4",
+        "imagen3": {
+            "name": "Imagen 3",
             "mode": "gemini",
-            "gemini_model": "imagen-4",
+            "gemini_model": "imagen-3.0-generate-002",  # Stable Imagen 3 model
             "supports_batch": True,
             "max_batch": 4,
             "supports_thinking": False,
-            "supports_image_input": True,
+            "supports_image_input": False,
             "default_params": {
                 "aspect_ratio": "1:1",
             },
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
             "cost_per_image": 0.04,  # $0.04 per output image
         },
-        "imagen4_ultra": {
-            "name": "Imagen 4 Ultra",
+        "imagen3_fast": {
+            "name": "Imagen 3 Fast",
             "mode": "gemini",
-            "gemini_model": "imagen-4-ultra",
+            "gemini_model": "imagen-3.0-fast-generate-001",  # Fast version
             "supports_batch": True,
             "max_batch": 4,
             "supports_thinking": False,
-            "supports_image_input": True,
+            "supports_image_input": False,
             "default_params": {
                 "aspect_ratio": "1:1",
             },
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
-            "cost_per_image": 0.06,  # $0.06 per output image (higher precision)
+            "cost_per_image": 0.02,  # Cheaper fast version
         },
         "gemini": {
             "name": "Gemini 3 Pro Image (Legacy)",
@@ -579,7 +579,7 @@ Rules:
         batch_count: int,
         model_key: str,
     ) -> Dict:
-        """Generate images using Imagen 4 or legacy Gemini 3 Pro Image."""
+        """Generate images using Imagen 3 or legacy Gemini 3 Pro Image."""
         import time
         from app.integrations.alphawave_gemini import gemini_client
         from app.services.alphawave_cloudinary_service import cloudinary_service
@@ -589,7 +589,7 @@ Rules:
         model_cfg = self.MODEL_CONFIGS[model_key]
         
         # Get the actual Gemini model name
-        gemini_model = model_cfg.get("gemini_model", "imagen-4")
+        gemini_model = model_cfg.get("gemini_model", "imagen-3.0-generate-002")
         
         # Get cost per image
         cost_config = model_cfg.get("cost_per_image")
@@ -600,11 +600,11 @@ Rules:
         
         variants = []
         
-        # For Imagen 4, we can generate multiple images in one call
-        is_imagen4 = gemini_model.startswith("imagen-4")
+        # For Imagen 3, we can generate multiple images in one call
+        is_imagen = gemini_model.startswith("imagen-3")
         
-        if is_imagen4:
-            # Imagen 4 supports batch generation natively
+        if is_imagen:
+            # Imagen 3 supports batch generation natively
             try:
                 result = await gemini_client.generate_image(
                     prompt=prompt,
@@ -615,7 +615,7 @@ Rules:
                 )
                 
                 if not result.get("success"):
-                    logger.warning(f"[IMAGE] Imagen 4 generation failed: {result.get('error')}")
+                    logger.warning(f"[IMAGE] Imagen 3 generation failed: {result.get('error')}")
                     return {
                         "job_id": job_id,
                         "variants": [],
@@ -636,7 +636,7 @@ Rules:
                             upload_result = cloudinary_service.upload_from_base64(
                                 image_data,
                                 folder=f"image_gen/{user_id}",
-                                public_id=f"imagen4_{job_id}_{i+1}"
+                                public_id=f"imagen3_{job_id}_{i+1}"
                             )
                             url = upload_result.get("secure_url") or upload_result.get("url", "")
                         else:
@@ -682,14 +682,14 @@ Rules:
                             None,
                         )
                         variants.append(dict(variant))
-                        logger.info(f"[IMAGE] Imagen 4 variant {i+1}/{len(images)} uploaded")
+                        logger.info(f"[IMAGE] Imagen 3 variant {i+1}/{len(images)} uploaded")
                         
                     except Exception as e:
-                        logger.error(f"[IMAGE] Failed to process Imagen 4 image {i+1}: {e}")
+                        logger.error(f"[IMAGE] Failed to process Imagen 3 image {i+1}: {e}")
                         continue
                         
             except Exception as e:
-                logger.error(f"[IMAGE] Imagen 4 generation error: {e}", exc_info=True)
+                logger.error(f"[IMAGE] Imagen 3 generation error: {e}", exc_info=True)
         else:
             # Legacy Gemini 3 Pro Image - generate one at a time
             for i in range(batch_count):

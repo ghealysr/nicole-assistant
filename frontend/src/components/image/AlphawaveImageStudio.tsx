@@ -53,9 +53,9 @@ export function AlphawaveImageStudio({
   // Image slots configuration (1-4 slots)
   const [slotCount, setSlotCount] = useState(1);
   const [multiModelMode, setMultiModelMode] = useState(false); // false = one model, all slots; true = different model per slot
-  const [singleModel, setSingleModel] = useState('imagen4');
+  const [singleModel, setSingleModel] = useState('imagen3');
   const [modelSlots, setModelSlots] = useState<ModelSlotConfig[]>([
-    { modelKey: 'imagen4', enabled: true },
+    { modelKey: 'imagen3', enabled: true },
     { modelKey: 'recraft', enabled: false },
     { modelKey: 'flux_pro', enabled: false },
     { modelKey: 'ideogram', enabled: false },
@@ -254,7 +254,7 @@ export function AlphawaveImageStudio({
             <div className="img-studio-titles">
               <span className="img-studio-title">Image Studio</span>
               <span className="img-studio-subtitle">
-                {isGenerating ? 'Generating...' : 'Imagen 4 • Recraft • FLUX • Ideogram'}
+                {isGenerating ? 'Generating...' : 'Imagen 3 • Recraft • FLUX • Ideogram'}
               </span>
             </div>
           </div>
