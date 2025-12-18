@@ -243,12 +243,17 @@ class GeminiClient:
             # Handle both enum and string research_type
             research_type_str = research_type.value if hasattr(research_type, 'value') else str(research_type)
             
+            sources = result.get("sources", [])
+            logger.info(f"[GEMINI] Returning {len(sources)} sources to research service")
+            if sources:
+                logger.info(f"[GEMINI] First 3 sources: {[s.get('url', 'no-url') for s in sources[:3]]}")
+            
             return {
                 "success": True,
                 "query": query,
                 "research_type": research_type_str,
                 "results": result,
-                "sources": result.get("sources", []),
+                "sources": sources,
                 "thinking": result.get("thinking"),
                 "metadata": {
                     "input_tokens": input_tokens,
@@ -387,21 +392,37 @@ TECHNICAL RESEARCH MODE:
                 parsed["thinking"] = thinking
             
             # Extract grounding sources if available
+            logger.info(f"[GEMINI] Response has grounding_metadata: {hasattr(response, 'grounding_metadata')}")
+            
             if hasattr(response, 'grounding_metadata'):
                 grounding = response.grounding_metadata
+                logger.info(f"[GEMINI] Grounding metadata found, has search_entry_point: {hasattr(grounding, 'search_entry_point')}, has grounding_chunks: {hasattr(grounding, 'grounding_chunks')}")
+                
                 if hasattr(grounding, 'search_entry_point'):
                     parsed["search_queries"] = grounding.search_entry_point
+                    
                 if hasattr(grounding, 'grounding_chunks'):
-                    grounding_sources = [
-                        {"url": chunk.web.uri, "title": chunk.web.title}
-                        for chunk in grounding.grounding_chunks
-                        if hasattr(chunk, 'web')
-                    ]
+                    chunk_count = len(grounding.grounding_chunks)
+                    logger.info(f"[GEMINI] Found {chunk_count} grounding chunks")
+                    
+                    grounding_sources = []
+                    for chunk in grounding.grounding_chunks:
+                        if hasattr(chunk, 'web'):
+                            source = {"url": chunk.web.uri, "title": chunk.web.title if hasattr(chunk.web, 'title') else chunk.web.uri}
+                            grounding_sources.append(source)
+                            logger.info(f"[GEMINI] Grounding source: {source['url']}")
+                    
+                    logger.info(f"[GEMINI] Extracted {len(grounding_sources)} sources from grounding_chunks")
+                    
                     # Add to sources list
                     if "sources" not in parsed or not parsed["sources"]:
                         parsed["sources"] = grounding_sources
                     else:
                         parsed["sources"].extend(grounding_sources)
+                else:
+                    logger.warning("[GEMINI] No grounding_chunks found in grounding_metadata")
+            else:
+                logger.warning("[GEMINI] No grounding_metadata in response - sources will be empty")
             
             return parsed
             
