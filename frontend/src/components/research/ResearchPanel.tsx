@@ -499,9 +499,9 @@ export function ResearchPanel({
                 </div>
               )}
 
-              {/* Research Results - Editorial Article Format */}
+              {/* Research Results - Editorial Article Format with Template Selection */}
               {hasResearch && research && (
-                <ResearchArticle data={research} />
+                <ResearchArticle data={research} showTemplateSelector={true} />
               )}
 
               {/* Inspiration Results */}
