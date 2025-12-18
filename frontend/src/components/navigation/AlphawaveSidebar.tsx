@@ -50,13 +50,13 @@ export function AlphawaveSidebar({
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
-      {/* Logo - AlphaWave logo only */}
+      {/* Logo - AlphaWave logo with matching background */}
       <div className="p-4 border-b border-[#333] flex justify-center">
         <Image 
-          src="/images/alpha_wave_logo.png" 
+          src="/images/alphawave_logo_two.png" 
           alt="AlphaWave" 
-          width={140} 
-          height={48}
+          width={120} 
+          height={120}
           className="object-contain"
           priority
         />
