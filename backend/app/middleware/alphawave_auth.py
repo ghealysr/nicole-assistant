@@ -71,6 +71,7 @@ PUBLIC_PATHS = {
     "/docs",
     "/redoc",
     "/openapi.json",
+    "/chat/stream-test",  # Debug endpoint for SSE testing
 }
 
 # Paths that require admin role
