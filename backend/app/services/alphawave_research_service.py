@@ -202,11 +202,13 @@ class ResearchOrchestrator:
                 progress=80
             )
             sources = gemini_result.get("sources", [])
+            logger.info(f"[RESEARCH] Found {len(sources)} sources from Gemini for request {request_id}")
             screenshots = await self._capture_screenshots(
                 sources=sources,
                 request_id=request_id,
                 max_screenshots=3  # Capture top 3 sources
             )
+            logger.info(f"[RESEARCH] Captured {len(screenshots)} screenshots for request {request_id}")
             
             # 6. Store final report with screenshots
             await self._store_report(request_id, gemini_result, synthesis, screenshots)
@@ -467,14 +469,18 @@ Respond ONLY with valid JSON, no markdown code blocks."""
         """
         screenshots = []
         
-        # Select top sources to screenshot (prioritize those with titles)
+        logger.info(f"[RESEARCH] _capture_screenshots called with {len(sources)} total sources for request {request_id}")
+        
+        # Select top sources to screenshot (prioritize those with URLs)
         sources_to_capture = [s for s in sources if s.get("url")][:max_screenshots]
         
         if not sources_to_capture:
-            logger.info("[RESEARCH] No sources available for screenshots")
+            logger.warning(f"[RESEARCH] No sources with URLs available for screenshots (total sources: {len(sources)})")
+            logger.warning(f"[RESEARCH] Source sample: {sources[:2] if sources else 'empty'}")
             return screenshots
         
         logger.info(f"[RESEARCH] Capturing {len(sources_to_capture)} screenshots for request {request_id}")
+        logger.info(f"[RESEARCH] URLs to capture: {[s.get('url', 'N/A')[:60] for s in sources_to_capture]}")
         
         for source in sources_to_capture:
             try:
@@ -613,13 +619,15 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                     "type": "screenshot"
                 } for s in screenshots]
             
+            # CRITICAL: Pass Python lists directly to asyncpg for JSONB columns
+            # Do NOT use json.dumps() or it will store as TEXT instead of JSONB
             await db.execute(
                 """
                 INSERT INTO research_reports (
                     request_id, article_title, subtitle, lead_paragraph, body, bottom_line,
                     executive_summary, findings, recommendations, nicole_synthesis,
                     hero_image_url, images, screenshots, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, NOW())
                 ON CONFLICT (request_id) DO UPDATE SET
                     article_title = EXCLUDED.article_title,
                     subtitle = EXCLUDED.subtitle,
@@ -645,8 +653,8 @@ Respond ONLY with valid JSON, no markdown code blocks."""
                 json.dumps(recommendations),
                 nicole_synthesis,
                 hero_image_url,
-                json.dumps(images),
-                json.dumps(screenshots_json)
+                images,  # Pass Python list directly, not json.dumps()
+                screenshots_json  # Pass Python list directly, not json.dumps()
             )
             
             image_count = len(screenshots) if screenshots else 0
