@@ -125,7 +125,7 @@ class ImageGenerationService:
         "imagen3": {
             "name": "Imagen 3",
             "mode": "gemini",
-            "gemini_model": "imagen-3.0-generate-002",  # Stable Imagen 3 model
+            "gemini_model": "imagen-3.0-generate-001",  # Imagen 3 standard
             "supports_batch": True,
             "max_batch": 4,
             "supports_thinking": False,
@@ -589,7 +589,7 @@ Rules:
         model_cfg = self.MODEL_CONFIGS[model_key]
         
         # Get the actual Gemini model name
-        gemini_model = model_cfg.get("gemini_model", "imagen-3.0-generate-002")
+        gemini_model = model_cfg.get("gemini_model", "imagen-3.0-generate-001")
         
         # Get cost per image
         cost_config = model_cfg.get("cost_per_image")
