@@ -29,3 +29,4 @@ SSH-Nicole-new
 tiger-*.env
 .vercel
 .env*.local
+mcp/client_secret.json

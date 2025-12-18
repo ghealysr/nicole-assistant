@@ -24,7 +24,23 @@ const { google } = require('googleapis');
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
-const open = require('open');
+const { exec } = require('child_process');
+
+// Cross-platform open URL in browser
+function openBrowser(url) {
+  const platform = process.platform;
+  let cmd;
+  if (platform === 'darwin') {
+    cmd = `open "${url}"`;
+  } else if (platform === 'win32') {
+    cmd = `start "${url}"`;
+  } else {
+    cmd = `xdg-open "${url}"`;
+  }
+  exec(cmd, (err) => {
+    if (err) console.log('Could not open browser automatically. Please visit the URL above.');
+  });
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -152,9 +168,7 @@ GOOGLE_REFRESH_TOKEN_3=<token>
 
     server.listen(3000, () => {
       // Try to open browser
-      open(authUrl).catch(() => {
-        console.log('Could not open browser automatically. Please visit the URL above.');
-      });
+      openBrowser(authUrl);
     });
   });
 }
