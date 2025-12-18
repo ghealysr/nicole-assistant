@@ -2,12 +2,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install Chromium dependencies for Puppeteer and wget for healthcheck
+# Install Chrome/Chromium and dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     ca-certificates \
+    chromium \
     fonts-liberation \
+    fonts-noto-color-emoji \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -28,10 +30,14 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# Set Puppeteer to use system Chromium instead of downloading its own
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 # Copy package.json first for layer caching
 COPY package.json /app/
 
-# Install dependencies (Puppeteer will download Chromium)
+# Install dependencies
 RUN npm install --production
 
 # Copy bridge code

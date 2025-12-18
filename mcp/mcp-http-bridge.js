@@ -21,17 +21,22 @@ let currentPage = null;
 
 async function getBrowser() {
   if (!browser) {
+    // Use system Chromium if available (Docker), otherwise let Puppeteer find it
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    
     browser = await puppeteer.launch({
       headless: 'new',
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--single-process'
+        '--single-process',
+        '--disable-software-rasterizer'
       ]
     });
-    console.log('[Puppeteer] Browser launched');
+    console.log(`[Puppeteer] Browser launched (executable: ${executablePath || 'bundled'})`);
   }
   return browser;
 }
