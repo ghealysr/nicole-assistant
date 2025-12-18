@@ -53,7 +53,7 @@ export function AlphawaveSidebar({
       {/* Logo - AlphaWave logo with matching background */}
       <div className="p-4 border-b border-[#333] flex justify-center">
         <Image 
-          src="/images/alph_wave_logo.png" 
+          src="/images/alph_wave_two.png" 
           alt="AlphaWave" 
           width={120} 
           height={120}
