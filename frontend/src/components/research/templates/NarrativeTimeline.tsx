@@ -21,7 +21,7 @@ const colors = DESIGN_TOKENS.colors.timeline;
 
 export function NarrativeTimeline({ data }: NarrativeTimelineProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata } = parsed;
+  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
 
   const bodyParagraphs = body.split('\n\n').filter(p => p.trim());
 
@@ -213,6 +213,32 @@ export function NarrativeTimeline({ data }: NarrativeTimelineProps) {
         </div>
       </section>
 
+      {/* Hero Image - immersive visual break */}
+      {heroImage && (
+        <section
+          style={{
+            width: '100%',
+            height: '60vh',
+            background: `url(${heroImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            position: 'relative',
+            marginBottom: '64px',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '50%',
+              background: `linear-gradient(to bottom, transparent, ${colors.bg})`,
+            }}
+          />
+        </section>
+      )}
+
       {/* Timeline spine and beats */}
       <div
         style={{
@@ -233,85 +259,140 @@ export function NarrativeTimeline({ data }: NarrativeTimelineProps) {
           }}
         />
 
-        {/* Beats */}
+        {/* Beats with inline images */}
         {beats.map((beat, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'relative',
-              paddingBottom: '64px',
-            }}
-          >
-            {/* Timeline node */}
+          <div key={i}>
+            {/* Beat node */}
             <div
               style={{
-                position: 'absolute',
-                left: '-42px',
-                top: '4px',
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                background: beat.type === 'discovery' || beat.type === 'action'
-                  ? `linear-gradient(135deg, ${colors.accent} 0%, #ec4899 100%)`
-                  : colors.card,
-                border: `2px solid ${colors.accent}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                position: 'relative',
+                paddingBottom: '64px',
               }}
             >
-              <span style={{ fontSize: '10px', fontWeight: 700, color: beat.type === 'discovery' || beat.type === 'action' ? '#fff' : colors.accent }}>
-                {i + 1}
-              </span>
-            </div>
-
-            {/* Beat content card */}
-            <div
-              style={{
-                background: colors.card,
-                borderRadius: DESIGN_TOKENS.borderRadius.lg,
-                padding: '24px',
-                border: `1px solid ${colors.border}`,
-                maxWidth: '600px',
-              }}
-            >
-              {/* Beat type label */}
+              {/* Timeline node */}
               <div
                 style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  letterSpacing: '0.15em',
-                  textTransform: 'uppercase',
-                  color: beat.type === 'discovery' ? colors.accent : beat.type === 'action' ? '#22c55e' : colors.muted,
-                  marginBottom: '8px',
+                  position: 'absolute',
+                  left: '-42px',
+                  top: '4px',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: beat.type === 'discovery' || beat.type === 'action'
+                    ? `linear-gradient(135deg, ${colors.accent} 0%, #ec4899 100%)`
+                    : colors.card,
+                  border: `2px solid ${colors.accent}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                {beat.type === 'discovery' ? '✦ Discovery' : beat.type === 'action' ? '→ Action' : beat.type === 'context' ? 'Context' : 'Narrative'}
+                <span style={{ fontSize: '10px', fontWeight: 700, color: beat.type === 'discovery' || beat.type === 'action' ? '#fff' : colors.accent }}>
+                  {i + 1}
+                </span>
               </div>
 
-              <h3
+              {/* Beat content card */}
+              <div
                 style={{
-                  fontFamily: DESIGN_TOKENS.typography.serif.humanist,
-                  fontSize: '18px',
-                  fontWeight: 600,
-                  color: colors.text,
-                  margin: '0 0 12px',
+                  background: colors.card,
+                  borderRadius: DESIGN_TOKENS.borderRadius.lg,
+                  padding: '24px',
+                  border: `1px solid ${colors.border}`,
+                  maxWidth: '600px',
                 }}
               >
-                {beat.title}
-              </h3>
+                {/* Beat type label */}
+                <div
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    letterSpacing: '0.15em',
+                    textTransform: 'uppercase',
+                    color: beat.type === 'discovery' ? colors.accent : beat.type === 'action' ? '#22c55e' : colors.muted,
+                    marginBottom: '8px',
+                  }}
+                >
+                  {beat.type === 'discovery' ? '✦ Discovery' : beat.type === 'action' ? '→ Action' : beat.type === 'context' ? 'Context' : 'Narrative'}
+                </div>
 
-              <p
+                <h3
+                  style={{
+                    fontFamily: DESIGN_TOKENS.typography.serif.humanist,
+                    fontSize: '18px',
+                    fontWeight: 600,
+                    color: colors.text,
+                    margin: '0 0 12px',
+                  }}
+                >
+                  {beat.title}
+                </h3>
+
+                <p
+                  style={{
+                    fontSize: '15px',
+                    lineHeight: 1.7,
+                    color: colors.muted,
+                    margin: 0,
+                  }}
+                >
+                  {beat.content}
+                </p>
+              </div>
+            </div>
+
+            {/* Insert inline image every 3 beats if available */}
+            {images && images.length > 0 && (i + 1) % 3 === 0 && images[Math.floor(i / 3)] && (
+              <div
                 style={{
-                  fontSize: '15px',
-                  lineHeight: 1.7,
-                  color: colors.muted,
-                  margin: 0,
+                  position: 'relative',
+                  paddingBottom: '64px',
+                  maxWidth: '700px',
                 }}
               >
-                {beat.content}
-              </p>
-            </div>
+                {/* Image timeline node */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '-38px',
+                    top: '16px',
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: colors.accent,
+                    border: `2px solid ${colors.bg}`,
+                  }}
+                />
+
+                {/* Image */}
+                <figure style={{ margin: 0 }}>
+                  <img
+                    src={images[Math.floor(i / 3)].url}
+                    alt={images[Math.floor(i / 3)].caption || `Timeline image ${Math.floor(i / 3) + 1}`}
+                    style={{
+                      width: '100%',
+                      height: 'auto',
+                      display: 'block',
+                      borderRadius: DESIGN_TOKENS.borderRadius.lg,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    }}
+                  />
+                  {images[Math.floor(i / 3)].caption && (
+                    <figcaption
+                      style={{
+                        fontSize: '13px',
+                        color: colors.muted,
+                        marginTop: '12px',
+                        fontStyle: 'italic',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {images[Math.floor(i / 3)].caption}
+                    </figcaption>
+                  )}
+                </figure>
+              </div>
+            )}
           </div>
         ))}
       </div>

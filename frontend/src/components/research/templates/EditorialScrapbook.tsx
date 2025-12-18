@@ -27,7 +27,7 @@ function getRotation(index: number): string {
 
 export function EditorialScrapbook({ data }: EditorialScrapbookProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata } = parsed;
+  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
 
   return (
     <article
@@ -164,6 +164,61 @@ export function EditorialScrapbook({ data }: EditorialScrapbookProps) {
           </p>
         </div>
       </div>
+
+      {/* Scattered Polaroid Images */}
+      {images && images.length > 0 && (
+        <div
+          style={{
+            padding: '0 24px',
+            maxWidth: '640px',
+            margin: '24px auto',
+            position: 'relative',
+            minHeight: '200px',
+          }}
+        >
+          {images.map((img, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                margin: '16px',
+                transform: `rotate(${getRotation(i + 2)})`,
+              }}
+            >
+              <div
+                style={{
+                  background: colors.paper,
+                  padding: '12px 12px 48px 12px',
+                  boxShadow: '4px 6px 12px rgba(0,0,0,0.12)',
+                }}
+              >
+                <img
+                  src={img.url}
+                  alt={img.caption}
+                  style={{
+                    width: '240px',
+                    height: '180px',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+                <div
+                  style={{
+                    marginTop: '8px',
+                    fontFamily: 'cursive, Georgia, serif',
+                    fontSize: '12px',
+                    color: colors.muted,
+                    textAlign: 'center',
+                  }}
+                >
+                  {img.caption}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Body with varied column widths */}
       <div

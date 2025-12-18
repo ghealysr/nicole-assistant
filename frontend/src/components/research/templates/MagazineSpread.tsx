@@ -21,7 +21,7 @@ const colors = DESIGN_TOKENS.colors.magazine;
 
 export function MagazineSpread({ data }: MagazineSpreadProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata } = parsed;
+  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
 
   const bodyParagraphs = body.split('\n\n').filter(p => p.trim());
 
@@ -123,37 +123,44 @@ export function MagazineSpread({ data }: MagazineSpreadProps) {
           </div>
         </div>
 
-        {/* Right: Abstract gradient placeholder for hero image */}
+        {/* Right: Hero image or abstract gradient fallback */}
         <div
           style={{
-            background: `linear-gradient(135deg, ${colors.accent}15 0%, ${colors.accent}05 50%, #f0f0f0 100%)`,
+            background: heroImage
+              ? `url(${heroImage})`
+              : `linear-gradient(135deg, ${colors.accent}15 0%, ${colors.accent}05 50%, #f0f0f0 100%)`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '48px',
+            padding: heroImage ? '0' : '48px',
+            position: 'relative',
           }}
         >
-          <div
-            style={{
-              background: colors.bg,
-              padding: '32px',
-              maxWidth: '360px',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-            }}
-          >
-            <p
+          {!heroImage && (
+            <div
               style={{
-                fontSize: '16px',
-                lineHeight: 1.7,
-                fontStyle: 'italic',
-                color: colors.text,
-                margin: 0,
-                textAlign: 'center',
+                background: colors.bg,
+                padding: '32px',
+                maxWidth: '360px',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
               }}
             >
-              &ldquo;{lead.slice(0, 200)}{lead.length > 200 ? '...' : ''}&rdquo;
-            </p>
-          </div>
+              <p
+                style={{
+                  fontSize: '16px',
+                  lineHeight: 1.7,
+                  fontStyle: 'italic',
+                  color: colors.text,
+                  margin: 0,
+                  textAlign: 'center',
+                }}
+              >
+                &ldquo;{lead.slice(0, 200)}{lead.length > 200 ? '...' : ''}&rdquo;
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -239,6 +246,54 @@ export function MagazineSpread({ data }: MagazineSpreadProps) {
           </div>
         </div>
       </section>
+
+      {/* Inline Images - displayed between spreads */}
+      {images && images.length > 0 && (
+        <section
+          style={{
+            padding: '48px 32px',
+            borderBottom: `1px solid ${colors.border}`,
+            background: '#fafafa',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: images.length === 1 ? '1fr' : '1fr 1fr',
+              gap: '32px',
+            }}
+          >
+            {images.slice(0, 2).map((img, idx) => (
+              <figure key={idx} style={{ margin: 0 }}>
+                <img
+                  src={img.url}
+                  alt={img.caption || `Research image ${idx + 1}`}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                  }}
+                />
+                {img.caption && (
+                  <figcaption
+                    style={{
+                      fontFamily: DESIGN_TOKENS.typography.sans.geometric,
+                      fontSize: '12px',
+                      color: colors.muted,
+                      marginTop: '12px',
+                      fontStyle: 'italic',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {img.caption}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Spread 3: Body text in 2-column layout */}
       <section

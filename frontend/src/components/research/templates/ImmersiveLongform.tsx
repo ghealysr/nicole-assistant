@@ -21,7 +21,7 @@ const colors = DESIGN_TOKENS.colors.longform;
 
 export function ImmersiveLongform({ data }: ImmersiveLongformProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata } = parsed;
+  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
 
   return (
     <article
@@ -119,6 +119,40 @@ export function ImmersiveLongform({ data }: ImmersiveLongformProps) {
         </div>
       </header>
 
+      {/* Hero Image - Full bleed with desaturation */}
+      {heroImage && (
+        <div
+          style={{
+            width: '100%',
+            height: '60vh',
+            minHeight: '400px',
+            maxHeight: '600px',
+            position: 'relative',
+            overflow: 'hidden',
+            marginBottom: '48px',
+          }}
+        >
+          <img
+            src={heroImage}
+            alt={title}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'saturate(0.9) brightness(0.95)',
+            }}
+          />
+          {/* Vignette overlay */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.15) 100%)',
+            }}
+          />
+        </div>
+      )}
+
       {/* Body - 65ch max-width centered */}
       <div
         style={{
@@ -155,19 +189,54 @@ export function ImmersiveLongform({ data }: ImmersiveLongformProps) {
           </p>
         )}
 
-        {/* Body paragraphs */}
+        {/* Body paragraphs with image breaks */}
         {body.split('\n\n').map((para, i) => (
-          <p
-            key={i}
-            style={{
-              fontSize: '18px',
-              lineHeight: 1.8,
-              marginBottom: '24px',
-              color: colors.text,
-            }}
-          >
-            {para}
-          </p>
+          <div key={i}>
+            <p
+              style={{
+                fontSize: '18px',
+                lineHeight: 1.8,
+                marginBottom: '24px',
+                color: colors.text,
+              }}
+            >
+              {para}
+            </p>
+            
+            {/* Insert image after every 2nd paragraph if available */}
+            {images && images.length > 0 && (i + 1) % 2 === 0 && images[Math.floor((i + 1) / 2) - 1] && (
+              <figure
+                style={{
+                  margin: '48px -24px',
+                  width: 'calc(100% + 48px)',
+                }}
+              >
+                <img
+                  src={images[Math.floor((i + 1) / 2) - 1].url}
+                  alt={images[Math.floor((i + 1) / 2) - 1].caption}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    filter: 'saturate(0.9)',
+                  }}
+                />
+                <figcaption
+                  style={{
+                    marginTop: '12px',
+                    fontSize: '13px',
+                    fontFamily: DESIGN_TOKENS.typography.sans.geometric,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    color: colors.muted,
+                    textAlign: 'left',
+                  }}
+                >
+                  {images[Math.floor((i + 1) / 2) - 1].caption}
+                </figcaption>
+              </figure>
+            )}
+          </div>
         ))}
 
         {/* Horizontal rule as design breather */}

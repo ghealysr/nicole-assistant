@@ -21,7 +21,7 @@ const colors = DESIGN_TOKENS.colors.bento;
 
 export function BentoBrief({ data }: BentoBriefProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, lead, body, findings, recommendations, bottomLine, sources, metadata } = parsed;
+  const { title, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
 
   // Extract stats from findings for stat cards
   const statCards = findings.slice(0, 3).map((f, i) => ({
@@ -87,6 +87,31 @@ export function BentoBrief({ data }: BentoBriefProps) {
           padding: '24px',
         }}
       >
+        {/* Hero Visual Card - full width if image exists */}
+        {heroImage && (
+          <div
+            style={{
+              gridColumn: 'span 12',
+              background: colors.card,
+              borderRadius: DESIGN_TOKENS.borderRadius.lg,
+              overflow: 'hidden',
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            }}
+          >
+            <img
+              src={heroImage}
+              alt={title}
+              style={{
+                width: '100%',
+                height: '300px',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+          </div>
+        )}
+
         {/* Hero Insight Card - spans 8 columns */}
         <div
           style={{
@@ -163,6 +188,30 @@ export function BentoBrief({ data }: BentoBriefProps) {
               >
                 {stat.value}
               </div>
+            </div>
+          ))}
+          
+          {/* Image Thumbnails - compact cards */}
+          {images && images.slice(1, 3).map((img, i) => (
+            <div
+              key={`img-${i}`}
+              style={{
+                background: colors.card,
+                borderRadius: DESIGN_TOKENS.borderRadius.md,
+                overflow: 'hidden',
+                border: `1px solid ${colors.border}`,
+              }}
+            >
+              <img
+                src={img.url}
+                alt={img.caption}
+                style={{
+                  width: '100%',
+                  height: '120px',
+                  objectFit: 'cover',
+                  display: 'block',
+                }}
+              />
             </div>
           ))}
         </div>
