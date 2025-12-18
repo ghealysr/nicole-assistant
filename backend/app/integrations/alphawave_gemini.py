@@ -198,6 +198,8 @@ class GeminiClient:
             tools = [
                 types.Tool(google_search=types.GoogleSearch())
             ]
+            logger.info(f"[GEMINI] Configured {len(tools)} tools for research")
+            logger.info(f"[GEMINI] Tool 0: {tools[0]}")
             
             # Build the request
             config = types.GenerateContentConfig(
@@ -205,6 +207,7 @@ class GeminiClient:
                 tools=tools,
                 response_modalities=["TEXT"],
             )
+            logger.info(f"[GEMINI] Config created with tools: {config.tools is not None}")
             
             # Add thinking if enabled
             if enable_thinking:
@@ -215,6 +218,8 @@ class GeminiClient:
             # Execute research with retry
             @async_retry_with_backoff(max_attempts=3, base_delay=1.0)
             async def _execute_research():
+                logger.info(f"[GEMINI] Executing research with model: {settings.GEMINI_PRO_MODEL}")
+                logger.info(f"[GEMINI] API key set: {bool(settings.GEMINI_API_KEY)}, length: {len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0}")
                 return await asyncio.to_thread(
                     self._client.models.generate_content,
                     model=settings.GEMINI_PRO_MODEL,
@@ -226,9 +231,13 @@ class GeminiClient:
             
             # Debug: Log response structure
             logger.info(f"[GEMINI] Response type: {type(response)}")
-            logger.info(f"[GEMINI] Response has attributes: {dir(response)[:10]}...")  # First 10 attributes
+            logger.info(f"[GEMINI] Response has __dict__: {hasattr(response, '__dict__')}")
+            if hasattr(response, '__dict__'):
+                logger.info(f"[GEMINI] Response keys: {list(response.__dict__.keys()) if response.__dict__ else 'None'}")
+            logger.info(f"[GEMINI] Response dir (first 15): {dir(response)[:15]}")
             if hasattr(response, 'candidates') and response.candidates:
-                logger.info(f"[GEMINI] First candidate has: {dir(response.candidates[0])[:10]}...")
+                logger.info(f"[GEMINI] Candidates count: {len(response.candidates)}")
+                logger.info(f"[GEMINI] First candidate dir (first 15): {dir(response.candidates[0])[:15]}")
             
             # Parse response
             result = self._parse_research_response(response)
@@ -389,7 +398,7 @@ TECHNICAL RESEARCH MODE:
                     logger.info(f"[GEMINI] Parsed JSON directly, has sources: {'sources' in parsed}, count: {len(parsed.get('sources', []))}")
                 except json.JSONDecodeError:
                     logger.warning("[GEMINI] Failed to parse as JSON, using fallback structure")
-                    logger.debug(f"[GEMINI] Response text preview: {text[:300]}...")
+                    logger.info(f"[GEMINI] Response text preview: {text[:500]}...")  # Changed to INFO so we can see it
                     # Return as plain text
                     parsed = {
                         "executive_summary": text[:500],
