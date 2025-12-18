@@ -27,7 +27,7 @@ function getRotation(index: number): string {
 
 export function EditorialScrapbook({ data }: EditorialScrapbookProps) {
   const parsed: ParsedResearchData = parseResearchData(data);
-  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, heroImage, images } = parsed;
+  const { title, subtitle, lead, body, findings, recommendations, bottomLine, sources, metadata, images } = parsed;
 
   return (
     <article
