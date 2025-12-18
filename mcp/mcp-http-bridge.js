@@ -13,6 +13,7 @@ const { v4: uuidv4 } = require('uuid');
 const { readdir, readFile, stat } = require('fs').promises;
 const { join } = require('path');
 const puppeteer = require('puppeteer');
+const { google } = require('googleapis');
 
 // Puppeteer browser instance (lazy loaded)
 let browser = null;
@@ -340,6 +341,315 @@ const TOOLS = [
       required: ['repo', 'files']
     },
     server: 'github'
+  },
+  // Gmail Tools
+  {
+    name: 'gmail_list_messages',
+    description: 'List Gmail messages matching a query. Returns message IDs and snippets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Gmail search query (e.g., "is:unread", "from:example@gmail.com", "subject:important")'
+        },
+        maxResults: {
+          type: 'number',
+          description: 'Maximum number of messages to return (1-100, default 10)',
+          default: 10
+        },
+        account: {
+          type: 'number',
+          description: 'Account number (1, 2, or 3 for multiple accounts, default 1)',
+          default: 1
+        }
+      }
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_get_message',
+    description: 'Get full details of a specific Gmail message including body and attachments.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message ID to retrieve'
+        },
+        account: {
+          type: 'number',
+          description: 'Account number (1, 2, or 3)',
+          default: 1
+        }
+      },
+      required: ['messageId']
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_send_message',
+    description: 'Send an email via Gmail.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to: {
+          type: 'string',
+          description: 'Recipient email address(es), comma-separated for multiple'
+        },
+        subject: {
+          type: 'string',
+          description: 'Email subject'
+        },
+        body: {
+          type: 'string',
+          description: 'Email body (plain text or HTML)'
+        },
+        cc: {
+          type: 'string',
+          description: 'CC recipients, comma-separated'
+        },
+        bcc: {
+          type: 'string',
+          description: 'BCC recipients, comma-separated'
+        },
+        isHtml: {
+          type: 'boolean',
+          description: 'Whether body is HTML (default: false)',
+          default: false
+        },
+        account: {
+          type: 'number',
+          description: 'Account number (1, 2, or 3)',
+          default: 1
+        }
+      },
+      required: ['to', 'subject', 'body']
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_reply_to_message',
+    description: 'Reply to an existing Gmail message.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message ID to reply to'
+        },
+        body: {
+          type: 'string',
+          description: 'Reply body'
+        },
+        isHtml: {
+          type: 'boolean',
+          description: 'Whether body is HTML',
+          default: false
+        },
+        account: {
+          type: 'number',
+          description: 'Account number',
+          default: 1
+        }
+      },
+      required: ['messageId', 'body']
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_modify_labels',
+    description: 'Add or remove labels from a Gmail message (mark read/unread, archive, star, etc.).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message ID'
+        },
+        addLabels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Labels to add (e.g., ["STARRED", "IMPORTANT"])'
+        },
+        removeLabels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Labels to remove (e.g., ["UNREAD", "INBOX"])'
+        },
+        account: {
+          type: 'number',
+          default: 1
+        }
+      },
+      required: ['messageId']
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_trash_message',
+    description: 'Move a Gmail message to trash.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message ID to trash'
+        },
+        account: {
+          type: 'number',
+          default: 1
+        }
+      },
+      required: ['messageId']
+    },
+    server: 'gmail'
+  },
+  {
+    name: 'gmail_list_labels',
+    description: 'List all Gmail labels for an account.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        account: {
+          type: 'number',
+          default: 1
+        }
+      }
+    },
+    server: 'gmail'
+  },
+  // Google Calendar Tools
+  {
+    name: 'calendar_list_events',
+    description: 'List upcoming Google Calendar events.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        maxResults: {
+          type: 'number',
+          description: 'Maximum events to return (default 10)',
+          default: 10
+        },
+        timeMin: {
+          type: 'string',
+          description: 'Start time (ISO format, default: now)'
+        },
+        timeMax: {
+          type: 'string',
+          description: 'End time (ISO format)'
+        },
+        calendarId: {
+          type: 'string',
+          description: 'Calendar ID (default: primary)',
+          default: 'primary'
+        },
+        account: {
+          type: 'number',
+          default: 1
+        }
+      }
+    },
+    server: 'google-calendar'
+  },
+  {
+    name: 'calendar_create_event',
+    description: 'Create a new Google Calendar event.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'Event title'
+        },
+        description: {
+          type: 'string',
+          description: 'Event description'
+        },
+        start: {
+          type: 'string',
+          description: 'Start time (ISO format)'
+        },
+        end: {
+          type: 'string',
+          description: 'End time (ISO format)'
+        },
+        attendees: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Email addresses of attendees'
+        },
+        location: {
+          type: 'string',
+          description: 'Event location'
+        },
+        calendarId: {
+          type: 'string',
+          default: 'primary'
+        },
+        account: {
+          type: 'number',
+          default: 1
+        }
+      },
+      required: ['summary', 'start', 'end']
+    },
+    server: 'google-calendar'
+  },
+  // Vercel Tools
+  {
+    name: 'vercel_list_projects',
+    description: 'List Vercel projects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Number of projects to return',
+          default: 20
+        }
+      }
+    },
+    server: 'vercel'
+  },
+  {
+    name: 'vercel_get_deployments',
+    description: 'Get deployments for a Vercel project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Project ID or name'
+        },
+        limit: {
+          type: 'number',
+          default: 10
+        }
+      },
+      required: ['projectId']
+    },
+    server: 'vercel'
+  },
+  {
+    name: 'vercel_trigger_deployment',
+    description: 'Trigger a new deployment for a Vercel project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Project ID or name'
+        },
+        target: {
+          type: 'string',
+          enum: ['production', 'preview'],
+          default: 'production'
+        }
+      },
+      required: ['projectId']
+    },
+    server: 'vercel'
   }
 ];
 
@@ -816,6 +1126,453 @@ async function executeGithubPushFiles(args) {
   }
 }
 
+// =============================================================================
+// GMAIL EXECUTORS
+// =============================================================================
+
+// Cache for OAuth2 clients per account
+const gmailClients = {};
+
+function getGmailClient(accountNum = 1) {
+  const cacheKey = `gmail_${accountNum}`;
+  if (gmailClients[cacheKey]) {
+    return gmailClients[cacheKey];
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  
+  // Get refresh token for the specified account
+  let refreshToken;
+  if (accountNum === 1) {
+    refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  } else if (accountNum === 2) {
+    refreshToken = process.env.GOOGLE_REFRESH_TOKEN_2;
+  } else if (accountNum === 3) {
+    refreshToken = process.env.GOOGLE_REFRESH_TOKEN_3;
+  }
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(`Google OAuth not configured for account ${accountNum}. Need GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN${accountNum > 1 ? '_' + accountNum : ''}`);
+  }
+
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  
+  gmailClients[cacheKey] = google.gmail({ version: 'v1', auth: oauth2Client });
+  return gmailClients[cacheKey];
+}
+
+function getCalendarClient(accountNum = 1) {
+  const cacheKey = `calendar_${accountNum}`;
+  if (gmailClients[cacheKey]) {
+    return gmailClients[cacheKey];
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  let refreshToken = accountNum === 1 ? process.env.GOOGLE_REFRESH_TOKEN :
+                     accountNum === 2 ? process.env.GOOGLE_REFRESH_TOKEN_2 :
+                     process.env.GOOGLE_REFRESH_TOKEN_3;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(`Google OAuth not configured for account ${accountNum}`);
+  }
+
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  
+  gmailClients[cacheKey] = google.calendar({ version: 'v3', auth: oauth2Client });
+  return gmailClients[cacheKey];
+}
+
+async function executeGmailListMessages(args) {
+  const { query = '', maxResults = 10, account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  const response = await gmail.users.messages.list({
+    userId: 'me',
+    q: query,
+    maxResults: Math.min(maxResults, 100)
+  });
+
+  const messages = response.data.messages || [];
+  
+  // Get snippets for each message
+  const detailed = await Promise.all(
+    messages.slice(0, 20).map(async (msg) => {
+      try {
+        const detail = await gmail.users.messages.get({
+          userId: 'me',
+          id: msg.id,
+          format: 'metadata',
+          metadataHeaders: ['From', 'Subject', 'Date']
+        });
+        const headers = detail.data.payload?.headers || [];
+        return {
+          id: msg.id,
+          threadId: msg.threadId,
+          snippet: detail.data.snippet,
+          from: headers.find(h => h.name === 'From')?.value,
+          subject: headers.find(h => h.name === 'Subject')?.value,
+          date: headers.find(h => h.name === 'Date')?.value,
+          labelIds: detail.data.labelIds
+        };
+      } catch (e) {
+        return { id: msg.id, error: e.message };
+      }
+    })
+  );
+
+  return [{ type: 'text', text: JSON.stringify({ messages: detailed, total: response.data.resultSizeEstimate }, null, 2) }];
+}
+
+async function executeGmailGetMessage(args) {
+  const { messageId, account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  const response = await gmail.users.messages.get({
+    userId: 'me',
+    id: messageId,
+    format: 'full'
+  });
+
+  const msg = response.data;
+  const headers = msg.payload?.headers || [];
+  
+  // Extract body
+  let body = '';
+  function extractBody(part) {
+    if (part.body?.data) {
+      body += Buffer.from(part.body.data, 'base64').toString('utf-8');
+    }
+    if (part.parts) {
+      part.parts.forEach(extractBody);
+    }
+  }
+  extractBody(msg.payload);
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      id: msg.id,
+      threadId: msg.threadId,
+      from: headers.find(h => h.name === 'From')?.value,
+      to: headers.find(h => h.name === 'To')?.value,
+      subject: headers.find(h => h.name === 'Subject')?.value,
+      date: headers.find(h => h.name === 'Date')?.value,
+      body: body.substring(0, 50000), // Limit body size
+      labelIds: msg.labelIds,
+      snippet: msg.snippet
+    }, null, 2)
+  }];
+}
+
+async function executeGmailSendMessage(args) {
+  const { to, subject, body, cc, bcc, isHtml = false, account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  // Build email
+  const boundary = `boundary_${Date.now()}`;
+  let email = [
+    `To: ${to}`,
+    cc ? `Cc: ${cc}` : null,
+    bcc ? `Bcc: ${bcc}` : null,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=utf-8`,
+    '',
+    body
+  ].filter(Boolean).join('\r\n');
+
+  const encodedEmail = Buffer.from(email).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const response = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw: encodedEmail }
+  });
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      success: true,
+      messageId: response.data.id,
+      threadId: response.data.threadId
+    }, null, 2)
+  }];
+}
+
+async function executeGmailReplyToMessage(args) {
+  const { messageId, body, isHtml = false, account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  // Get original message
+  const original = await gmail.users.messages.get({
+    userId: 'me',
+    id: messageId,
+    format: 'metadata',
+    metadataHeaders: ['From', 'Subject', 'Message-ID', 'References']
+  });
+
+  const headers = original.data.payload?.headers || [];
+  const from = headers.find(h => h.name === 'From')?.value;
+  const subject = headers.find(h => h.name === 'Subject')?.value || '';
+  const messageIdHeader = headers.find(h => h.name === 'Message-ID')?.value;
+  const references = headers.find(h => h.name === 'References')?.value || '';
+
+  // Build reply
+  let email = [
+    `To: ${from}`,
+    `Subject: ${subject.startsWith('Re:') ? subject : 'Re: ' + subject}`,
+    `In-Reply-To: ${messageIdHeader}`,
+    `References: ${references} ${messageIdHeader}`.trim(),
+    `MIME-Version: 1.0`,
+    `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=utf-8`,
+    '',
+    body
+  ].join('\r\n');
+
+  const encodedEmail = Buffer.from(email).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const response = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw: encodedEmail,
+      threadId: original.data.threadId
+    }
+  });
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      success: true,
+      messageId: response.data.id,
+      threadId: response.data.threadId
+    }, null, 2)
+  }];
+}
+
+async function executeGmailModifyLabels(args) {
+  const { messageId, addLabels = [], removeLabels = [], account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  const response = await gmail.users.messages.modify({
+    userId: 'me',
+    id: messageId,
+    requestBody: {
+      addLabelIds: addLabels,
+      removeLabelIds: removeLabels
+    }
+  });
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      success: true,
+      messageId: response.data.id,
+      labelIds: response.data.labelIds
+    }, null, 2)
+  }];
+}
+
+async function executeGmailTrashMessage(args) {
+  const { messageId, account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  await gmail.users.messages.trash({
+    userId: 'me',
+    id: messageId
+  });
+
+  return [{ type: 'text', text: JSON.stringify({ success: true, messageId, trashed: true }, null, 2) }];
+}
+
+async function executeGmailListLabels(args) {
+  const { account = 1 } = args;
+  const gmail = getGmailClient(account);
+
+  const response = await gmail.users.labels.list({ userId: 'me' });
+  
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      labels: response.data.labels?.map(l => ({
+        id: l.id,
+        name: l.name,
+        type: l.type
+      }))
+    }, null, 2)
+  }];
+}
+
+// =============================================================================
+// GOOGLE CALENDAR EXECUTORS
+// =============================================================================
+
+async function executeCalendarListEvents(args) {
+  const { maxResults = 10, timeMin, timeMax, calendarId = 'primary', account = 1 } = args;
+  const calendar = getCalendarClient(account);
+
+  const response = await calendar.events.list({
+    calendarId,
+    timeMin: timeMin || new Date().toISOString(),
+    timeMax,
+    maxResults,
+    singleEvents: true,
+    orderBy: 'startTime'
+  });
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      events: response.data.items?.map(e => ({
+        id: e.id,
+        summary: e.summary,
+        description: e.description,
+        start: e.start?.dateTime || e.start?.date,
+        end: e.end?.dateTime || e.end?.date,
+        location: e.location,
+        attendees: e.attendees?.map(a => a.email),
+        status: e.status,
+        htmlLink: e.htmlLink
+      }))
+    }, null, 2)
+  }];
+}
+
+async function executeCalendarCreateEvent(args) {
+  const { summary, description, start, end, attendees = [], location, calendarId = 'primary', account = 1 } = args;
+  const calendar = getCalendarClient(account);
+
+  const event = {
+    summary,
+    description,
+    location,
+    start: { dateTime: start, timeZone: 'America/New_York' },
+    end: { dateTime: end, timeZone: 'America/New_York' },
+    attendees: attendees.map(email => ({ email }))
+  };
+
+  const response = await calendar.events.insert({
+    calendarId,
+    requestBody: event,
+    sendUpdates: attendees.length > 0 ? 'all' : 'none'
+  });
+
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      success: true,
+      eventId: response.data.id,
+      htmlLink: response.data.htmlLink,
+      summary: response.data.summary
+    }, null, 2)
+  }];
+}
+
+// =============================================================================
+// VERCEL EXECUTORS
+// =============================================================================
+
+function vercelHeaders() {
+  const token = process.env.VERCEL_TOKEN;
+  if (!token) {
+    throw new Error('VERCEL_TOKEN not configured');
+  }
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
+
+async function executeVercelListProjects(args) {
+  const { limit = 20 } = args;
+  const headers = vercelHeaders();
+  const teamId = process.env.VERCEL_TEAM_ID;
+  
+  const url = teamId 
+    ? `https://api.vercel.com/v9/projects?teamId=${teamId}&limit=${limit}`
+    : `https://api.vercel.com/v9/projects?limit=${limit}`;
+
+  const response = await axios.get(url, { headers });
+  
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      projects: response.data.projects?.map(p => ({
+        id: p.id,
+        name: p.name,
+        framework: p.framework,
+        latestDeployment: p.latestDeployments?.[0]?.url
+      }))
+    }, null, 2)
+  }];
+}
+
+async function executeVercelGetDeployments(args) {
+  const { projectId, limit = 10 } = args;
+  const headers = vercelHeaders();
+  const teamId = process.env.VERCEL_TEAM_ID;
+  
+  let url = `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=${limit}`;
+  if (teamId) url += `&teamId=${teamId}`;
+
+  const response = await axios.get(url, { headers });
+  
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      deployments: response.data.deployments?.map(d => ({
+        id: d.uid,
+        url: d.url,
+        state: d.state,
+        target: d.target,
+        createdAt: d.createdAt,
+        ready: d.ready
+      }))
+    }, null, 2)
+  }];
+}
+
+async function executeVercelTriggerDeployment(args) {
+  const { projectId, target = 'production' } = args;
+  const headers = vercelHeaders();
+  const teamId = process.env.VERCEL_TEAM_ID;
+  
+  // Get project to find the git repo
+  let projectUrl = `https://api.vercel.com/v9/projects/${projectId}`;
+  if (teamId) projectUrl += `?teamId=${teamId}`;
+  
+  const projectResp = await axios.get(projectUrl, { headers });
+  const project = projectResp.data;
+  
+  // Trigger deployment via deploy hook or API
+  let deployUrl = `https://api.vercel.com/v13/deployments`;
+  if (teamId) deployUrl += `?teamId=${teamId}`;
+  
+  const response = await axios.post(deployUrl, {
+    name: project.name,
+    target,
+    gitSource: project.link ? {
+      type: project.link.type,
+      repoId: project.link.repoId,
+      ref: project.link.productionBranch || 'main'
+    } : undefined
+  }, { headers });
+  
+  return [{
+    type: 'text',
+    text: JSON.stringify({
+      success: true,
+      deploymentId: response.data.id,
+      url: response.data.url,
+      state: response.data.state
+    }, null, 2)
+  }];
+}
+
 const TOOL_EXECUTORS = {
   'brave_web_search': executeBraveSearch,
   'read_file': executeReadFile,
@@ -831,7 +1588,22 @@ const TOOL_EXECUTORS = {
   'puppeteer_screenshot': executePuppeteerScreenshot,
   'puppeteer_evaluate': executePuppeteerEvaluate,
   'github_create_repo': executeGithubCreateRepo,
-  'github_push_files': executeGithubPushFiles
+  'github_push_files': executeGithubPushFiles,
+  // Gmail
+  'gmail_list_messages': executeGmailListMessages,
+  'gmail_get_message': executeGmailGetMessage,
+  'gmail_send_message': executeGmailSendMessage,
+  'gmail_reply_to_message': executeGmailReplyToMessage,
+  'gmail_modify_labels': executeGmailModifyLabels,
+  'gmail_trash_message': executeGmailTrashMessage,
+  'gmail_list_labels': executeGmailListLabels,
+  // Calendar
+  'calendar_list_events': executeCalendarListEvents,
+  'calendar_create_event': executeCalendarCreateEvent,
+  // Vercel
+  'vercel_list_projects': executeVercelListProjects,
+  'vercel_get_deployments': executeVercelGetDeployments,
+  'vercel_trigger_deployment': executeVercelTriggerDeployment
 };
 
 
@@ -933,12 +1705,19 @@ app.listen(PORT, '0.0.0.0', () => {
   });
   
   console.log(`\nAPI Key Status:`);
-  console.log(`  BRAVE_API_KEY:   ${process.env.BRAVE_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
-  console.log(`  NOTION_API_KEY:  ${process.env.NOTION_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
-  console.log(`  RECRAFT_API_KEY: ${process.env.RECRAFT_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
-  console.log(`  GITHUB_TOKEN:    ${process.env.GITHUB_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
-  console.log(`  GITHUB_ORG:      ${process.env.GITHUB_ORG || '(using personal account)'}`);
-  console.log(`  VERCEL_TOKEN:    ${process.env.VERCEL_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  BRAVE_API_KEY:      ${process.env.BRAVE_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  NOTION_API_KEY:     ${process.env.NOTION_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  RECRAFT_API_KEY:    ${process.env.RECRAFT_API_KEY ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  GITHUB_TOKEN:       ${process.env.GITHUB_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  GITHUB_ORG:         ${process.env.GITHUB_ORG || '(using personal account)'}`);
+  console.log(`  VERCEL_TOKEN:       ${process.env.VERCEL_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  VERCEL_TEAM_ID:     ${process.env.VERCEL_TEAM_ID || '(using personal account)'}`);
+  console.log(`\nGoogle Services:`);
+  console.log(`  GOOGLE_CLIENT_ID:   ${process.env.GOOGLE_CLIENT_ID ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  GOOGLE_CLIENT_SECRET: ${process.env.GOOGLE_CLIENT_SECRET ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  Account 1 (Gmail):  ${process.env.GOOGLE_REFRESH_TOKEN ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  Account 2 (Gmail):  ${process.env.GOOGLE_REFRESH_TOKEN_2 ? '✓ configured' : '✗ NOT CONFIGURED'}`);
+  console.log(`  Account 3 (Gmail):  ${process.env.GOOGLE_REFRESH_TOKEN_3 ? '✓ configured' : '✗ NOT CONFIGURED'}`);
   console.log(`\n${'='.repeat(60)}\n`);
 });
 
