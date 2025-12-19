@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any
 
 from anthropic import AsyncAnthropic
 
-from ..core.config import settings
+from app.config import settings
 
 
 logger = logging.getLogger(__name__)

@@ -21,7 +21,7 @@ from anthropic import Anthropic, AsyncAnthropic
 from PIL import Image
 import httpx
 
-from ..core.config import settings
+from app.config import settings
 
 
 logger = logging.getLogger(__name__)
