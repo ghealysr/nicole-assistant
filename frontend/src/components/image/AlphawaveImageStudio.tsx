@@ -33,11 +33,14 @@ interface AlphawaveImageStudioProps {
 export default function AlphawaveImageStudio({ 
   isOpen, 
   onClose, 
-  initialPrompt = '', 
-  initialPreset: _initialPreset 
+  initialPrompt = '',
+  initialPreset // eslint-disable-line @typescript-eslint/no-unused-vars
 }: AlphawaveImageStudioProps) {
   // State management
   const [prompt, setPrompt] = useState(initialPrompt);
+  
+  // TODO: Implement preset loading from initialPreset prop
+  // This will load predefined generation configurations
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
   const [imageCount, setImageCount] = useState(1);
   const [multiModelMode, setMultiModelMode] = useState(false);
