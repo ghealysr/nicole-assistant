@@ -594,7 +594,7 @@ export default function AlphawaveImageStudio({
                     <div key={job.id} className="bg-[#0a0a0a] border border-[#444] rounded-lg p-4 hover:border-purple-500/50 transition-colors cursor-pointer">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <p className="text-white font-medium mb-1">{job.prompt}</p>
+                          <p className="text-white font-medium mb-1">{job.original_prompt}</p>
                           <p className="text-xs text-gray-500">
                             {new Date(job.created_at).toLocaleString()} • {job.model}
                           </p>
