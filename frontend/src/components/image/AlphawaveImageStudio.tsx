@@ -817,54 +817,107 @@ export default function AlphawaveImageStudio({
                 )}
               </button>
               
-              {/* Generation Results */}
-              {jobs.length > 0 && jobs[0].status === 'completed' && (
+              {/* Generation Progress/Results */}
+              {(isGenerating || (jobs.length > 0 && jobs[0].status !== 'failed')) && (
                 <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
-                  <h3 className="text-lg font-semibold text-white mb-4">Generated Images</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">
+                      {isGenerating ? 'Generating Images...' : 'Generated Images'}
+                    </h3>
+                    {isGenerating && (
+                      <div className="flex items-center gap-2 text-purple-400">
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">In progress</span>
+                      </div>
+                    )}
+                  </div>
                   
                   <div className={`grid gap-4 ${
                     imageCount === 1 ? 'grid-cols-1' :
                     imageCount === 2 ? 'grid-cols-2' :
                     'grid-cols-2'
                   }`}>
-                    {variants.filter(v => v.job_id === jobs[0].id).slice(0, imageCount).map((variant, index: number) => (
-                      <div
-                        key={variant.id}
-                        className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
-                      >
-                        <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
-                          {variant.image_url ? (
-                            <Image
-                              src={variant.image_url}
-                              alt={`Generated ${index + 1}`}
-                              fill
-                              className="object-contain"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ImageIcon className="w-16 h-16 text-gray-700" />
+                    {/* Show slots during generation or actual variants after */}
+                    {isGenerating ? (
+                      // Placeholder slots during generation
+                      Array.from({ length: imageCount }).map((_, index) => {
+                        const variant = variants.find((v, i) => i === index && v.job_id === jobs[0]?.id);
+                        const isComplete = variant?.status === 'completed' && variant?.image_url;
+                        
+                        return (
+                          <div
+                            key={index}
+                            className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
+                          >
+                            <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
+                              {isComplete ? (
+                                <Image
+                                  src={variant.image_url!}
+                                  alt={`Generated ${index + 1}`}
+                                  fill
+                                  className="object-contain"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                                  <RefreshCw className="w-12 h-12 text-purple-400 animate-spin" />
+                                  <div className="text-sm text-gray-400">
+                                    {variant?.status === 'generating' ? 'Generating...' : 'Waiting...'}
+                                  </div>
+                                  {multiModelMode && modelSlots[index] && (
+                                    <div className="text-xs text-gray-500">
+                                      {models.find(m => m.key === modelSlots[index].model)?.name}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                              Slot {index + 1}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      // Completed variants
+                      variants.filter(v => v.job_id === jobs[0]?.id).slice(0, imageCount).map((variant, index: number) => (
+                        <div
+                          key={variant.id}
+                          className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
+                        >
+                          <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
+                            {variant.image_url ? (
+                              <Image
+                                src={variant.image_url}
+                                alt={`Generated ${index + 1}`}
+                                fill
+                                className="object-contain"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon className="w-16 h-16 text-gray-700" />
+                              </div>
+                            )}
+                            
+                            {/* Overlay on Hover */}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                              <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
+                                <Eye className="w-5 h-5" />
+                              </button>
+                              <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
+                                <Download className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Model Badge */}
+                          {multiModelMode && modelSlots[index] && (
+                            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+                              {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
                             </div>
                           )}
-                          
-                          {/* Overlay on Hover */}
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                            <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
-                              <Eye className="w-5 h-5" />
-                            </button>
-                            <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
-                              <Download className="w-5 h-5" />
-                            </button>
-                          </div>
                         </div>
-                        
-                        {/* Model Badge */}
-                        {multiModelMode && modelSlots[index] && (
-                          <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
-                            {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               )}
