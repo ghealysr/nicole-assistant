@@ -34,7 +34,7 @@ export default function AlphawaveImageStudio({
   isOpen, 
   onClose, 
   initialPrompt = '', 
-  initialPreset 
+  initialPreset: _initialPreset 
 }: AlphawaveImageStudioProps) {
   // State management
   const [prompt, setPrompt] = useState(initialPrompt);
