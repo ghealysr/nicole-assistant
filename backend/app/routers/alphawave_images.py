@@ -177,12 +177,15 @@ async def generate_image_stream(
     - {"status": "complete", "variants": [...]}
     - {"status": "error", "message": "..."}
     """
-    # Log request details for debugging
-    logger.info(f"[IMAGE API] Generate request: model={request.model_key}, prompt={request.prompt[:50]}..., user={user.user_id}")
+    # CRITICAL: Log immediately to verify endpoint is reached
+    import sys
+    print(f"[IMAGE API STDOUT] Endpoint reached! model={request.model_key}, user={user.user_id}", file=sys.stderr, flush=True)
+    logger.warning(f"[IMAGE API] Generate request: model={request.model_key}, prompt={request.prompt[:50]}..., user={user.user_id}")
     
     async def event_stream():
         try:
-            logger.info(f"[IMAGE API] Starting SSE stream for user {user.user_id}")
+            print(f"[IMAGE API STDOUT] event_stream() started!", file=sys.stderr, flush=True)
+            logger.warning(f"[IMAGE API] Starting SSE stream for user {user.user_id}")
             yield f"data: {json.dumps({'status': 'starting', 'message': 'Initializing generation...'})}\n\n"
             
             # Load preset if specified
