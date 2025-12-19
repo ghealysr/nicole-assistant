@@ -18,10 +18,7 @@ interface ModelSelection {
   model: string;
 }
 
-interface ImageVariant {
-  id: string;
-  image_url?: string;
-}
+// ImageVariant type is imported from useImageGeneration hook
 
 interface AlphawaveImageStudioProps {
   isOpen: boolean;
