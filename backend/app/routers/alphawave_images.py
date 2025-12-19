@@ -13,7 +13,7 @@ from decimal import Decimal
 import json
 import logging
 
-from app.middleware.alphawave_auth import get_current_user
+from app.middleware.alphawave_auth import get_current_user, get_current_user_optional
 from app.services.alphawave_image_generation_service import image_service
 from app.services.vision_analysis_service import get_vision_service, ImageSource
 from app.services.nicole_prompt_service import get_nicole_prompt_service
@@ -656,9 +656,13 @@ async def list_favorites(
 # ============================================================================
 
 @router.get("/presets")
-async def list_presets(user=Depends(get_current_user)):
-    """List all available presets (system + user-created)."""
-    presets = await image_service.list_presets(user.user_id)
+async def list_presets(user=Depends(get_current_user_optional)):
+    """List all available presets (system + user-created if authenticated)."""
+    if user:
+        presets = await image_service.list_presets(user.user_id)
+    else:
+        # Return system presets only for unauthenticated requests
+        presets = await image_service.list_system_presets()
     return {"success": True, "presets": presets, "count": len(presets)}
 
 

@@ -25,10 +25,12 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
@@ -1364,9 +1366,15 @@ Your output will be sent directly to the image generation API."""
                     try:
                         image_data = img.get("data")
                         if image_data:
+                            # Convert bytes to base64 string if needed
+                            if isinstance(image_data, bytes):
+                                image_b64 = base64.b64encode(image_data).decode('utf-8')
+                            else:
+                                image_b64 = image_data
+                            
                             # Upload to Cloudinary
                             upload_result = cloudinary_service.upload_from_base64(
-                                image_data,
+                                image_b64,
                                 folder=f"image_gen/{user_id}",
                                 public_id=f"imagen3_{job_id}_{i+1}"
                             )
@@ -1441,8 +1449,14 @@ Your output will be sent directly to the image generation API."""
                     # Upload to Cloudinary
                     image_data = result.get("image_data")
                     if image_data:
+                        # Convert bytes to base64 string if needed
+                        if isinstance(image_data, bytes):
+                            image_b64 = base64.b64encode(image_data).decode('utf-8')
+                        else:
+                            image_b64 = image_data
+                        
                         upload_result = cloudinary_service.upload_from_base64(
-                            image_data,
+                            image_b64,
                             folder=f"image_gen/{user_id}",
                             public_id=f"gemini_{job_id}_{i+1}"
                         )
@@ -1945,6 +1959,17 @@ Your output will be sent directly to the image generation API."""
             ORDER BY is_system DESC, created_at DESC
             """,
             user_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def list_system_presets(self) -> List[Dict]:
+        """List system presets only (for unauthenticated requests)."""
+        rows = await db_manager.pool.fetch(
+            """
+            SELECT * FROM image_presets
+            WHERE is_system = TRUE
+            ORDER BY created_at DESC
+            """
         )
         return [dict(r) for r in rows]
 
