@@ -3,8 +3,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useImageGeneration } from '@/lib/hooks/useImageGeneration';
-import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw } from 'lucide-react';
+import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, Wand2 } from 'lucide-react';
 import Image from 'next/image';
+import { ReferenceImageAnalysis } from '../image-studio/ReferenceImageAnalysis';
+import { getStoredToken } from '@/lib/google_auth';
+import { API_URL } from '@/lib/alphawave_config';
 
 interface ReferenceImage {
   id: string;
@@ -16,6 +19,54 @@ interface ReferenceImage {
 interface ModelSelection {
   slot: number;
   model: string;
+}
+
+// Vision Analysis Types (matching backend)
+interface VisionAnalysisResult {
+  image_id: string;
+  style: {
+    primary_style: string;
+    secondary_styles: string[];
+    art_movement?: string;
+    medium: string;
+    technical_approach: string;
+  };
+  composition: {
+    layout_type: string;
+    focal_points: string[];
+    depth: string;
+    perspective: string;
+    balance: string;
+  };
+  colors: {
+    dominant_colors: string[];
+    color_harmony: string;
+    temperature: string;
+    saturation_level: string;
+  };
+  mood: {
+    primary_mood: string;
+    atmosphere: string;
+    energy_level: string;
+    emotional_tone: string[];
+  };
+  subject: {
+    main_subjects: string[];
+    environment?: string;
+    time_of_day?: string;
+    season?: string;
+    notable_elements: string[];
+  };
+  prompt_suggestions: string[];
+  technical_notes: string[];
+}
+
+interface MultiImageAnalysis {
+  individual_analyses: VisionAnalysisResult[];
+  common_themes: string[];
+  unified_style_guidance: string;
+  combined_prompt_enhancement: string;
+  consistency_notes: string[];
 }
 
 // ImageVariant type is imported from useImageGeneration hook
@@ -49,6 +100,12 @@ export default function AlphawaveImageStudio({
   const [resolution, setResolution] = useState('2K');
   const [nicoleInsights, setNicoleInsights] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'create' | 'history' | 'presets'>('create');
+  
+  // Vision Analysis State
+  const [visionAnalysis, setVisionAnalysis] = useState<VisionAnalysisResult | MultiImageAnalysis | null>(null);
+  const [visionAnalysisType, setVisionAnalysisType] = useState<'single' | 'multi' | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   
   const { 
     startGeneration, 
@@ -130,6 +187,99 @@ export default function AlphawaveImageStudio({
     setModelSlots(prev =>
       prev.map(s => s.slot === slot ? { ...s, model } : s)
     );
+  };
+  
+  // Analyze reference images with Claude Vision
+  const analyzeReferenceImages = async () => {
+    if (referenceImages.length === 0) {
+      alert('Please add reference images first');
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+    setVisionAnalysis(null);
+    
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      // Convert images to base64
+      const imagePromises = referenceImages.map(async (img) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(img.file);
+        });
+      });
+      
+      const base64Images = await Promise.all(imagePromises);
+      
+      // Call vision analysis API with streaming
+      const response = await fetch(`${API_URL}/images/analyze-references/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          images: base64Images,
+          user_prompt: prompt || undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.statusText}`);
+      }
+      
+      // Handle SSE stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (!reader) {
+        throw new Error('No response stream');
+      }
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          
+          const data = JSON.parse(line.slice(6));
+          
+          if (data.status === 'complete') {
+            setVisionAnalysis(data.analysis);
+            setVisionAnalysisType(data.analysis_type);
+            console.log('[VISION] Analysis complete:', data.analysis);
+          } else if (data.status === 'error') {
+            throw new Error(data.message || 'Analysis failed');
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('[VISION] Analysis error:', error);
+      setAnalysisError(error instanceof Error ? error.message : 'Analysis failed');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+  
+  // Apply vision suggestion to prompt
+  const applySuggestionToPrompt = (suggestion: string) => {
+    if (prompt.trim()) {
+      setPrompt(`${prompt}\n\n${suggestion}`);
+    } else {
+      setPrompt(suggestion);
+    }
   };
   
   // Get Nicole's prompt improvement suggestions
@@ -316,9 +466,21 @@ export default function AlphawaveImageStudio({
                   <label className="block text-sm font-medium text-gray-300">
                     Reference Images (Optional - Up to 10)
                   </label>
-                  <span className="text-xs text-gray-500">
-                    {referenceImages.length}/10 images
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {referenceImages.length > 0 && (
+                      <button
+                        onClick={analyzeReferenceImages}
+                        disabled={isAnalyzing || isGenerating}
+                        className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+                      >
+                        <Wand2 className="w-4 h-4" />
+                        {isAnalyzing ? 'Analyzing...' : 'Analyze with Claude Vision'}
+                      </button>
+                    )}
+                    <span className="text-xs text-gray-500">
+                      {referenceImages.length}/10 images
+                    </span>
+                  </div>
                 </div>
                 
                 {/* Dropzone */}
@@ -384,6 +546,37 @@ export default function AlphawaveImageStudio({
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+                
+                {/* Analysis Error */}
+                {analysisError && (
+                  <div className="mt-4 bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-sm text-red-300">
+                          {analysisError}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setAnalysisError(null)}
+                        className="text-gray-500 hover:text-white transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Vision Analysis Results */}
+                {visionAnalysis && visionAnalysisType && (
+                  <div className="mt-4">
+                    <ReferenceImageAnalysis
+                      analysis={visionAnalysis}
+                      analysisType={visionAnalysisType}
+                      onApplySuggestion={applySuggestionToPrompt}
+                    />
                   </div>
                 )}
               </div>
