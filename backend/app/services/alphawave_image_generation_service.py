@@ -1118,6 +1118,64 @@ Your output will be sent directly to the image generation API."""
             raise ValueError(f"Unknown generation mode: {mode}")
 
     # ------------------------------------------------------------------ #
+    # Helper: Download and upload to Cloudinary
+    # ------------------------------------------------------------------ #
+    async def _download_and_upload_to_cloudinary(
+        self,
+        image_url: str,
+        user_id: int,
+        job_id: int,
+        variant_number: int,
+        model_prefix: str
+    ) -> str:
+        """
+        Download image from URL and upload to Cloudinary for persistence.
+        
+        Args:
+            image_url: Source image URL
+            user_id: User ID for folder organization
+            job_id: Job ID for filename
+            variant_number: Variant number for filename
+            model_prefix: Model prefix (e.g., 'recraft', 'flux', 'ideogram')
+            
+        Returns:
+            Cloudinary secure URL
+        """
+        from app.services.alphawave_cloudinary_service import cloudinary_service
+        import base64
+        
+        try:
+            # Download image
+            async with httpx.AsyncClient() as client:
+                response = await client.get(image_url, timeout=30.0)
+                response.raise_for_status()
+                image_bytes = response.content
+            
+            # Convert to base64
+            image_b64 = base64.b64encode(image_bytes).decode()
+            
+            # Upload to Cloudinary
+            upload_result = cloudinary_service.upload_from_base64(
+                image_b64,
+                folder=f"image_gen/{user_id}",
+                public_id=f"{model_prefix}_{job_id}_{variant_number}"
+            )
+            
+            cdn_url = upload_result.get("secure_url") or upload_result.get("url")
+            
+            if not cdn_url:
+                logger.warning(f"[IMAGE] Cloudinary upload returned no URL, falling back to original")
+                return image_url
+            
+            logger.info(f"[IMAGE] Uploaded {model_prefix} image to Cloudinary: {cdn_url}")
+            return cdn_url
+            
+        except Exception as e:
+            logger.error(f"[IMAGE] Failed to download/upload to Cloudinary: {e}")
+            # Fallback to original URL
+            return image_url
+
+    # ------------------------------------------------------------------ #
     # Recraft via MCP bridge
     # ------------------------------------------------------------------ #
     async def _generate_recraft_via_mcp(
@@ -1176,44 +1234,58 @@ Your output will be sent directly to the image generation API."""
         width = parameters.get("width", self.DEFAULT_WIDTH)
         height = parameters.get("height", self.DEFAULT_HEIGHT)
         
-        # Store variants in database
+        # Download and upload to Cloudinary for persistence
         variants: List[Dict] = []
         for i, url in enumerate(urls):
-            image_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-            
-            variant = await db_manager.pool.fetchrow(
-                """
-                INSERT INTO image_variants (
-                    job_id, user_id, version_number,
-                    model_key, model_version,
-                    original_prompt, enhanced_prompt,
-                    parameters, cdn_url, thumbnail_url,
-                    width, height, seed,
-                    generation_time_ms, cost_usd, image_hash
-                ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
-                    $11, $12, $13, $14, $15, $16
+            try:
+                # Upload to Cloudinary to prevent link rot
+                cdn_url = await self._download_and_upload_to_cloudinary(
+                    image_url=url,
+                    user_id=user_id,
+                    job_id=job_id,
+                    variant_number=i + 1,
+                    model_prefix="recraft"
                 )
-                RETURNING *
-                """,
-                job_id,
-                user_id,
-                i + 1,
-                model_key,
-                args["model"],
-                original_prompt,
-                revised_prompts[i] if i < len(revised_prompts) else parameters.get("enhanced_prompt"),
-                json.dumps(parameters),
-                url,
-                url,  # Thumbnail same as main for now
-                width,
-                height,
-                parameters.get("seed"),
-                elapsed_ms,
-                cost_per_image,
-                image_hash,
-            )
-            variants.append(dict(variant))
+                
+                image_hash = hashlib.sha256(cdn_url.encode("utf-8")).hexdigest()[:12]
+                
+                variant = await db_manager.pool.fetchrow(
+                    """
+                    INSERT INTO image_variants (
+                        job_id, user_id, version_number,
+                        model_key, model_version,
+                        original_prompt, enhanced_prompt,
+                        parameters, cdn_url, thumbnail_url,
+                        width, height, seed,
+                        generation_time_ms, cost_usd, image_hash
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
+                        $11, $12, $13, $14, $15, $16
+                    )
+                    RETURNING *
+                    """,
+                    job_id,
+                    user_id,
+                    i + 1,
+                    model_key,
+                    args["model"],
+                    original_prompt,
+                    revised_prompts[i] if i < len(revised_prompts) else parameters.get("enhanced_prompt"),
+                    json.dumps(parameters),
+                    cdn_url,
+                    cdn_url,  # Thumbnail same as main for now
+                    width,
+                    height,
+                    parameters.get("seed"),
+                    elapsed_ms,
+                    cost_per_image,
+                    image_hash,
+                )
+                variants.append(dict(variant))
+                
+            except Exception as e:
+                logger.error(f"[IMAGE] Failed to process Recraft image {i+1}: {e}")
+                continue
         
         logger.info(f"[IMAGE] Recraft generated {len(variants)} variants in {elapsed_ms}ms")
 
@@ -1497,43 +1569,62 @@ Your output will be sent directly to the image generation API."""
                 logger.error(f"[IMAGE] Replicate returned invalid output for iteration {i+1}: {type(raw_output)}")
                 continue
             
-            image_hash = hashlib.sha256(output_url.encode("utf-8")).hexdigest()[:12]
-            elapsed_ms = int((datetime.utcnow() - iter_start).total_seconds() * 1000)
-
-            variant = await db_manager.pool.fetchrow(
-                """
-                INSERT INTO image_variants (
-                    job_id, user_id, version_number,
-                    model_key, model_version,
-                    original_prompt, enhanced_prompt,
-                    parameters, cdn_url, thumbnail_url,
-                    width, height, seed,
-                    generation_time_ms, cost_usd, image_hash
-                ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
-                    $11, $12, $13, $14, $15, $16
+            # Upload to Cloudinary to prevent link rot
+            try:
+                # Determine model prefix for filename
+                model_prefix = "flux" if "flux" in model_key.lower() else \
+                              "ideogram" if "ideogram" in model_key.lower() else \
+                              "seedream" if "seedream" in model_key.lower() else "replicate"
+                
+                cdn_url = await self._download_and_upload_to_cloudinary(
+                    image_url=output_url,
+                    user_id=user_id,
+                    job_id=job_id,
+                    variant_number=i + 1,
+                    model_prefix=model_prefix
                 )
-                RETURNING *
-                """,
-                job_id,
-                user_id,
-                i + 1,
-                model_key,
-                replicate_model,
-                original_prompt,
-                parameters.get("enhanced_prompt"),
-                json.dumps(model_input),
-                output_url,
-                output_url,  # Thumbnail same as main for now
-                width,
-                height,
-                model_input.get("seed"),
-                elapsed_ms,
-                cost_per_image,
-                image_hash,
-            )
-            variants.append(dict(variant))
-            logger.info(f"[IMAGE] Replicate variant {i+1}/{batch_count} completed in {elapsed_ms}ms")
+                
+                image_hash = hashlib.sha256(cdn_url.encode("utf-8")).hexdigest()[:12]
+                elapsed_ms = int((datetime.utcnow() - iter_start).total_seconds() * 1000)
+
+                variant = await db_manager.pool.fetchrow(
+                    """
+                    INSERT INTO image_variants (
+                        job_id, user_id, version_number,
+                        model_key, model_version,
+                        original_prompt, enhanced_prompt,
+                        parameters, cdn_url, thumbnail_url,
+                        width, height, seed,
+                        generation_time_ms, cost_usd, image_hash
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
+                        $11, $12, $13, $14, $15, $16
+                    )
+                    RETURNING *
+                    """,
+                    job_id,
+                    user_id,
+                    i + 1,
+                    model_key,
+                    replicate_model,
+                    original_prompt,
+                    parameters.get("enhanced_prompt"),
+                    json.dumps(model_input),
+                    cdn_url,
+                    cdn_url,  # Thumbnail same as main for now
+                    width,
+                    height,
+                    model_input.get("seed"),
+                    elapsed_ms,
+                    cost_per_image,
+                    image_hash,
+                )
+                variants.append(dict(variant))
+                logger.info(f"[IMAGE] Replicate variant {i+1}/{batch_count} completed in {elapsed_ms}ms")
+                
+            except Exception as e:
+                logger.error(f"[IMAGE] Failed to process Replicate image {i+1}: {e}")
+                continue
 
         total_elapsed = int((datetime.utcnow() - start_time).total_seconds() * 1000)
         logger.info(f"[IMAGE] Replicate generated {len(variants)} variants in {total_elapsed}ms")

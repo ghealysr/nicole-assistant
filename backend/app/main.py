@@ -216,10 +216,13 @@ class ConditionalGZipMiddleware:
     
     # Paths that should NOT be gzipped (streaming endpoints)
     EXCLUDED_PATHS = [
-        "/chat/message",      # Main chat streaming
-        "/chat/stream-test",  # Streaming test endpoint
-        "/vibe/",             # Vibe dashboard streaming
-        "/faz/",              # Faz code streaming
+        "/chat/message",                      # Main chat streaming
+        "/chat/stream-test",                  # Streaming test endpoint
+        "/vibe/",                             # Vibe dashboard streaming
+        "/faz/",                              # Faz code streaming
+        "/images/generate/stream",            # Image generation progress streaming
+        "/images/analyze-references/stream",  # Vision analysis streaming
+        "/images/prompt-suggestions/stream",  # Nicole prompt suggestions streaming
     ]
     
     def __init__(self, app: ASGIApp, minimum_size: int = 1000):

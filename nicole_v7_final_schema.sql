@@ -786,14 +786,111 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO tsdbadmin;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO tsdbadmin;
 
 -- ============================================================================
+-- IMAGE GENERATION SYSTEM (Advanced Multi-Model Studio)
+-- ============================================================================
+-- Migration: 008_image_generation_system.sql
+-- Features: Multi-model generation, job tracking, preset management
+-- Models: Recraft V3, FLUX 1.1 Pro, Ideogram V2, Gemini Imagen 3, OpenAI DALL-E 3
+-- ============================================================================
+
+-- Jobs organize generations by project/use case
+CREATE TABLE IF NOT EXISTS image_jobs (
+    job_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(user_id),
+    title TEXT NOT NULL,
+    project TEXT,  -- "AlphaWave" | "Grace & Grit" | "Tampa Renegades" | NULL
+    use_case TEXT,  -- "logo" | "hero" | "social" | "poster" | "icon" | "mockup"
+    preset_used TEXT,  -- Which preset was used to start
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_jobs_user ON image_jobs(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_image_jobs_project ON image_jobs(project, use_case) WHERE project IS NOT NULL;
+
+ALTER TABLE image_jobs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "users_own_image_jobs" ON image_jobs FOR ALL USING (auth.uid() = user_id);
+
+-- Variants are all generations belonging to a job
+CREATE TABLE IF NOT EXISTS image_variants (
+    variant_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    job_id BIGINT NOT NULL REFERENCES image_jobs(job_id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(user_id),
+    version_number INTEGER NOT NULL,  -- v1, v2, v3...
+    
+    -- Model information
+    model_key TEXT NOT NULL,  -- "recraft" | "flux_pro" | "flux_schnell" | "ideogram" | "imagen3" | "dall_e_3"
+    model_version TEXT,  -- Model version string
+    
+    -- Prompts
+    original_prompt TEXT NOT NULL,
+    enhanced_prompt TEXT,  -- What AI enhanced it to
+    negative_prompt TEXT,
+    
+    -- Parameters (full JSON for reproducibility)
+    parameters JSONB NOT NULL,
+    
+    -- Output files (Cloudinary URLs for persistence)
+    cdn_url TEXT NOT NULL,
+    thumbnail_url TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    
+    -- Metadata for nerd stats
+    seed INTEGER,
+    generation_time_ms INTEGER,  -- How long it took
+    cost_usd NUMERIC(10, 4),  -- Actual cost
+    replicate_prediction_id TEXT,  -- For debugging
+    
+    -- Hash for deduplication
+    image_hash TEXT UNIQUE,
+    
+    -- User feedback
+    is_favorite BOOLEAN DEFAULT FALSE,
+    user_rating INTEGER CHECK (user_rating BETWEEN 1 AND 5),
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_variants_job ON image_variants(job_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_image_variants_user ON image_variants(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_image_variants_hash ON image_variants(image_hash) WHERE image_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_image_variants_favorites ON image_variants(user_id, is_favorite) WHERE is_favorite = TRUE;
+
+ALTER TABLE image_variants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "users_own_image_variants" ON image_variants FOR ALL USING (auth.uid() = user_id);
+
+-- Presets for quick generation
+CREATE TABLE IF NOT EXISTS image_presets (
+    preset_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(user_id),
+    preset_key TEXT NOT NULL,  -- "aw_logo_vector", "grace_grit_ig"
+    name TEXT NOT NULL,  -- "AW Logo - Vector Square"
+    model_key TEXT NOT NULL,
+    parameters JSONB NOT NULL,
+    batch_count INTEGER DEFAULT 1,
+    smart_prompt_enabled BOOLEAN DEFAULT TRUE,
+    use_case TEXT,
+    is_system BOOLEAN DEFAULT FALSE,  -- System vs user-created
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_image_presets_key ON image_presets(user_id, preset_key);
+ALTER TABLE image_presets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "users_own_presets" ON image_presets FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================================
 -- SUMMARY V3.0-EDEN
 -- ============================================================================
--- Total Tables: 36 (35 data tables + schema_versions)
+-- Total Tables: 39 (38 data tables + schema_versions)
 -- New Tables Added (vs V2):
 --   âœ… memory_links (associative graph)
 --   âœ… memory_snapshots (temporal summaries)
 --   âœ… dreams (creative synthesis)
 --   âœ… contextual_links (cross-modal stitching)
+--   ✅ image_jobs (multi-model image generation tracking)
+--   ✅ image_variants (generated images with full metadata)
+--   ✅ image_presets (quick generation templates)
 -- 
 -- Enhanced Features:
 --   âœ… Temporal awareness (epoch_id, access_count, last_accessed)

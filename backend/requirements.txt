@@ -123,6 +123,18 @@ cloudinary>=1.36.0
 # Used for: Image storage, transformations, CDN delivery
 # Features: Upload, resize, format conversion, AI tagging
 
+replicate>=0.22.0
+# Replicate API client for AI model access (FLUX, Ideogram, Seedream)
+# Used for: FLUX 1.1 Pro, FLUX Schnell, Ideogram V2, Seedream 4.5 generation
+# Features: Model execution, output polling, webhook support
+# Critical for: Multi-model image generation in Advanced Image Studio
+
+Pillow>=10.0.0
+# Python Imaging Library for image processing
+# Used for: Image resizing, format conversion, vision analysis preprocessing
+# Features: Open, manipulate, save images in various formats
+# Critical for: Reference image processing, Claude Vision integration
+
 # ─────────────────────────────────────────────────────────────────────────
 # DATABASE & CACHING
 # ─────────────────────────────────────────────────────────────────────────
