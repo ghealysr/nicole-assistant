@@ -1038,10 +1038,14 @@ Your output will be sent directly to the image generation API."""
         Returns:
             Dict with job_id, variants list, count, model_key, elapsed_ms
         """
+        logger.info(f"[IMAGE SERVICE] generate() called: model={model_key}, user={user_id}, prompt={prompt[:50]}...")
+        
         if model_key not in self.MODEL_CONFIGS:
+            logger.error(f"[IMAGE SERVICE] Unsupported model_key: {model_key}")
             raise ValueError(f"Unsupported model_key: {model_key}. Valid: {list(self.MODEL_CONFIGS.keys())}")
 
         model_cfg = self.MODEL_CONFIGS[model_key]
+        logger.info(f"[IMAGE SERVICE] Model config: mode={model_cfg.get('mode')}, provider={model_cfg.get('provider')}")
         
         # Validate and clamp parameters
         validated_params = self._validate_params(model_key, parameters)
@@ -1052,8 +1056,14 @@ Your output will be sent directly to the image generation API."""
         # Enhance prompt if enabled
         enhanced_prompt = prompt
         if enhance_prompt_enabled:
-            enhanced_prompt = await self.enhance_prompt(prompt, model_key, use_case)
-            validated_params["enhanced_prompt"] = enhanced_prompt
+            logger.info(f"[IMAGE SERVICE] Enhancing prompt...")
+            try:
+                enhanced_prompt = await self.enhance_prompt(prompt, model_key, use_case)
+                validated_params["enhanced_prompt"] = enhanced_prompt
+                logger.info(f"[IMAGE SERVICE] Prompt enhanced: {enhanced_prompt[:50]}...")
+            except Exception as e:
+                logger.warning(f"[IMAGE SERVICE] Prompt enhancement failed, using original: {e}")
+                enhanced_prompt = prompt
 
         # Create job if not provided
         if job_id is None:
@@ -1319,11 +1329,14 @@ Your output will be sent directly to the image generation API."""
         from app.services.alphawave_cloudinary_service import cloudinary_service
         import base64
         
+        logger.info(f"[IMAGE GEMINI] Starting generation: model_key={model_key}, batch={batch_count}")
+        
         start_time = time.time()
         model_cfg = self.MODEL_CONFIGS[model_key]
         
         # Get the actual Gemini model name
         gemini_model = model_cfg.get("gemini_model", "imagen-3.0-generate-001")
+        logger.info(f"[IMAGE GEMINI] Using model: {gemini_model}")
         
         # Get cost per image
         cost_config = model_cfg.get("cost_per_image")

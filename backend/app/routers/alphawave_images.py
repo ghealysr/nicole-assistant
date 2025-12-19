@@ -177,8 +177,12 @@ async def generate_image_stream(
     - {"status": "complete", "variants": [...]}
     - {"status": "error", "message": "..."}
     """
+    # Log request details for debugging
+    logger.info(f"[IMAGE API] Generate request: model={request.model_key}, prompt={request.prompt[:50]}..., user={user.user_id}")
+    
     async def event_stream():
         try:
+            logger.info(f"[IMAGE API] Starting SSE stream for user {user.user_id}")
             yield f"data: {json.dumps({'status': 'starting', 'message': 'Initializing generation...'})}\n\n"
             
             # Load preset if specified
@@ -194,6 +198,7 @@ async def generate_image_stream(
             if request.enhance_prompt:
                 yield f"data: {json.dumps({'status': 'enhancing', 'message': 'Enhancing prompt with Claude...'})}\n\n"
             
+            logger.info(f"[IMAGE API] Calling image_service.generate() with model={request.model_key}")
             yield f"data: {json.dumps({'status': 'generating', 'message': f'Generating {request.batch_count} variant(s)...'})}\n\n"
             
             result = await image_service.generate(
@@ -209,6 +214,7 @@ async def generate_image_stream(
                 enhance_prompt_enabled=request.enhance_prompt,
             )
             
+            logger.info(f"[IMAGE API] Generation complete: {len(result.get('variants', []))} variants, job_id={result.get('job_id')}")
             yield f"data: {json.dumps(serialize_for_json({'status': 'complete', **result}))}\n\n"
             
         except Exception as e:
