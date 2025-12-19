@@ -3,9 +3,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useImageGeneration } from '@/lib/hooks/useImageGeneration';
-import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, Wand2 } from 'lucide-react';
+import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, Wand2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { ReferenceImageAnalysis } from '../image-studio/ReferenceImageAnalysis';
+import { NicolePromptSuggestions } from '../image-studio/NicolePromptSuggestions';
 import { getStoredToken } from '@/lib/google_auth';
 import { API_URL } from '@/lib/alphawave_config';
 
@@ -69,6 +70,25 @@ interface MultiImageAnalysis {
   consistency_notes: string[];
 }
 
+// Nicole's Prompt Suggestion Types
+interface PromptSuggestion {
+  type: "specificity" | "style" | "technical" | "composition" | "lighting" | "color";
+  title: string;
+  description: string;
+  enhanced_prompt: string;
+  reasoning: string;
+  priority: number;
+}
+
+interface PromptAnalysis {
+  original_prompt: string;
+  analysis_summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: PromptSuggestion[];
+  overall_quality_score: number;
+}
+
 // ImageVariant type is imported from useImageGeneration hook
 
 interface AlphawaveImageStudioProps {
@@ -106,6 +126,11 @@ export default function AlphawaveImageStudio({
   const [visionAnalysisType, setVisionAnalysisType] = useState<'single' | 'multi' | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  
+  // Nicole's Prompt Suggestions State
+  const [promptAnalysis, setPromptAnalysis] = useState<PromptAnalysis | null>(null);
+  const [isGettingSuggestions, setIsGettingSuggestions] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   
   const { 
     startGeneration, 
@@ -284,20 +309,89 @@ export default function AlphawaveImageStudio({
   
   // Get Nicole's prompt improvement suggestions
   const getPromptSuggestions = async () => {
-    // This would call Nicole's API to analyze the prompt and reference images
-    // For now, show a placeholder
-    setNicoleInsights("Analyzing your request and reference images to suggest improvements...");
+    if (!prompt.trim()) {
+      alert('Please enter a prompt first');
+      return;
+    }
     
-    // Simulate API call
-    setTimeout(() => {
-      setNicoleInsights(
-        "💡 **Nicole's Suggestions:**\n\n" +
-        "1. Your prompt could be more specific about lighting. Consider adding 'soft natural lighting' or 'dramatic shadows'.\n" +
-        "2. Based on your reference images, I detect a warm color palette. Mentioning 'warm sunset tones' would help.\n" +
-        "3. For best text rendering, specify the exact text you want and the font style.\n" +
-        "4. Consider requesting a specific resolution (2K or 4K) for professional use."
-      );
-    }, 2000);
+    setIsGettingSuggestions(true);
+    setSuggestionsError(null);
+    setPromptAnalysis(null);
+    
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      // Call Nicole's prompt analysis API with streaming
+      const response = await fetch(`${API_URL}/images/prompt-suggestions/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prompt,
+          use_case: 'general',
+          target_model: multiModelMode ? modelSlots[0].model : singleModel,
+          aspect_ratio: aspectRatio,
+          resolution: resolution,
+          vision_analysis: visionAnalysis && visionAnalysisType === 'single' ? visionAnalysis : undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.statusText}`);
+      }
+      
+      // Handle SSE stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (!reader) {
+        throw new Error('No response stream');
+      }
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          
+          const data = JSON.parse(line.slice(6));
+          
+          if (data.status === 'complete') {
+            setPromptAnalysis(data.analysis);
+            console.log('[NICOLE] Analysis complete:', data.analysis);
+          } else if (data.status === 'error') {
+            throw new Error(data.message || 'Analysis failed');
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('[NICOLE] Suggestions error:', error);
+      setSuggestionsError(error instanceof Error ? error.message : 'Failed to get suggestions');
+    } finally {
+      setIsGettingSuggestions(false);
+    }
+  };
+  
+  // Apply Nicole's suggestions to prompt
+  const applyNicoleSuggestions = (suggestions: PromptSuggestion[]) => {
+    if (suggestions.length === 0) return;
+    
+    // Build enhanced prompt by adding suggestions
+    const suggestionTexts = suggestions.map(s => s.enhanced_prompt);
+    const enhanced = prompt.trim() + '. ' + suggestionTexts.join('. ');
+    
+    setPrompt(enhanced);
+    setPromptAnalysis(null); // Close the suggestions panel
   };
   
   // Convert aspect ratio and resolution to width/height
@@ -427,23 +521,19 @@ export default function AlphawaveImageStudio({
                   rows={4}
                 />
                 
-                {/* Nicole's Insights */}
-                {nicoleInsights && (
-                  <div className="mt-4 bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <div className="text-sm text-gray-300 whitespace-pre-wrap">
-                          {nicoleInsights}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setNicoleInsights(null)}
-                        className="text-gray-500 hover:text-white transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                {/* Suggestions Error */}
+                {suggestionsError && (
+                  <div className="mt-3 p-3 bg-red-900/20 border border-red-500/30 rounded-lg flex items-start gap-2">
+                    <X className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-sm text-red-300">{suggestionsError}</div>
                     </div>
+                    <button
+                      onClick={() => setSuggestionsError(null)}
+                      className="text-red-400/60 hover:text-red-400 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
                 
@@ -451,14 +541,23 @@ export default function AlphawaveImageStudio({
                 <div className="mt-4 flex justify-end">
                   <button
                     onClick={getPromptSuggestions}
-                    disabled={!prompt.trim() || isGenerating}
+                    disabled={!prompt.trim() || isGenerating || isGettingSuggestions}
                     className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    <Sparkles className="w-4 h-4" />
-                    Ask Nicole to Improve My Prompt
+                    <MessageCircle className="w-4 h-4" />
+                    {isGettingSuggestions ? 'Nicole is thinking...' : 'Get Nicole\'s Suggestions'}
                   </button>
                 </div>
               </div>
+              
+              {/* Nicole's Suggestions Panel */}
+              {promptAnalysis && (
+                <NicolePromptSuggestions
+                  analysis={promptAnalysis}
+                  onApplySuggestions={applyNicoleSuggestions}
+                  onClose={() => setPromptAnalysis(null)}
+                />
+              )}
               
               {/* Reference Images Section */}
               <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">

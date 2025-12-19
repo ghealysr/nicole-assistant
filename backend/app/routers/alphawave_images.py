@@ -16,6 +16,7 @@ import logging
 from app.middleware.alphawave_auth import get_current_user
 from app.services.alphawave_image_generation_service import image_service
 from app.services.vision_analysis_service import get_vision_service, ImageSource
+from app.services.nicole_prompt_service import get_nicole_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,22 @@ class AnalyzeReferenceRequest(BaseModel):
     images: List[str] = Field(..., min_items=1, max_items=10, description="Base64-encoded images or URLs")
     image_sources: Optional[List[str]] = Field(default=None, description="Source types: upload, url, path")
     user_prompt: Optional[str] = Field(default=None, description="User's intended generation prompt for context")
+
+
+class PromptSuggestionsRequest(BaseModel):
+    """Request body for getting prompt improvement suggestions."""
+    prompt: str = Field(..., min_length=1, max_length=2000, description="The prompt to analyze")
+    use_case: Optional[str] = Field(default=None, description="Intended use case (e.g., 'marketing', 'concept art')")
+    target_model: Optional[str] = Field(default=None, description="Target generation model")
+    aspect_ratio: Optional[str] = Field(default=None, description="Desired aspect ratio")
+    resolution: Optional[str] = Field(default=None, description="Desired resolution")
+    vision_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Optional vision analysis from references")
+
+
+class ApplySuggestionsRequest(BaseModel):
+    """Request body for applying selected suggestions."""
+    original_prompt: str = Field(..., min_length=1, max_length=2000)
+    selected_suggestions: List[Dict[str, Any]] = Field(..., description="List of suggestions to apply")
 
 
 # ============================================================================
@@ -359,6 +376,164 @@ async def analyze_references_stream(
             "Connection": "keep-alive",
         }
     )
+
+
+# ============================================================================
+# Nicole's Prompt Improvement Endpoints
+# ============================================================================
+
+@router.post("/prompt-suggestions")
+async def get_prompt_suggestions(
+    request: PromptSuggestionsRequest,
+    user=Depends(get_current_user),
+):
+    """
+    Get Nicole's suggestions for improving an image generation prompt.
+    
+    Nicole analyzes the prompt and provides warm, actionable suggestions
+    for enhancing specificity, style, technical details, and more.
+    
+    Returns analysis with:
+    - Overall assessment and quality score
+    - Strengths of current prompt
+    - Areas for improvement
+    - Specific suggestions with enhanced prompt text
+    - Priority ratings for each suggestion
+    """
+    try:
+        logger.info(f"[NICOLE PROMPT] Analyzing prompt for user {user.user_id}: {request.prompt[:50]}...")
+        
+        nicole_service = get_nicole_prompt_service()
+        
+        # Build context dictionary
+        user_context = {}
+        if request.use_case:
+            user_context["use_case"] = request.use_case
+        if request.target_model:
+            user_context["target_model"] = request.target_model
+        if request.aspect_ratio:
+            user_context["aspect_ratio"] = request.aspect_ratio
+        if request.resolution:
+            user_context["resolution"] = request.resolution
+        
+        # Analyze prompt
+        analysis = await nicole_service.analyze_prompt(
+            prompt=request.prompt,
+            user_context=user_context if user_context else None,
+            vision_analysis=request.vision_analysis
+        )
+        
+        return {
+            "success": True,
+            "analysis": serialize_for_json(analysis.to_dict())
+        }
+    
+    except ValueError as e:
+        logger.error(f"[NICOLE PROMPT] Invalid input: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"[NICOLE PROMPT] Analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Prompt analysis failed")
+
+
+@router.post("/prompt-suggestions/stream")
+async def get_prompt_suggestions_stream(
+    request: PromptSuggestionsRequest,
+    user=Depends(get_current_user),
+):
+    """
+    Get Nicole's prompt suggestions with SSE streaming.
+    
+    Streams progress updates during analysis:
+    - {"status": "thinking", "message": "Nicole is analyzing your prompt..."}
+    - {"status": "complete", "analysis": {...}}
+    - {"status": "error", "message": "..."}
+    """
+    async def event_stream():
+        try:
+            yield f"data: {json.dumps({'status': 'thinking', 'message': '💭 Nicole is analyzing your prompt...'})}\n\n"
+            
+            nicole_service = get_nicole_prompt_service()
+            
+            # Build context
+            user_context = {}
+            if request.use_case:
+                user_context["use_case"] = request.use_case
+            if request.target_model:
+                user_context["target_model"] = request.target_model
+            if request.aspect_ratio:
+                user_context["aspect_ratio"] = request.aspect_ratio
+            if request.resolution:
+                user_context["resolution"] = request.resolution
+            
+            # Analyze
+            analysis = await nicole_service.analyze_prompt(
+                prompt=request.prompt,
+                user_context=user_context if user_context else None,
+                vision_analysis=request.vision_analysis
+            )
+            
+            yield f"data: {json.dumps(serialize_for_json({'status': 'complete', 'analysis': analysis.to_dict()}))}\n\n"
+        
+        except Exception as e:
+            logger.exception(f"[NICOLE PROMPT] Stream error: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@router.post("/apply-suggestions")
+async def apply_suggestions(
+    request: ApplySuggestionsRequest,
+    user=Depends(get_current_user),
+):
+    """
+    Apply selected suggestions to create an enhanced prompt.
+    
+    Takes the original prompt and a list of selected suggestions,
+    combines them intelligently, and returns the enhanced version.
+    """
+    try:
+        logger.info(f"[NICOLE PROMPT] Applying {len(request.selected_suggestions)} suggestions")
+        
+        nicole_service = get_nicole_prompt_service()
+        
+        # Convert suggestion dicts back to PromptSuggestion objects
+        from app.services.nicole_prompt_service import PromptSuggestion
+        
+        suggestions = [
+            PromptSuggestion(
+                type=s["type"],
+                title=s["title"],
+                description=s["description"],
+                enhanced_prompt=s["enhanced_prompt"],
+                reasoning=s["reasoning"],
+                priority=s["priority"]
+            )
+            for s in request.selected_suggestions
+        ]
+        
+        # Apply suggestions
+        enhanced_prompt = await nicole_service.apply_suggestions(
+            original_prompt=request.original_prompt,
+            selected_suggestions=suggestions
+        )
+        
+        return {
+            "success": True,
+            "enhanced_prompt": enhanced_prompt
+        }
+    
+    except Exception as e:
+        logger.exception(f"[NICOLE PROMPT] Apply error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to apply suggestions")
 
 
 # ============================================================================
