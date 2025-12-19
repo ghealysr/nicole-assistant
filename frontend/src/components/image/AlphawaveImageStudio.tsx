@@ -53,10 +53,10 @@ export function AlphawaveImageStudio({
   // Image slots configuration (1-4 slots)
   const [slotCount, setSlotCount] = useState(1);
   const [multiModelMode, setMultiModelMode] = useState(false); // false = one model, all slots; true = different model per slot
-  const [singleModel, setSingleModel] = useState('flux_schnell');
+  const [singleModel, setSingleModel] = useState('gemini_3_pro_image');
   const [modelSlots, setModelSlots] = useState<ModelSlotConfig[]>([
-    { modelKey: 'flux_schnell', enabled: true },
-    { modelKey: 'flux_pro', enabled: false },
+    { modelKey: 'gemini_3_pro_image', enabled: true },
+    { modelKey: 'gpt_image', enabled: false },
     { modelKey: 'flux_pro', enabled: false },
     { modelKey: 'ideogram', enabled: false },
   ]);
@@ -254,7 +254,7 @@ export function AlphawaveImageStudio({
             <div className="img-studio-titles">
               <span className="img-studio-title">Image Studio</span>
               <span className="img-studio-subtitle">
-                {isGenerating ? 'Generating...' : 'FLUX • Ideogram • Recraft • Imagen'}
+                {isGenerating ? 'Generating...' : 'Nano Banana • GPT Image • FLUX • Ideogram'}
               </span>
             </div>
           </div>

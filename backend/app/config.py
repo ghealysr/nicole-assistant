@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     # See: https://ai.google.dev/gemini-api/docs/imagen
     GEMINI_IMAGE_MODEL: str = "imagen-3.0-generate-001"  # Imagen 3 standard
     GEMINI_IMAGE_MODEL_FAST: str = "imagen-3.0-fast-generate-001"  # Fast version
+    # Gemini 3 Pro Image (aka "Nano Banana Pro") - advanced image generation
+    # Supports up to 4K, 14 reference images, thinking mode, grounding
+    GEMINI_3_PRO_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
+    
+    # OpenAI GPT Image 1.5 (gpt-image-1) - fastest with precise edits
+    OPENAI_IMAGE_MODEL: str = "gpt-image-1"
     
     # PageSpeed Insights API (for Lighthouse scores)
     PAGESPEED_API_KEY: str = "AIzaSyBCHN4ej7qDAwsGhLmZMs_wqd7fi5kSM6c"

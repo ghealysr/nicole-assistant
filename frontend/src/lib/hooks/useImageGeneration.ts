@@ -185,14 +185,19 @@ export function useImageGeneration() {
       setModels(response.models || []);
     } catch (err) {
       console.error('Failed to fetch models:', err);
-      // Use default models if API fails
+      // Use default models if API fails - updated with 2025 model lineup
       setModels([
-        { key: 'imagen3', name: 'Imagen 3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: false },
-        { key: 'imagen3_fast', name: 'Imagen 3 Fast', cost_per_image: 0.02, max_width: 2048, max_height: 2048, supports_style: false },
-        { key: 'recraft', name: 'Recraft V3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['realistic_image', 'digital_illustration', 'vector_illustration', 'icon'] },
-        { key: 'flux_pro', name: 'FLUX Pro', cost_per_image: 0.055, max_width: 1440, max_height: 1440, supports_style: false },
+        // TIER 1: FLAGSHIP
+        { key: 'gemini_3_pro_image', name: 'Nano Banana Pro', cost_per_image: 0.03, max_width: 4096, max_height: 4096, supports_style: false },
+        { key: 'gpt_image', name: 'GPT Image 1.5', cost_per_image: 0.04, max_width: 1792, max_height: 1792, supports_style: true, style_options: ['vivid', 'natural'] },
+        { key: 'flux_pro', name: 'FLUX.2 Pro', cost_per_image: 0.055, max_width: 1440, max_height: 1440, supports_style: false },
+        { key: 'ideogram', name: 'Ideogram V3', cost_per_image: 0.08, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['Auto', 'General', 'Realistic', 'Design', 'Render 3D', 'Anime'] },
+        // TIER 2: SPECIALIZED
+        { key: 'seedream', name: 'Seedream 4.5', cost_per_image: 0.03, max_width: 2048, max_height: 2048, supports_style: false },
+        { key: 'recraft', name: 'Recraft V3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['realistic_image', 'digital_illustration', 'vector_illustration', 'logo', 'icon'] },
         { key: 'flux_schnell', name: 'FLUX Schnell', cost_per_image: 0.003, max_width: 1440, max_height: 1440, supports_style: false },
-        { key: 'ideogram', name: 'Ideogram V2', cost_per_image: 0.08, max_width: 2048, max_height: 2048, supports_style: true, style_options: ['Auto', 'Realistic', 'Design', 'Render 3D', 'Anime'] },
+        // LEGACY
+        { key: 'imagen3', name: 'Imagen 3', cost_per_image: 0.04, max_width: 2048, max_height: 2048, supports_style: false },
       ]);
     }
   }, []);
