@@ -37,6 +37,8 @@ import httpx
 
 from app.config import settings
 from app.database import db as db_manager
+from app.prompts.image_generation_agents import get_agent_prompt
+from app.services.alphawave_image_memory_service import image_memory_service
 
 try:
     import replicate  # type: ignore
@@ -409,20 +411,141 @@ class ImageGenerationService:
         self,
         prompt: str,
         use_case: Optional[str] = None,
+        user_id: Optional[int] = None,
+        reference_images: Optional[List[Dict[str, Any]]] = None
+    ) -> TaskAnalysis:
+        """
+        Task Analyzer Agent: Uses Claude with dedicated system prompt to analyze request.
+        
+        Evaluates:
+        - Complexity level (simple/moderate/complex/expert)
+        - Text requirements (none/minimal/moderate/heavy/critical)
+        - Style preference (photorealistic/artistic/design/cinematic/technical)
+        - Speed priority (instant/fast/balanced/quality)
+        - Output use (web/print/social/marketing/concept/technical)
+        - Reference image context
+        
+        Returns:
+            TaskAnalysis with AI-powered recommendation
+        """
+        if not self.anthropic:
+            # Fallback to pattern-based analysis if Claude not available
+            logger.warning("[IMAGE] Task analysis fallback: Claude not available")
+            return await self._fallback_task_analysis(prompt, use_case, user_id)
+        
+        try:
+            # Build user context including reference images
+            user_context = f"User prompt: {prompt}"
+            if use_case:
+                user_context += f"\nIntended use case: {use_case}"
+            if reference_images:
+                user_context += f"\nReference images provided: {len(reference_images)}"
+                for i, ref in enumerate(reference_images, 1):
+                    if ref.get("inspiration_notes"):
+                        user_context += f"\n  Image {i} notes: {ref['inspiration_notes']}"
+            
+            # Get user preferences if available
+            if user_id:
+                prefs = await image_memory_service.get_user_preferences(user_id)
+                if prefs.get("has_history"):
+                    user_context += f"\n\nUser history: {prefs['total_generations']} generations"
+                    if prefs.get("favorite_model"):
+                        user_context += f"\nFavorite model: {prefs['favorite_model']}"
+                    if prefs.get("favorite_style"):
+                        user_context += f"\nPreferred style: {prefs['favorite_style']}"
+            
+            # Call Claude with Task Analyzer agent prompt
+            response = await self.anthropic.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                system=get_agent_prompt("task_analyzer"),
+                messages=[{
+                    "role": "user",
+                    "content": user_context
+                }]
+            )
+            
+            # Parse JSON response
+            response_text = response.content[0].text
+            # Extract JSON from response (handles markdown code blocks)
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+            if json_match:
+                analysis_data = json.loads(json_match.group())
+            else:
+                raise ValueError("No JSON found in response")
+            
+            # Map complexity string to enum
+            complexity_map = {
+                "simple": TaskComplexity.SIMPLE,
+                "moderate": TaskComplexity.MEDIUM,
+                "complex": TaskComplexity.COMPLEX,
+                "expert": TaskComplexity.COMPLEX
+            }
+            
+            # Extract flags from analysis
+            text_in_image = analysis_data.get("text_requirements") in ("moderate", "heavy", "critical")
+            multi_object = analysis_data.get("complexity") in ("complex", "expert")
+            complex_scene = multi_object
+            needs_speed = analysis_data.get("speed_priority") in ("instant", "fast")
+            precise_edits = analysis_data.get("output_use") in ("marketing", "print")
+            artistic_style = analysis_data.get("style_preference") in ("artistic", "cinematic")
+            enterprise_quality = analysis_data.get("output_use") in ("marketing", "print", "technical")
+            
+            complexity = complexity_map.get(
+                analysis_data.get("complexity", "moderate"),
+                TaskComplexity.MEDIUM
+            )
+            
+            recommended = analysis_data.get("primary_provider", "gemini_3_pro_image")
+            fallback = analysis_data.get("fallback_provider", "gpt_image")
+            confidence = 0.9
+            
+            # Map strategy
+            strategy_map = {
+                "single": GenerationStrategy.SINGLE,
+                "parallel": GenerationStrategy.PARALLEL,
+                "sequential": GenerationStrategy.SEQUENTIAL
+            }
+            strategy = strategy_map.get(
+                analysis_data.get("strategy", "single"),
+                GenerationStrategy.SINGLE
+            )
+            
+            logger.info(
+                f"[IMAGE] Task Analysis (AI-powered): {recommended} (confidence={confidence:.2f}), "
+                f"fallback={fallback}, strategy={strategy.value}, "
+                f"reasoning={analysis_data.get('reasoning', 'N/A')[:100]}"
+            )
+            
+        except Exception as e:
+            logger.error(f"[IMAGE] AI task analysis failed, using fallback: {e}", exc_info=True)
+            return await self._fallback_task_analysis(prompt, use_case, user_id)
+        
+        # Build and return TaskAnalysis
+        return TaskAnalysis(
+            complexity=complexity,
+            text_in_image=text_in_image,
+            multi_object=multi_object,
+            complex_scene=complex_scene,
+            needs_speed=needs_speed,
+            precise_edits=precise_edits,
+            artistic_style=artistic_style,
+            enterprise_quality=enterprise_quality,
+            recommended_model=recommended,
+            fallback_model=fallback,
+            strategy=strategy,
+            confidence=confidence
+        )
+    
+    async def _fallback_task_analysis(
+        self,
+        prompt: str,
+        use_case: Optional[str] = None,
         user_id: Optional[int] = None
     ) -> TaskAnalysis:
         """
-        Task Analyzer Agent: Analyzes the request and recommends optimal model.
-        
-        Evaluates:
-        - Subject complexity (single vs multi-object)
-        - Text requirements (in-image typography)
-        - Style preference (photorealistic vs artistic)
-        - Speed requirements (iterative workflow vs final)
-        - Output use (social, print, product, concept)
-        
-        Returns:
-            TaskAnalysis with recommended model, fallback, and strategy
+        Fallback pattern-based task analysis when Claude is unavailable.
+        Uses regex patterns to detect requirements.
         """
         prompt_lower = prompt.lower()
         
@@ -453,59 +576,48 @@ class ImageGenerationService:
         
         # Model selection logic
         if text_in_image:
-            # Ideogram is still best for text rendering
             recommended = "ideogram"
-            fallback = "gemini_3_pro_image"  # Gemini 3 Pro has improved text
+            fallback = "gemini_3_pro_image"
             confidence = 0.9
         elif needs_speed:
-            recommended = "gpt_image"  # 4x faster
+            recommended = "gpt_image"
             fallback = "flux_schnell"
             confidence = 0.85
         elif precise_edits:
-            recommended = "gpt_image"  # Precise editing
+            recommended = "gpt_image"
             fallback = "gemini_3_pro_image"
             confidence = 0.85
         elif multi_object or complex_scene:
-            recommended = "gemini_3_pro_image"  # Best for complex scenes
+            recommended = "gemini_3_pro_image"
             fallback = "gpt_image"
             confidence = 0.9
         elif artistic_style:
-            recommended = "seedream"  # Cinematic/artistic
+            recommended = "seedream"
             fallback = "gemini_3_pro_image"
             confidence = 0.8
         elif enterprise_quality:
-            recommended = "flux_pro"  # Enterprise production
+            recommended = "flux_pro"
             fallback = "gemini_3_pro_image"
             confidence = 0.85
-        elif use_case in ("logo", "icon", "vector"):
-            recommended = "recraft"
-            fallback = "ideogram"
-            confidence = 0.95
         else:
-            # Default: Gemini 3 Pro Image (best overall)
             recommended = "gemini_3_pro_image"
             fallback = "gpt_image"
             confidence = 0.75
         
-        # Check user preferences (Quality Router learning)
-        if user_id and user_id in self.user_preferences:
-            prefs = self.user_preferences[user_id]
-            if use_case and use_case in prefs.get("preferred_models", {}):
-                preferred = prefs["preferred_models"][use_case]
-                if preferred in self.MODEL_CONFIGS:
-                    recommended = preferred
-                    confidence = min(confidence + 0.1, 1.0)
-                    logger.info(f"[IMAGE] Using user preference: {preferred} for {use_case}")
-        
         # Determine strategy
         if complexity == TaskComplexity.COMPLEX:
-            strategy = GenerationStrategy.PARALLEL  # Try multiple in parallel
+            strategy = GenerationStrategy.PARALLEL
         elif confidence < 0.7:
-            strategy = GenerationStrategy.SEQUENTIAL  # Fallback if needed
+            strategy = GenerationStrategy.SEQUENTIAL
         else:
             strategy = GenerationStrategy.SINGLE
         
-        analysis = TaskAnalysis(
+        logger.info(
+            f"[IMAGE] Task Analysis (pattern-based fallback): {recommended} (conf={confidence:.2f}), "
+            f"fallback={fallback}, strategy={strategy.value}"
+        )
+        
+        return TaskAnalysis(
             complexity=complexity,
             text_in_image=text_in_image,
             multi_object=multi_object,
@@ -519,13 +631,6 @@ class ImageGenerationService:
             strategy=strategy,
             confidence=confidence
         )
-        
-        logger.info(
-            f"[IMAGE] Task Analysis: {recommended} (conf={confidence:.2f}), "
-            f"fallback={fallback}, strategy={strategy.value}"
-        )
-        
-        return analysis
 
     async def shutdown(self):
         """Clean up HTTP client."""

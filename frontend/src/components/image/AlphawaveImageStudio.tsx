@@ -1,483 +1,415 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { useImageGeneration } from '@/lib/hooks/useImageGeneration';
+import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, ChevronDown, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
-import { useImageGeneration, ImageVariant, ImageModel } from '@/lib/hooks/useImageGeneration';
 
-interface AlphawaveImageStudioProps {
-  isOpen: boolean;
-  onClose: () => void;
-  initialPrompt?: string;
-  initialPreset?: string;
+interface ReferenceImage {
+  id: string;
+  file: File;
+  preview: string;
+  inspirationNotes: string;
 }
 
-const MIN_WIDTH = 520;
-const MAX_WIDTH_PERCENT = 0.55;
-
-// Multi-model configuration type
-interface ModelSlotConfig {
-  modelKey: string;
-  enabled: boolean;
+interface ModelSelection {
+  slot: number;
+  model: string;
 }
 
-/**
- * Image Studio - Professional Image Generation Dashboard
- * 
- * Features:
- * - Inset gradient image display area with 1-4 slots
- * - Multi-model selection (compare outputs from different models)
- * - Preset selection with model-specific defaults
- * - Smart prompt enhancement toggle
- * - Batch generation (1-4 variants)
- * - Real-time SSE progress updates
- * - Variant gallery with favorites/ratings
- * - Job history sidebar
- */
-export function AlphawaveImageStudio({ 
-  isOpen, 
-  onClose, 
-  initialPrompt = '',
-  initialPreset 
-}: AlphawaveImageStudioProps) {
-  const [width, setWidth] = useState(Math.min(typeof window !== 'undefined' ? window.innerWidth * 0.45 : 600, 700));
-  const [isResizing, setIsResizing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'history' | 'presets'>('create');
-  
-  // Generation state
-  const [prompt, setPrompt] = useState(initialPrompt);
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(initialPreset || null);
-  const [smartPrompt, setSmartPrompt] = useState(true);
-  const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [style, setStyle] = useState('');
-  
-  // Image slots configuration (1-4 slots)
-  const [slotCount, setSlotCount] = useState(1);
-  const [multiModelMode, setMultiModelMode] = useState(false); // false = one model, all slots; true = different model per slot
-  const [singleModel, setSingleModel] = useState('gemini_3_pro_image');
-  const [modelSlots, setModelSlots] = useState<ModelSlotConfig[]>([
-    { modelKey: 'gemini_3_pro_image', enabled: true },
-    { modelKey: 'gpt_image', enabled: false },
-    { modelKey: 'flux_pro', enabled: false },
-    { modelKey: 'ideogram', enabled: false },
+export default function AlphawaveImageStudio() {
+  // State management
+  const [prompt, setPrompt] = useState('');
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
+  const [imageCount, setImageCount] = useState(1);
+  const [multiModelMode, setMultiModelMode] = useState(false);
+  const [modelSlots, setModelSlots] = useState<ModelSelection[]>([
+    { slot: 1, model: 'gemini_3_pro_image' }
   ]);
+  const [singleModel, setSingleModel] = useState('gemini_3_pro_image');
+  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [resolution, setResolution] = useState('2K');
+  const [nicoleInsights, setNicoleInsights] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<'create' | 'history' | 'presets'>('create');
   
-  // Generated images for display slots
-  const [slotImages, setSlotImages] = useState<(ImageVariant | null)[]>([null, null, null, null]);
-  
-  // Active job tracking
-  const [activeJobId, setActiveJobId] = useState<number | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<ImageVariant | null>(null);
-  const [showEnhancedPrompt, setShowEnhancedPrompt] = useState(false);
-  
-  // Hooks
-  const {
-    jobs,
-    variants,
-    presets,
+  const { 
+    generateImage, 
+    isGenerating, 
+    jobs, 
     models,
-    progress,
-    isGenerating,
-    error,
-    fetchJobs,
-    fetchVariants,
-    fetchPresets,
+    presets,
     fetchModels,
-    toggleFavorite,
-    rateVariant,
-    startGeneration,
+    fetchPresets,
+    fetchJobs
   } = useImageGeneration();
-
-  const resizeRef = useRef<HTMLDivElement>(null);
-  const startXRef = useRef(0);
-  const startWidthRef = useRef(0);
-
-  // Fetch initial data
+  
+  // Fetch data on mount
   useEffect(() => {
-    if (isOpen) {
-      fetchPresets();
-      fetchModels();
-      fetchJobs();
-    }
-  }, [isOpen, fetchPresets, fetchModels, fetchJobs]);
-
-  // Apply preset
-  useEffect(() => {
-    if (selectedPreset && presets.length > 0) {
-      const preset = presets.find(p => p.id === parseInt(selectedPreset));
-      if (preset) {
-        setSingleModel(preset.default_model);
-        if (preset.default_style) setStyle(preset.default_style);
-      }
-    }
-  }, [selectedPreset, presets]);
-
-  // Update slot images when variants change
-  useEffect(() => {
-    if (variants.length > 0) {
-      const newSlotImages: (ImageVariant | null)[] = [null, null, null, null];
-      // Get the most recent variants (up to slotCount)
-      const recentVariants = variants.slice(-slotCount);
-      recentVariants.forEach((v, i) => {
-        newSlotImages[i] = v;
-      });
-      setSlotImages(newSlotImages);
-    }
-  }, [variants, slotCount]);
-
-  // Handle resize
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
-    const diff = startXRef.current - e.clientX;
-    const maxWidth = typeof window !== 'undefined' ? window.innerWidth * MAX_WIDTH_PERCENT : 800;
-    const newWidth = Math.max(MIN_WIDTH, Math.min(maxWidth, startWidthRef.current + diff));
-    setWidth(newWidth);
-  }, [isResizing]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsResizing(false);
-    document.body.classList.remove('resizing');
-  }, []);
-
-  useEffect(() => {
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, handleMouseMove, handleMouseUp]);
-
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-    startXRef.current = e.clientX;
-    startWidthRef.current = width;
-    document.body.classList.add('resizing');
+    fetchModels();
+    fetchPresets();
+    fetchJobs();
+  }, [fetchModels, fetchPresets, fetchJobs]);
+  
+  // Reference image drag-and-drop
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Limit to 10 images total
+    const remaining = 10 - referenceImages.length;
+    const filesToAdd = acceptedFiles.slice(0, remaining);
+    
+    const newImages = filesToAdd.map(file => ({
+      id: Math.random().toString(36).substring(7),
+      file,
+      preview: URL.createObjectURL(file),
+      inspirationNotes: ''
+    }));
+    
+    setReferenceImages(prev => [...prev, ...newImages]);
+  }, [referenceImages.length]);
+  
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif']
+    },
+    maxFiles: 10,
+    multiple: true,
+    disabled: referenceImages.length >= 10
+  });
+  
+  // Remove reference image
+  const removeReferenceImage = (id: string) => {
+    setReferenceImages(prev => {
+      const removed = prev.find(img => img.id === id);
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return prev.filter(img => img.id !== id);
+    });
   };
-
+  
+  // Update inspiration notes
+  const updateInspirationNotes = (id: string, notes: string) => {
+    setReferenceImages(prev =>
+      prev.map(img => img.id === id ? { ...img, inspirationNotes: notes } : img)
+    );
+  };
+  
+  // Handle image count change
+  const handleImageCountChange = (count: number) => {
+    setImageCount(count);
+    
+    // Adjust model slots if in multi-model mode
+    if (multiModelMode) {
+      const newSlots: ModelSelection[] = [];
+      for (let i = 1; i <= count; i++) {
+        const existing = modelSlots.find(s => s.slot === i);
+        newSlots.push(existing || { slot: i, model: 'gemini_3_pro_image' });
+      }
+      setModelSlots(newSlots);
+    }
+  };
+  
+  // Handle model slot change
+  const updateModelSlot = (slot: number, model: string) => {
+    setModelSlots(prev =>
+      prev.map(s => s.slot === slot ? { ...s, model } : s)
+    );
+  };
+  
+  // Get Nicole's prompt improvement suggestions
+  const getPromptSuggestions = async () => {
+    // This would call Nicole's API to analyze the prompt and reference images
+    // For now, show a placeholder
+    setNicoleInsights("Analyzing your request and reference images to suggest improvements...");
+    
+    // Simulate API call
+    setTimeout(() => {
+      setNicoleInsights(
+        "💡 **Nicole's Suggestions:**\n\n" +
+        "1. Your prompt could be more specific about lighting. Consider adding 'soft natural lighting' or 'dramatic shadows'.\n" +
+        "2. Based on your reference images, I detect a warm color palette. Mentioning 'warm sunset tones' would help.\n" +
+        "3. For best text rendering, specify the exact text you want and the font style.\n" +
+        "4. Consider requesting a specific resolution (2K or 4K) for professional use."
+      );
+    }, 2000);
+  };
+  
   // Handle generation
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim()) {
+      alert('Please enter a prompt');
+      return;
+    }
     
-    // Clear previous slot images
-    setSlotImages([null, null, null, null]);
-    
-    if (multiModelMode) {
-      // Multi-model mode: generate one image per enabled model slot
-      const enabledSlots = modelSlots.filter(s => s.enabled).slice(0, slotCount);
+    try {
+      // Prepare parameters
+      const params: any = {
+        prompt,
+        n: imageCount,
+        aspect_ratio: aspectRatio,
+        resolution: resolution
+      };
       
-      for (const slot of enabledSlots) {
-        startGeneration({
-          prompt: prompt.trim(),
-          model: slot.modelKey,
-          width: 1024,
-          height: 1024,
-          style: style || undefined,
-          batch_count: 1,
-          enhance_prompt: smartPrompt,
-        });
+      // Add model selection
+      if (multiModelMode) {
+        params.models = modelSlots.map(s => s.model);
+      } else {
+        params.model = singleModel;
       }
-    } else {
-      // Single model mode: generate slotCount images from one model
-      startGeneration({
-        prompt: prompt.trim(),
-        model: singleModel,
-        width: 1024,
-        height: 1024,
-        style: style || undefined,
-        batch_count: slotCount,
-        enhance_prompt: smartPrompt,
-      });
-    }
-  };
-
-  // Handle variant selection
-  const handleVariantClick = (variant: ImageVariant) => {
-    setSelectedVariant(variant);
-  };
-
-  // Download image
-  const handleDownload = async (variant: ImageVariant) => {
-    if (!variant.image_url) return;
-    const link = document.createElement('a');
-    link.href = variant.image_url;
-    link.download = `nicole-image-${variant.id}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Get model by key
-  const getModelByKey = (key: string): ImageModel | undefined => {
-    return models.find(m => m.key === key);
-  };
-
-  // Render aspect ratio options
-  const aspectRatios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
-
-  // Calculate grid layout based on slot count
-  const getGridClass = () => {
-    switch (slotCount) {
-      case 1: return 'img-slots-1';
-      case 2: return 'img-slots-2';
-      case 3: return 'img-slots-3';
-      case 4: return 'img-slots-4';
-      default: return 'img-slots-1';
-    }
-  };
-
-  return (
-    <aside 
-      className={`img-studio-panel ${isOpen ? 'img-studio-open' : ''}`}
-      style={{ width: isOpen ? width : 0 }}
-    >
-      {/* Resize handle */}
-      <div 
-        ref={resizeRef}
-        className={`img-studio-resize-handle ${isResizing ? 'img-dragging' : ''}`}
-        onMouseDown={startResize}
-      />
       
-      <div className="img-studio-inner" style={{ width, minWidth: width }}>
-        {/* Header */}
-        <div className="img-studio-header">
-          <div className="img-studio-header-left">
-            <div className="img-studio-icon">
-              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <path d="M21 15l-5-5L5 21"/>
-              </svg>
-            </div>
-            <div className="img-studio-titles">
-              <span className="img-studio-title">Image Studio</span>
-              <span className="img-studio-subtitle">
-                {isGenerating ? 'Generating...' : 'Nano Banana • GPT Image • FLUX • Ideogram'}
-              </span>
-            </div>
+      // Add reference images
+      if (referenceImages.length > 0) {
+        params.reference_images = referenceImages.map(img => ({
+          file: img.file,
+          inspiration_notes: img.inspirationNotes
+        }));
+      }
+      
+      await generateImage(params);
+      
+    } catch (error) {
+      console.error('[IMAGE_STUDIO] Generation failed:', error);
+      alert('Generation failed. Please try again.');
+    }
+  };
+  
+  return (
+    <div className="h-full flex flex-col bg-[#0a0a0a] overflow-hidden">
+      {/* Header */}
+      <div className="flex-shrink-0 border-b border-[#333] bg-[#1a1a1a] px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-purple-400" />
+              Advanced Image Studio
+            </h1>
+            <p className="text-sm text-gray-400 mt-1">
+              Multi-agent system • Gemini 3 Pro • GPT Image • FLUX • Ideogram • Seedream • Recraft
+            </p>
           </div>
-          <button className="img-studio-close-btn" onClick={onClose}>
-            <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="img-studio-tabs">
-          {(['create', 'history', 'presets'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`img-studio-tab ${activeTab === tab ? 'img-tab-active' : ''}`}
-            >
-              {tab === 'create' && (
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-4 h-4">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              )}
-              {tab === 'history' && (
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-4 h-4">
-                  <circle cx="12" cy="12" r="10"/>
-                  <polyline points="12 6 12 12 16 14"/>
-                </svg>
-              )}
-              {tab === 'presets' && (
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-4 h-4">
-                  <rect x="3" y="3" width="7" height="7"/>
-                  <rect x="14" y="3" width="7" height="7"/>
-                  <rect x="14" y="14" width="7" height="7"/>
-                  <rect x="3" y="14" width="7" height="7"/>
-                </svg>
-              )}
-              <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* IMAGE SLOTS DISPLAY AREA */}
-        <div className={`img-slots-container ${getGridClass()}`}>
-          {Array.from({ length: slotCount }).map((_, index) => {
-            const slotImage = slotImages[index];
-            const slotModel = multiModelMode 
-              ? modelSlots[index]?.modelKey 
-              : singleModel;
-            const modelInfo = getModelByKey(slotModel);
-            
-            return (
-              <div 
-                key={index} 
-                className="img-slot"
-                onClick={() => slotImage && handleVariantClick(slotImage)}
+          
+          {/* Tab Navigation */}
+          <div className="flex gap-2">
+            {(['create', 'history', 'presets'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setSelectedTab(tab)}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  selectedTab === tab
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333] hover:text-white'
+                }`}
               >
-                <div className="img-slot-inner">
-                  {slotImage?.image_url ? (
-                    <Image
-                      src={slotImage.image_url}
-                      alt={`Generated image ${index + 1}`}
-                      fill
-                      className="img-slot-image"
-                      unoptimized
-                    />
-                  ) : isGenerating ? (
-                    <div className="img-slot-loading">
-                      <div className="img-slot-spinner" />
-                      <span>Generating...</span>
-                    </div>
-                  ) : (
-                    <div className="img-slot-empty">
-                      <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.5}>
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                        <path d="M21 15l-5-5L5 21"/>
-                      </svg>
-                      <span>Slot {index + 1}</span>
-                    </div>
-                  )}
-                  
-                  {/* Model badge */}
-                  <div className="img-slot-badge">
-                    {modelInfo?.name || slotModel}
-                  </div>
-                  
-                  {/* Actions overlay */}
-                  {slotImage?.image_url && (
-                    <div className="img-slot-actions">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavorite(slotImage.id);
-                        }}
-                        className={`img-slot-action ${slotImage.is_favorite ? 'img-favorited' : ''}`}
-                        title="Favorite"
-                      >
-                        <svg viewBox="0 0 24 24" fill={slotImage.is_favorite ? 'currentColor' : 'none'} strokeWidth={2}>
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownload(slotImage);
-                        }}
-                        className="img-slot-action"
-                        title="Download"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                          <polyline points="7 10 12 15 17 10"/>
-                          <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
-
-        {/* Content */}
-        <div className="img-studio-content">
-          {/* Error Banner */}
-          {error && (
-            <div className="img-error-banner">
-              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Create Tab */}
-          {activeTab === 'create' && (
-            <div className="img-create-tab">
-              {/* Slot Count Selector */}
-              <div className="img-form-group">
-                <label className="img-label">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <rect x="3" y="3" width="7" height="7"/>
-                    <rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/>
-                    <rect x="3" y="14" width="7" height="7"/>
-                  </svg>
-                  Image Slots
+      </div>
+      
+      {/* Main Content - Fully Scrollable */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+          
+          {selectedTab === 'create' && (
+            <>
+              {/* Prompt Input Section */}
+              <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Describe what you want to create
                 </label>
-                <div className="img-slot-count-grid">
-                  {[1, 2, 3, 4].map((count) => (
-                    <button
-                      key={count}
-                      onClick={() => setSlotCount(count)}
-                      className={`img-slot-count-btn ${slotCount === count ? 'img-slot-count-active' : ''}`}
-                    >
-                      {count}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Model Mode Toggle */}
-              <div className="img-form-group">
-                <label className="img-label">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                  </svg>
-                  Model Selection
-                </label>
-                <div className="img-model-mode-toggle">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="A cinematic scene of a futuristic city at sunset, with neon lights reflecting off wet streets..."
+                  className="w-full bg-[#0a0a0a] border border-[#444] rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                  rows={4}
+                />
+                
+                {/* Nicole's Insights */}
+                {nicoleInsights && (
+                  <div className="mt-4 bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                          {nicoleInsights}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setNicoleInsights(null)}
+                        className="text-gray-500 hover:text-white transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Ask Nicole Button */}
+                <div className="mt-4 flex justify-end">
                   <button
-                    onClick={() => setMultiModelMode(false)}
-                    className={`img-mode-btn ${!multiModelMode ? 'img-mode-active' : ''}`}
+                    onClick={getPromptSuggestions}
+                    disabled={!prompt.trim() || isGenerating}
+                    className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Single Model
-                  </button>
-                  <button
-                    onClick={() => setMultiModelMode(true)}
-                    className={`img-mode-btn ${multiModelMode ? 'img-mode-active' : ''}`}
-                    disabled={slotCount === 1}
-                  >
-                    Compare Models
+                    <Sparkles className="w-4 h-4" />
+                    Ask Nicole to Improve My Prompt
                   </button>
                 </div>
               </div>
-
-              {/* Model Selector(s) */}
-              {!multiModelMode ? (
-                <div className="img-form-group">
-                  <label className="img-label">Model</label>
-                  <select
-                    value={singleModel}
-                    onChange={(e) => setSingleModel(e.target.value)}
-                    className="img-select"
+              
+              {/* Reference Images Section */}
+              <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Reference Images (Optional - Up to 10)
+                  </label>
+                  <span className="text-xs text-gray-500">
+                    {referenceImages.length}/10 images
+                  </span>
+                </div>
+                
+                {/* Dropzone */}
+                {referenceImages.length < 10 && (
+                  <div
+                    {...getRootProps()}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
+                      isDragActive
+                        ? 'border-purple-500 bg-purple-500/10'
+                        : 'border-[#444] hover:border-[#555] bg-[#0a0a0a]'
+                    }`}
                   >
-                    {models.map((model) => (
-                      <option key={model.key} value={model.key}>
-                        {model.name} (${model.cost_per_image.toFixed(3)}/img)
-                      </option>
+                    <input {...getInputProps()} />
+                    <Upload className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+                    <p className="text-gray-400 mb-1">
+                      {isDragActive ? 'Drop images here...' : 'Drag & drop images, or click to browse'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      PNG, JPG, WEBP up to 10MB each
+                    </p>
+                  </div>
+                )}
+                
+                {/* Reference Image Grid */}
+                {referenceImages.length > 0 && (
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    {referenceImages.map((img, index) => (
+                      <div
+                        key={img.id}
+                        className="bg-[#0a0a0a] border border-[#444] rounded-lg p-4 space-y-3"
+                      >
+                        {/* Image Preview */}
+                        <div className="relative aspect-video rounded-lg overflow-hidden bg-[#1a1a1a]">
+                          <Image
+                            src={img.preview}
+                            alt={`Reference ${index + 1}`}
+                            fill
+                            className="object-cover"
+                          />
+                          <button
+                            onClick={() => removeReferenceImage(img.id)}
+                            className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                            Reference {index + 1}
+                          </div>
+                        </div>
+                        
+                        {/* Inspiration Notes */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-2">
+                            What should I take from this image?
+                          </label>
+                          <textarea
+                            value={img.inspirationNotes}
+                            onChange={(e) => updateInspirationNotes(img.id, e.target.value)}
+                            placeholder="E.g., 'Use this color palette', 'Match this lighting style', 'Incorporate this composition'..."
+                            className="w-full bg-[#1a1a1a] border border-[#555] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
                     ))}
-                  </select>
+                  </div>
+                )}
+              </div>
+              
+              {/* Generation Settings */}
+              <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333] space-y-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Generation Settings</h3>
+                
+                {/* Image Count */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-3">
+                    Number of Images
+                  </label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4].map(count => (
+                      <button
+                        key={count}
+                        onClick={() => handleImageCountChange(count)}
+                        className={`flex-1 py-3 rounded-lg font-medium transition-all ${
+                          imageCount === count
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333] hover:text-white'
+                        }`}
+                      >
+                        {count}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <div className="img-form-group">
-                  <label className="img-label">Models per Slot</label>
-                  <div className="img-multi-model-grid">
-                    {modelSlots.slice(0, slotCount).map((slot, index) => (
-                      <div key={index} className="img-model-slot-select">
-                        <span className="img-slot-label">Slot {index + 1}</span>
+                
+                {/* Multi-Model Toggle */}
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={multiModelMode}
+                      onChange={(e) => setMultiModelMode(e.target.checked)}
+                      className="w-5 h-5 rounded bg-[#2a2a2a] border-[#444] text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-300">
+                      Use different model for each image (for testing/comparison)
+                    </span>
+                  </label>
+                </div>
+                
+                {/* Model Selection */}
+                {!multiModelMode ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-3">
+                      Model
+                    </label>
+                    <select
+                      value={singleModel}
+                      onChange={(e) => setSingleModel(e.target.value)}
+                      className="w-full bg-[#2a2a2a] border border-[#444] rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {models.map(model => (
+                        <option key={model.key} value={model.key}>
+                          {model.name} {model.provider && `(${model.provider})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-gray-300 mb-3">
+                      Model per Slot
+                    </label>
+                    {modelSlots.slice(0, imageCount).map(slot => (
+                      <div key={slot.slot} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-400 w-16">Slot {slot.slot}:</span>
                         <select
-                          value={slot.modelKey}
-                          onChange={(e) => {
-                            const newSlots = [...modelSlots];
-                            newSlots[index] = { ...newSlots[index], modelKey: e.target.value, enabled: true };
-                            setModelSlots(newSlots);
-                          }}
-                          className="img-select-small"
+                          value={slot.model}
+                          onChange={(e) => updateModelSlot(slot.slot, e.target.value)}
+                          className="flex-1 bg-[#2a2a2a] border border-[#444] rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                         >
-                          {models.map((model) => (
+                          {models.map(model => (
                             <option key={model.key} value={model.key}>
                               {model.name}
                             </option>
@@ -486,187 +418,143 @@ export function AlphawaveImageStudio({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Prompt Input */}
-              <div className="img-form-group">
-                <div className="img-label-row">
-                  <label className="img-label">
-                    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    Prompt
-                  </label>
-                  <button
-                    onClick={() => setSmartPrompt(!smartPrompt)}
-                    className={`img-toggle-btn ${smartPrompt ? 'img-toggle-active' : ''}`}
-                    title="Smart Prompt Enhancement"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                      <path d="M2 17l10 5 10-5"/>
-                      <path d="M2 12l10 5 10-5"/>
-                    </svg>
-                    <span>Enhance</span>
-                  </button>
-                </div>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe the image you want to create..."
-                  className="img-textarea"
-                  rows={3}
-                />
-                {smartPrompt && (
-                  <div className="img-enhance-hint">
-                    ✨ Nicole will enhance your prompt for better results
-                  </div>
                 )}
-              </div>
-
-              {/* Aspect Ratio */}
-              <div className="img-form-group">
-                <label className="img-label">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
-                  </svg>
-                  Aspect Ratio
-                </label>
-                <div className="img-aspect-grid">
-                  {aspectRatios.map((ratio) => (
-                    <button
-                      key={ratio}
-                      onClick={() => setAspectRatio(ratio)}
-                      className={`img-aspect-btn ${aspectRatio === ratio ? 'img-aspect-active' : ''}`}
+                
+                {/* Aspect Ratio & Resolution (for Gemini) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-3">
+                      Aspect Ratio
+                    </label>
+                    <select
+                      value={aspectRatio}
+                      onChange={(e) => setAspectRatio(e.target.value)}
+                      className="w-full bg-[#2a2a2a] border border-[#444] rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                     >
-                      {ratio}
-                    </button>
-                  ))}
+                      <option value="1:1">1:1 (Square)</option>
+                      <option value="16:9">16:9 (Widescreen)</option>
+                      <option value="9:16">9:16 (Portrait)</option>
+                      <option value="4:3">4:3 (Standard)</option>
+                      <option value="3:2">3:2 (Photo)</option>
+                      <option value="21:9">21:9 (Ultrawide)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-3">
+                      Resolution (Gemini only)
+                    </label>
+                    <select
+                      value={resolution}
+                      onChange={(e) => setResolution(e.target.value)}
+                      className="w-full bg-[#2a2a2a] border border-[#444] rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="1K">1K (Fast)</option>
+                      <option value="2K">2K (Balanced)</option>
+                      <option value="4K">4K (Maximum Quality)</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-
-              {/* Style (optional) */}
-              <div className="img-form-group">
-                <label className="img-label">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                    <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
-                  </svg>
-                  Style (optional)
-                </label>
-                <input
-                  type="text"
-                  value={style}
-                  onChange={(e) => setStyle(e.target.value)}
-                  placeholder="e.g., photorealistic, digital_illustration, vector"
-                  className="img-input"
-                />
-              </div>
-
+              
               {/* Generate Button */}
               <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim()}
-                className="img-generate-btn"
+                disabled={!prompt.trim() || isGenerating}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-4 rounded-xl transition-all disabled:cursor-not-allowed flex items-center justify-center gap-3"
               >
                 {isGenerating ? (
                   <>
-                    <span className="img-spinner" />
-                    <span>Generating...</span>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Generating...
                   </>
                 ) : (
                   <>
-                    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                    </svg>
-                    <span>
-                      Generate {slotCount > 1 ? `${slotCount} Images` : 'Image'}
-                      {multiModelMode && slotCount > 1 && ' (Multi-Model)'}
-                    </span>
+                    <Sparkles className="w-5 h-5" />
+                    Generate {imageCount > 1 ? `${imageCount} Images` : 'Image'}
                   </>
                 )}
               </button>
-
-              {/* Progress */}
-              {isGenerating && progress && (
-                <div className="img-progress-card">
-                  <div className="img-progress-header">
-                    <span>Generating variant {progress.variant_index + 1} of {progress.total_variants}</span>
-                    <span>{progress.progress}%</span>
-                  </div>
-                  <div className="img-progress-bar">
-                    <div 
-                      className="img-progress-fill" 
-                      style={{ width: `${progress.progress}%` }}
-                    />
-                  </div>
-                  <div className="img-progress-status">
-                    {progress.status === 'enhancing_prompt' && '✨ Enhancing prompt...'}
-                    {progress.status === 'generating' && '🎨 Creating image...'}
-                    {progress.status === 'uploading' && '📤 Uploading...'}
-                    {progress.status === 'complete' && '✅ Complete!'}
-                    {progress.status === 'failed' && `❌ Error: ${progress.error}`}
+              
+              {/* Generation Results */}
+              {jobs.length > 0 && jobs[0].status === 'completed' && (
+                <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+                  <h3 className="text-lg font-semibold text-white mb-4">Generated Images</h3>
+                  
+                  <div className={`grid gap-4 ${
+                    imageCount === 1 ? 'grid-cols-1' :
+                    imageCount === 2 ? 'grid-cols-2' :
+                    'grid-cols-2'
+                  }`}>
+                    {jobs[0].variants?.slice(0, imageCount).map((variant: any, index: number) => (
+                      <div
+                        key={variant.id}
+                        className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
+                      >
+                        <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
+                          {variant.image_url ? (
+                            <Image
+                              src={variant.image_url}
+                              alt={`Generated ${index + 1}`}
+                              fill
+                              className="object-contain"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ImageIcon className="w-16 h-16 text-gray-700" />
+                            </div>
+                          )}
+                          
+                          {/* Overlay on Hover */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                            <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
+                              <Eye className="w-5 h-5" />
+                            </button>
+                            <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
+                              <Download className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Model Badge */}
+                        {multiModelMode && modelSlots[index] && (
+                          <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+                            {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
-
-              {/* Cost Estimate */}
-              <div className="img-cost-estimate">
-                <span>Estimated cost: </span>
-                <strong>
-                  ${(
-                    multiModelMode 
-                      ? modelSlots.slice(0, slotCount).reduce((sum, slot) => {
-                          const model = getModelByKey(slot.modelKey);
-                          return sum + (model?.cost_per_image || 0.04);
-                        }, 0)
-                      : (getModelByKey(singleModel)?.cost_per_image || 0.04) * slotCount
-                  ).toFixed(3)}
-                </strong>
-              </div>
-            </div>
+            </>
           )}
-
-          {/* History Tab */}
-          {activeTab === 'history' && (
-            <div className="img-history-tab">
+          
+          {selectedTab === 'history' && (
+            <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+              <h3 className="text-lg font-semibold text-white mb-4">Generation History</h3>
               {jobs.length === 0 ? (
-                <div className="img-empty-state">
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.5}>
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <path d="M21 15l-5-5L5 21"/>
-                  </svg>
-                  <p>No images generated yet</p>
-                  <span>Create your first image to see it here</span>
+                <div className="text-center py-12 text-gray-500">
+                  <ImageIcon className="w-16 h-16 mx-auto mb-3 text-gray-700" />
+                  <p>No generations yet</p>
                 </div>
               ) : (
-                <div className="img-jobs-list">
-                  {jobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className={`img-job-card ${activeJobId === job.id ? 'img-job-selected' : ''}`}
-                      onClick={() => {
-                        setActiveJobId(job.id);
-                        fetchVariants(job.id);
-                      }}
-                    >
-                      <div className="img-job-header">
-                        <span className={`img-job-status img-status-${job.status}`}>
+                <div className="space-y-4">
+                  {jobs.map(job => (
+                    <div key={job.id} className="bg-[#0a0a0a] border border-[#444] rounded-lg p-4 hover:border-purple-500/50 transition-colors cursor-pointer">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <p className="text-white font-medium mb-1">{job.prompt}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(job.created_at).toLocaleString()} • {job.model}
+                          </p>
+                        </div>
+                        <div className={`px-2 py-1 rounded text-xs font-medium ${
+                          job.status === 'completed' ? 'bg-green-900/30 text-green-400' :
+                          job.status === 'failed' ? 'bg-red-900/30 text-red-400' :
+                          'bg-yellow-900/30 text-yellow-400'
+                        }`}>
                           {job.status}
-                        </span>
-                        <span className="img-job-date">
-                          {new Date(job.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="img-job-prompt">{job.original_prompt}</p>
-                      <div className="img-job-meta">
-                        <span>{job.model}</span>
-                        <span>•</span>
-                        <span>{job.width}×{job.height}</span>
-                        <span>•</span>
-                        <span>{job.batch_count} variant{job.batch_count > 1 ? 's' : ''}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -674,125 +562,18 @@ export function AlphawaveImageStudio({
               )}
             </div>
           )}
-
-          {/* Presets Tab */}
-          {activeTab === 'presets' && (
-            <div className="img-presets-tab">
-              <div className="img-presets-grid">
-                {presets.map((preset) => (
-                  <div
-                    key={preset.id}
-                    className={`img-preset-card ${
-                      selectedPreset === String(preset.id) ? 'img-preset-selected' : ''
-                    }`}
-                    onClick={() => {
-                      setSelectedPreset(String(preset.id));
-                      setActiveTab('create');
-                    }}
-                  >
-                    <div className="img-preset-icon">
-                      {preset.name === 'Logo' && '🎨'}
-                      {preset.name === 'Hero Banner' && '🖼️'}
-                      {preset.name === 'Social Post' && '📱'}
-                      {preset.name === 'Poster' && '📰'}
-                      {preset.name === 'Thumbnail' && '🎬'}
-                      {!['Logo', 'Hero Banner', 'Social Post', 'Poster', 'Thumbnail'].includes(preset.name) && '✨'}
-                    </div>
-                    <div className="img-preset-info">
-                      <h4>{preset.name}</h4>
-                      <p>{preset.description || 'No description'}</p>
-                      <span className="img-preset-spec">
-                        {preset.default_width}×{preset.default_height}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+          
+          {selectedTab === 'presets' && (
+            <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+              <h3 className="text-lg font-semibold text-white mb-4">Generation Presets</h3>
+              <div className="text-center py-12 text-gray-500">
+                <Sparkles className="w-16 h-16 mx-auto mb-3 text-gray-700" />
+                <p>Presets coming soon</p>
               </div>
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="img-studio-footer">
-          <div className="img-footer-stats">
-            <span>Jobs: {jobs.length}</span>
-            <span>•</span>
-            <span>Images: {variants.length}</span>
-          </div>
-        </div>
       </div>
-
-      {/* Selected Variant Modal */}
-      {selectedVariant && (
-        <div className="img-modal-overlay" onClick={() => setSelectedVariant(null)}>
-          <div className="img-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="img-modal-close" onClick={() => setSelectedVariant(null)}>
-              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-            {selectedVariant.image_url && (
-              <Image
-                src={selectedVariant.image_url}
-                alt="Full size preview"
-                className="img-modal-image"
-                width={1024}
-                height={1024}
-                unoptimized
-                style={{ objectFit: 'contain', maxHeight: '70vh', width: 'auto', height: 'auto' }}
-              />
-            )}
-            <div className="img-modal-actions">
-              <button
-                onClick={() => toggleFavorite(selectedVariant.id)}
-                className={`img-modal-btn ${selectedVariant.is_favorite ? 'img-modal-favorited' : ''}`}
-              >
-                <svg viewBox="0 0 24 24" fill={selectedVariant.is_favorite ? 'currentColor' : 'none'} strokeWidth={2}>
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                </svg>
-                <span>{selectedVariant.is_favorite ? 'Favorited' : 'Favorite'}</span>
-              </button>
-              <button onClick={() => handleDownload(selectedVariant)} className="img-modal-btn img-modal-download">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}>
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span>Download</span>
-              </button>
-              <div className="img-rating">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => rateVariant(selectedVariant.id, star)}
-                    className={`img-star ${(selectedVariant.user_rating || 0) >= star ? 'img-star-filled' : ''}`}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
-            </div>
-            {selectedVariant.enhanced_prompt && (
-              <div className="img-modal-enhanced">
-                <button
-                  onClick={() => setShowEnhancedPrompt(!showEnhancedPrompt)}
-                  className="img-enhanced-toggle"
-                >
-                  {showEnhancedPrompt ? '▼' : '▶'} Enhanced Prompt
-                </button>
-                {showEnhancedPrompt && (
-                  <p className="img-enhanced-text">{selectedVariant.enhanced_prompt}</p>
-                )}
-              </div>
-            )}
-            <div className="img-modal-stats">
-              <span>Model: {selectedVariant.model_used}</span>
-              <span>Generation: {selectedVariant.generation_time_ms}ms</span>
-              <span>Cost: ${selectedVariant.cost?.toFixed(4)}</span>
-            </div>
-          </div>
-        </div>
-      )}
-    </aside>
+    </div>
   );
 }
