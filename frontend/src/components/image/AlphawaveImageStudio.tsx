@@ -57,6 +57,7 @@ export default function AlphawaveImageStudio({
     startGeneration, 
     isGenerating, 
     jobs, 
+    variants,
     models,
     fetchModels,
     fetchPresets,
@@ -538,7 +539,7 @@ export default function AlphawaveImageStudio({
                     imageCount === 2 ? 'grid-cols-2' :
                     'grid-cols-2'
                   }`}>
-                    {jobs[0].variants?.slice(0, imageCount).map((variant: ImageVariant, index: number) => (
+                    {variants.filter(v => v.job_id === jobs[0].id).slice(0, imageCount).map((variant, index: number) => (
                       <div
                         key={variant.id}
                         className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
