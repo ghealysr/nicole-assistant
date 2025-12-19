@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useImageGeneration } from '@/lib/hooks/useImageGeneration';
-import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, ChevronDown, AlertCircle } from 'lucide-react';
+import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 
 interface ReferenceImage {
@@ -16,6 +16,11 @@ interface ReferenceImage {
 interface ModelSelection {
   slot: number;
   model: string;
+}
+
+interface ImageVariant {
+  id: string;
+  image_url?: string;
 }
 
 export default function AlphawaveImageStudio() {
@@ -31,7 +36,6 @@ export default function AlphawaveImageStudio() {
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [resolution, setResolution] = useState('2K');
   const [nicoleInsights, setNicoleInsights] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'create' | 'history' | 'presets'>('create');
   
   const { 
@@ -39,7 +43,6 @@ export default function AlphawaveImageStudio() {
     isGenerating, 
     jobs, 
     models,
-    presets,
     fetchModels,
     fetchPresets,
     fetchJobs
@@ -143,7 +146,7 @@ export default function AlphawaveImageStudio() {
     
     try {
       // Prepare parameters
-      const params: any = {
+      const params: Record<string, unknown> = {
         prompt,
         n: imageCount,
         aspect_ratio: aspectRatio,
@@ -485,7 +488,7 @@ export default function AlphawaveImageStudio() {
                     imageCount === 2 ? 'grid-cols-2' :
                     'grid-cols-2'
                   }`}>
-                    {jobs[0].variants?.slice(0, imageCount).map((variant: any, index: number) => (
+                    {jobs[0].variants?.slice(0, imageCount).map((variant: ImageVariant, index: number) => (
                       <div
                         key={variant.id}
                         className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
