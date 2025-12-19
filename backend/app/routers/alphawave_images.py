@@ -15,6 +15,7 @@ import logging
 
 from app.middleware.alphawave_auth import get_current_user
 from app.services.alphawave_image_generation_service import image_service
+from app.services.vision_analysis_service import get_vision_service, ImageSource
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,13 @@ class FavoriteRequest(BaseModel):
 class RatingRequest(BaseModel):
     """Request body for rating a variant."""
     rating: int = Field(..., ge=1, le=5)
+
+
+class AnalyzeReferenceRequest(BaseModel):
+    """Request body for analyzing reference images."""
+    images: List[str] = Field(..., min_items=1, max_items=10, description="Base64-encoded images or URLs")
+    image_sources: Optional[List[str]] = Field(default=None, description="Source types: upload, url, path")
+    user_prompt: Optional[str] = Field(default=None, description="User's intended generation prompt for context")
 
 
 # ============================================================================
@@ -188,6 +196,159 @@ async def generate_image_stream(
             
         except Exception as e:
             logger.exception(f"[IMAGE API] Stream generation error: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+# ============================================================================
+# Vision Analysis Endpoints
+# ============================================================================
+
+@router.post("/analyze-references")
+async def analyze_references(
+    request: AnalyzeReferenceRequest,
+    user=Depends(get_current_user),
+):
+    """
+    Analyze reference images using Claude Vision.
+    
+    Extracts style, composition, color palette, mood, and subject matter.
+    Returns structured analysis to guide image generation.
+    
+    Supports 1-10 reference images for comprehensive analysis.
+    """
+    try:
+        logger.info(f"[VISION API] Analyzing {len(request.images)} reference image(s) for user {user.user_id}")
+        
+        vision_service = get_vision_service()
+        
+        # Determine source types
+        if request.image_sources:
+            if len(request.image_sources) != len(request.images):
+                raise HTTPException(
+                    status_code=400,
+                    detail="image_sources length must match images length"
+                )
+            source_types = [ImageSource(s) for s in request.image_sources]
+        else:
+            # Auto-detect: if starts with http, it's a URL, otherwise upload
+            source_types = [
+                ImageSource.URL if img.startswith(("http://", "https://")) else ImageSource.UPLOAD
+                for img in request.images
+            ]
+        
+        # Prepare image sources
+        image_sources = list(zip(request.images, source_types))
+        
+        # Single image analysis
+        if len(request.images) == 1:
+            result = await vision_service.analyze_single_image(
+                image_source=request.images[0],
+                source_type=source_types[0],
+                user_prompt=request.user_prompt,
+                image_id="reference_01"
+            )
+            
+            return {
+                "success": True,
+                "analysis_type": "single",
+                "analysis": serialize_for_json(result.to_dict())
+            }
+        
+        # Multi-image analysis
+        else:
+            result = await vision_service.analyze_multiple_images(
+                image_sources=image_sources,
+                user_prompt=request.user_prompt
+            )
+            
+            return {
+                "success": True,
+                "analysis_type": "multi",
+                "analysis": serialize_for_json(result.to_dict())
+            }
+    
+    except ValueError as e:
+        logger.error(f"[VISION API] Invalid input: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"[VISION API] Analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Vision analysis failed")
+
+
+@router.post("/analyze-references/stream")
+async def analyze_references_stream(
+    request: AnalyzeReferenceRequest,
+    user=Depends(get_current_user),
+):
+    """
+    Analyze reference images with SSE progress streaming.
+    
+    Streams progress updates during analysis:
+    - {"status": "starting", "message": "..."}
+    - {"status": "analyzing", "progress": 0.5}
+    - {"status": "synthesizing", "message": "..."}
+    - {"status": "complete", "analysis": {...}}
+    - {"status": "error", "message": "..."}
+    """
+    async def event_stream():
+        try:
+            yield f"data: {json.dumps({'status': 'starting', 'message': 'Preparing Claude Vision analysis...'})}\n\n"
+            
+            vision_service = get_vision_service()
+            
+            # Determine source types
+            if request.image_sources:
+                if len(request.image_sources) != len(request.images):
+                    raise ValueError("image_sources length must match images length")
+                source_types = [ImageSource(s) for s in request.image_sources]
+            else:
+                source_types = [
+                    ImageSource.URL if img.startswith(("http://", "https://")) else ImageSource.UPLOAD
+                    for img in request.images
+                ]
+            
+            image_sources = list(zip(request.images, source_types))
+            
+            # Single image
+            if len(request.images) == 1:
+                yield f"data: {json.dumps({'status': 'analyzing', 'message': 'Analyzing reference image with Claude Vision...'})}\n\n"
+                
+                result = await vision_service.analyze_single_image(
+                    image_source=request.images[0],
+                    source_type=source_types[0],
+                    user_prompt=request.user_prompt,
+                    image_id="reference_01"
+                )
+                
+                yield f"data: {json.dumps(serialize_for_json({'status': 'complete', 'analysis_type': 'single', 'analysis': result.to_dict()}))}\n\n"
+            
+            # Multiple images
+            else:
+                total = len(request.images)
+                for i in range(total):
+                    progress = i / total
+                    yield f"data: {json.dumps({'status': 'analyzing', 'progress': progress, 'message': f'Analyzing image {i+1}/{total}...'})}\n\n"
+                
+                yield f"data: {json.dumps({'status': 'synthesizing', 'message': 'Synthesizing analysis results...'})}\n\n"
+                
+                result = await vision_service.analyze_multiple_images(
+                    image_sources=image_sources,
+                    user_prompt=request.user_prompt
+                )
+                
+                yield f"data: {json.dumps(serialize_for_json({'status': 'complete', 'analysis_type': 'multi', 'analysis': result.to_dict()}))}\n\n"
+        
+        except Exception as e:
+            logger.exception(f"[VISION API] Stream analysis error: {e}")
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
     
     return StreamingResponse(

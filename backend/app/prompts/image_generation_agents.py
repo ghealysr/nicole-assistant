@@ -93,13 +93,24 @@ When analyzing a request, extract:
    - Concept: Exploration, mood boards, ideation
    - Technical: Documentation, diagrams, instructional
 
-## REFERENCE IMAGES
+## REFERENCE IMAGES & VISION ANALYSIS
 
 When user provides reference images with inspiration notes:
-- Analyze each image's style, composition, color palette
+- Leverage Claude Vision analysis for each reference image
+- Vision analysis provides structured data: style, composition, colors, mood, subject
 - Extract key visual elements to preserve or emulate
 - Understand what aspects the user wants to incorporate
 - Route to models that handle multi-reference input well (Gemini 3 Pro Image, GPT Image 1.5)
+
+### Vision Analysis Integration
+When vision analysis is provided in context, use it to inform routing:
+- **Style insights:** Primary and secondary styles detected in references
+- **Color palette:** Dominant colors, harmony type, temperature, saturation
+- **Composition:** Layout patterns, focal points, perspective, balance
+- **Mood:** Primary mood, atmosphere, energy level
+- **Technical notes:** Lighting techniques, rendering approaches, special effects
+
+This structured analysis helps select models that can best reproduce discovered visual characteristics.
 
 ## ROUTING STRATEGY
 
@@ -247,35 +258,68 @@ Enhanced: "Cinematic concept art: Lone astronaut in futuristic spaceship interio
 User: "App icon for productivity tool"
 Enhanced: "Modern app icon design for productivity software. Clean, minimalist illustration of a checklist or task symbol. Flat design aesthetic with subtle gradient. Primary color: Professional blue (#3B82F6). Rounded square format (1024x1024), scalable vector style, suitable for iOS and Android app stores."
 
-## REFERENCE IMAGE INTEGRATION
+## REFERENCE IMAGE INTEGRATION & VISION ANALYSIS
 
-When user provides reference images with inspiration notes:
+When user provides reference images, leverage the structured Claude Vision analysis:
 
-1. **Analyze each reference:**
-   - Visual style (color palette, lighting, composition)
-   - Subject matter and elements
-   - Mood and atmosphere
-   - Technical approach (photography, illustration, 3D, etc.)
+### 1. Use Vision Analysis Data (when provided):
 
-2. **Extract inspiration elements:**
-   - "Use the warm color palette from image 1"
-   - "Match the dramatic lighting of image 2"
-   - "Incorporate the composition structure from image 3"
-   - "Emulate the brushstroke style from image 4"
+**Style Analysis:**
+- Primary style: `analysis.style.primary_style`
+- Secondary styles: `analysis.style.secondary_styles`
+- Art movement: `analysis.style.art_movement`
+- Medium: `analysis.style.medium`
+- Technical approach: `analysis.style.technical_approach`
 
-3. **Synthesize into enhanced prompt:**
-   - Blend user's text prompt with visual references
-   - Be explicit about what to take from each image
-   - Maintain coherence across all references
-   - Specify how elements should combine
+**Color Analysis:**
+- Dominant colors (HEX codes): `analysis.colors.dominant_colors`
+- Color harmony: `analysis.colors.color_harmony`
+- Temperature: `analysis.colors.temperature`
+- Saturation level: `analysis.colors.saturation_level`
 
-**Example with references:**
+**Composition Analysis:**
+- Layout type: `analysis.composition.layout_type`
+- Focal points: `analysis.composition.focal_points`
+- Depth: `analysis.composition.depth`
+- Perspective: `analysis.composition.perspective`
+- Balance: `analysis.composition.balance`
+
+**Mood Analysis:**
+- Primary mood: `analysis.mood.primary_mood`
+- Atmosphere: `analysis.mood.atmosphere`
+- Energy level: `analysis.mood.energy_level`
+- Emotional tone: `analysis.mood.emotional_tone`
+
+**Subject Analysis:**
+- Main subjects: `analysis.subject.main_subjects`
+- Environment: `analysis.subject.environment`
+- Time of day: `analysis.subject.time_of_day`
+- Season: `analysis.subject.season`
+- Notable elements: `analysis.subject.notable_elements`
+
+### 2. Extract & Synthesize:
+   - Use specific HEX codes from dominant_colors
+   - Incorporate layout_type and composition patterns
+   - Match mood.atmosphere and energy_level
+   - Reference style.primary_style and medium
+   - Apply technical_notes (lighting, rendering techniques)
+
+### 3. Multi-Image Synthesis:
+When multiple references are provided, use the unified guidance:
+- `common_themes`: Consistent patterns across all references
+- `unified_style_guidance`: Cohesive style description
+- `combined_prompt_enhancement`: Synthesis-ready enhancement
+- `consistency_notes`: What varies vs. what's consistent
+
+**Example with Vision Analysis:**
 User prompt: "Fantasy castle on a mountain"
-Image 1 notes: "Love this color scheme - purple/pink sunset"
-Image 2 notes: "This architectural style is perfect"
-Image 3 notes: "Want this misty, ethereal atmosphere"
 
-Enhanced: "Epic fantasy castle perched on a mountain peak. Architecture inspired by Gothic and Renaissance styles with tall spires and ornate details (reference style from provided image 2). Dramatic sunset with purple and pink gradient sky creating magical atmosphere (color palette from image 1). Thick mist rolling through valleys below, creating ethereal, dreamlike mood (atmosphere from image 3). Cinematic wide shot, high detail, fantasy art aesthetic."
+Vision Analysis Results:
+- Image 1: `style.primary_style="impressionist digital painting"`, `colors.dominant_colors=["#9B59B6", "#E91E63", "#FF6F61"]`, `mood.atmosphere="magical, dreamlike"`
+- Image 2: `style.primary_style="gothic_architecture"`, `composition.layout_type="symmetrical with vertical emphasis"`, `subject.notable_elements=["tall spires", "ornate details"]`
+- Image 3: `mood.atmosphere="ethereal, misty"`, `subject.environment="mountain valley with fog"`, `colors.temperature="cool"`
+
+Enhanced: "Epic fantasy castle perched on a mountain peak. Gothic architecture with symmetrical composition, tall spires reaching skyward, and ornate stone details (inspired by analysis of reference 2: gothic architecture, vertical emphasis). Dramatic sunset sky with purple (#9B59B6), magenta (#E91E63), and coral (#FF6F61) gradient creating magical impressionist atmosphere (color palette from reference 1). Thick cool-toned mist rolls through valleys below, creating ethereal, dreamlike mood (atmospheric elements from reference 3). Impressionist digital painting style with soft brushstrokes. Cinematic wide shot, high detail, magical realism aesthetic."
 
 ## QUALITY MARKERS
 
