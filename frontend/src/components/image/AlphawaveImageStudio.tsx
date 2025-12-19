@@ -444,7 +444,7 @@ export default function AlphawaveImageStudio({
                     >
                       {models.map(model => (
                         <option key={model.key} value={model.key}>
-                          {model.name} {model.provider && `(${model.provider})`}
+                          {model.name}
                         </option>
                       ))}
                     </select>
