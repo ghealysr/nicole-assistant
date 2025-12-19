@@ -136,7 +136,7 @@ class CloudinaryService:
             logger.error(f"[CLOUDINARY] Upload failed: {e}")
             return {"error": str(e), "success": False}
     
-    async def upload_from_base64(
+    def upload_from_base64(
         self,
         base64_data: str,
         folder: str,
@@ -145,6 +145,8 @@ class CloudinaryService:
     ) -> Dict[str, Any]:
         """
         Upload a base64-encoded image to Cloudinary.
+        
+        NOTE: This is a synchronous method because cloudinary.uploader.upload is blocking.
         
         Args:
             base64_data: Base64-encoded image data (without data URI prefix)
