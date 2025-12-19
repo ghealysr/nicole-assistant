@@ -307,10 +307,13 @@ export function useImageGeneration() {
             if (data) {
               try {
                 const parsed = JSON.parse(data);
+                console.log('[IMAGE_GEN] SSE event received:', parsed);
+                
                 // Backend uses 'status' field in data, not SSE event type
                 const status = parsed.status || eventType;
                 
                 if (status === 'starting' || status === 'enhancing' || status === 'generating') {
+                  console.log('[IMAGE_GEN] Progress update:', status);
                   setProgress({
                     job_id: 0,
                     variant_index: 0,
@@ -319,6 +322,7 @@ export function useImageGeneration() {
                     status: status as 'enhancing_prompt' | 'generating',
                   });
                 } else if (status === 'complete') {
+                  console.log('[IMAGE_GEN] Generation complete!', parsed);
                   // Extract variants from response and transform to frontend format
                   const rawVariants = parsed.variants || [];
                   const transformedVariants: ImageVariant[] = rawVariants.map((v: Record<string, unknown>, index: number) => ({
@@ -338,19 +342,26 @@ export function useImageGeneration() {
                   }));
                   
                   if (transformedVariants.length > 0) {
+                    console.log('[IMAGE_GEN] Adding variants to state:', transformedVariants);
                     setVariants(prev => [...prev, ...transformedVariants]);
+                  } else {
+                    console.warn('[IMAGE_GEN] No variants in complete event!', parsed);
                   }
                   setIsGenerating(false);
                   setProgress(null);
                   // Refresh job data
+                  console.log('[IMAGE_GEN] Fetching jobs...');
                   fetchJobs();
                 } else if (status === 'error') {
+                  console.error('[IMAGE_GEN] Error event:', parsed);
                   const errorMsg = typeof parsed.message === 'string' 
                     ? parsed.message 
                     : (parsed.error?.message || parsed.error || 'Generation failed');
                   setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
                   setIsGenerating(false);
                   setProgress(null);
+                } else {
+                  console.log('[IMAGE_GEN] Unknown status:', status, parsed);
                 }
               } catch (e) {
                 console.error('Failed to parse SSE data:', e);
