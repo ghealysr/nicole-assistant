@@ -23,9 +23,21 @@ interface ImageVariant {
   image_url?: string;
 }
 
-export default function AlphawaveImageStudio() {
+interface AlphawaveImageStudioProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialPrompt?: string;
+  initialPreset?: string;
+}
+
+export default function AlphawaveImageStudio({ 
+  isOpen, 
+  onClose, 
+  initialPrompt = '', 
+  initialPreset 
+}: AlphawaveImageStudioProps) {
   // State management
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
   const [imageCount, setImageCount] = useState(1);
   const [multiModelMode, setMultiModelMode] = useState(false);
@@ -176,6 +188,9 @@ export default function AlphawaveImageStudio() {
     }
   };
   
+  // Don't render if not open
+  if (!isOpen) return null;
+  
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a] overflow-hidden">
       {/* Header */}
@@ -191,8 +206,9 @@ export default function AlphawaveImageStudio() {
             </p>
           </div>
           
-          {/* Tab Navigation */}
-          <div className="flex gap-2">
+          {/* Tab Navigation and Close Button */}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-2">
             {(['create', 'history', 'presets'] as const).map(tab => (
               <button
                 key={tab}
@@ -206,6 +222,16 @@ export default function AlphawaveImageStudio() {
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
+            </div>
+            
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg bg-[#2a2a2a] text-gray-400 hover:bg-red-600 hover:text-white transition-all"
+              title="Close Image Studio"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
