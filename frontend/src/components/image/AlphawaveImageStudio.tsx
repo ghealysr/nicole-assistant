@@ -139,7 +139,8 @@ export default function AlphawaveImageStudio({
     models,
     fetchModels,
     fetchPresets,
-    fetchJobs
+    fetchJobs,
+    currentJobId
   } = useImageGeneration();
   
   // Fetch data on mount
@@ -818,7 +819,7 @@ export default function AlphawaveImageStudio({
               </button>
               
               {/* Generation Progress/Results */}
-              {(isGenerating || (jobs.length > 0 && jobs[0].status !== 'failed')) && (
+              {(isGenerating || currentJobId !== null || (jobs.length > 0 && jobs[0].status !== 'failed')) && (
                 <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-white">
@@ -841,7 +842,8 @@ export default function AlphawaveImageStudio({
                     {isGenerating ? (
                       // Placeholder slots during generation
                       Array.from({ length: imageCount }).map((_, index) => {
-                        const variant = variants.find((v, i) => i === index && v.job_id === jobs[0]?.id);
+                        const displayJobId = currentJobId || jobs[0]?.id;
+                        const variant = variants.find((v, i) => i === index && v.job_id === displayJobId);
                         const isComplete = variant?.status === 'completed' && variant?.image_url;
                         
                         return (
@@ -878,8 +880,8 @@ export default function AlphawaveImageStudio({
                         );
                       })
                     ) : (
-                      // Completed variants
-                      variants.filter(v => v.job_id === jobs[0]?.id).slice(0, imageCount).map((variant, index: number) => (
+                      // Completed variants - use currentJobId first, fallback to jobs[0]?.id
+                      variants.filter(v => v.job_id === (currentJobId || jobs[0]?.id)).slice(0, imageCount).map((variant, index: number) => (
                         <div
                           key={variant.id}
                           className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"

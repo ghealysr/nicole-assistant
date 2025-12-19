@@ -118,6 +118,7 @@ export function useImageGeneration() {
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentJobId, setCurrentJobId] = useState<number | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -226,6 +227,7 @@ export function useImageGeneration() {
     setIsGenerating(true);
     setProgress(null);
     setError(null);
+    setCurrentJobId(null); // Clear previous job ID
 
     const token = getStoredToken();
     
@@ -323,6 +325,12 @@ export function useImageGeneration() {
                   });
                 } else if (status === 'complete') {
                   console.log('[IMAGE_GEN] Generation complete!', parsed);
+                  
+                  // Set current job ID for display
+                  const jobId = parsed.job_id || 0;
+                  setCurrentJobId(jobId);
+                  console.log('[IMAGE_GEN] Set currentJobId:', jobId);
+                  
                   // Extract variants from response and transform to frontend format
                   const rawVariants = parsed.variants || [];
                   const transformedVariants: ImageVariant[] = rawVariants.map((v: Record<string, unknown>, index: number) => ({
@@ -429,6 +437,7 @@ export function useImageGeneration() {
     progress,
     isGenerating,
     error,
+    currentJobId,
     // Actions
     fetchJobs,
     fetchVariants,
