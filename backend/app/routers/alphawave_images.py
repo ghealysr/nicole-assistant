@@ -188,9 +188,14 @@ async def generate_image_stream(
             logger.warning(f"[IMAGE API] Starting SSE stream for user {user.user_id}")
             yield f"data: {json.dumps({'status': 'starting', 'message': 'Initializing generation...'})}\n\n"
             
+            print(f"[IMAGE API STDOUT] After first yield, continuing...", file=sys.stderr, flush=True)
+            
             # Load preset if specified
             parameters = dict(request.parameters)
+            print(f"[IMAGE API STDOUT] Parameters created: {list(parameters.keys())}", file=sys.stderr, flush=True)
+            
             if request.preset_key:
+                print(f"[IMAGE API STDOUT] Loading preset: {request.preset_key}", file=sys.stderr, flush=True)
                 preset = await image_service.get_preset(request.preset_key, user.user_id)
                 if preset:
                     preset_params = preset.get("parameters", {})
@@ -199,11 +204,14 @@ async def generate_image_stream(
                     parameters = {**preset_params, **parameters}
             
             if request.enhance_prompt:
+                print(f"[IMAGE API STDOUT] Enhance prompt enabled", file=sys.stderr, flush=True)
                 yield f"data: {json.dumps({'status': 'enhancing', 'message': 'Enhancing prompt with Claude...'})}\n\n"
             
-            logger.info(f"[IMAGE API] Calling image_service.generate() with model={request.model_key}")
+            print(f"[IMAGE API STDOUT] About to call image_service.generate()", file=sys.stderr, flush=True)
+            logger.warning(f"[IMAGE API] Calling image_service.generate() with model={request.model_key}")
             yield f"data: {json.dumps({'status': 'generating', 'message': f'Generating {request.batch_count} variant(s)...'})}\n\n"
             
+            print(f"[IMAGE API STDOUT] Calling generate now...", file=sys.stderr, flush=True)
             result = await image_service.generate(
                 user_id=user.user_id,
                 prompt=request.prompt,
@@ -217,12 +225,16 @@ async def generate_image_stream(
                 enhance_prompt_enabled=request.enhance_prompt,
             )
             
-            logger.info(f"[IMAGE API] Generation complete: {len(result.get('variants', []))} variants, job_id={result.get('job_id')}")
+            print(f"[IMAGE API STDOUT] Generate returned: {result.get('job_id')}, {len(result.get('variants', []))} variants", file=sys.stderr, flush=True)
+            logger.warning(f"[IMAGE API] Generation complete: {len(result.get('variants', []))} variants, job_id={result.get('job_id')}")
             yield f"data: {json.dumps(serialize_for_json({'status': 'complete', **result}))}\n\n"
             
         except Exception as e:
+            print(f"[IMAGE API STDOUT] EXCEPTION: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             logger.exception(f"[IMAGE API] Stream generation error: {e}")
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        finally:
+            print(f"[IMAGE API STDOUT] event_stream() finished", file=sys.stderr, flush=True)
     
     return StreamingResponse(
         event_stream(),
