@@ -54,7 +54,7 @@ export default function AlphawaveImageStudio({
   const [selectedTab, setSelectedTab] = useState<'create' | 'history' | 'presets'>('create');
   
   const { 
-    generateImage, 
+    startGeneration, 
     isGenerating, 
     jobs, 
     models,
@@ -152,6 +152,34 @@ export default function AlphawaveImageStudio({
     }, 2000);
   };
   
+  // Convert aspect ratio and resolution to width/height
+  const getImageDimensions = (aspectRatio: string, resolution: string): { width: number; height: number } => {
+    const resolutionMap: Record<string, number> = {
+      '1K': 1024,
+      '2K': 2048,
+      '4K': 4096
+    };
+    
+    const baseSize = resolutionMap[resolution] || 2048;
+    
+    const ratios: Record<string, [number, number]> = {
+      '1:1': [1, 1],
+      '16:9': [16, 9],
+      '9:16': [9, 16],
+      '4:3': [4, 3],
+      '3:4': [3, 4],
+      '21:9': [21, 9]
+    };
+    
+    const [w, h] = ratios[aspectRatio] || [1, 1];
+    const scale = Math.sqrt((baseSize * baseSize) / (w * h));
+    
+    return {
+      width: Math.round(w * scale),
+      height: Math.round(h * scale)
+    };
+  };
+  
   // Handle generation
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -160,30 +188,23 @@ export default function AlphawaveImageStudio({
     }
     
     try {
-      // Prepare parameters
-      const params: Record<string, unknown> = {
+      const { width, height } = getImageDimensions(aspectRatio, resolution);
+      
+      // For now, use single model mode
+      // TODO: Implement multi-model generation
+      const params = {
         prompt,
-        n: imageCount,
-        aspect_ratio: aspectRatio,
-        resolution: resolution
+        model: multiModelMode ? modelSlots[0].model : singleModel,
+        width,
+        height,
+        batch_count: imageCount,
+        enhance_prompt: true
       };
       
-      // Add model selection
-      if (multiModelMode) {
-        params.models = modelSlots.map(s => s.model);
-      } else {
-        params.model = singleModel;
-      }
+      // TODO: Handle reference images upload and inclusion
+      // Reference images need to be uploaded to backend first
       
-      // Add reference images
-      if (referenceImages.length > 0) {
-        params.reference_images = referenceImages.map(img => ({
-          file: img.file,
-          inspiration_notes: img.inspirationNotes
-        }));
-      }
-      
-      await generateImage(params);
+      await startGeneration(params);
       
     } catch (error) {
       console.error('[IMAGE_STUDIO] Generation failed:', error);
