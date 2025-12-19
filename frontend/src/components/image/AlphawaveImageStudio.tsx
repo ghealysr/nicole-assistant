@@ -118,7 +118,6 @@ export default function AlphawaveImageStudio({
   const [singleModel, setSingleModel] = useState('gemini_3_pro_image');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [resolution, setResolution] = useState('2K');
-  const [nicoleInsights, setNicoleInsights] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'create' | 'history' | 'presets'>('create');
   
   // Vision Analysis State

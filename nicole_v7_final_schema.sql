@@ -888,9 +888,6 @@ CREATE POLICY IF NOT EXISTS "users_own_presets" ON image_presets FOR ALL USING (
 --   âœ… memory_snapshots (temporal summaries)
 --   âœ… dreams (creative synthesis)
 --   âœ… contextual_links (cross-modal stitching)
---   ✅ image_jobs (multi-model image generation tracking)
---   ✅ image_variants (generated images with full metadata)
---   ✅ image_presets (quick generation templates)
 -- 
 -- Enhanced Features:
 --   âœ… Temporal awareness (epoch_id, access_count, last_accessed)

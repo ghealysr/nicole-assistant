@@ -153,7 +153,7 @@ export const NicolePromptSuggestions: React.FC<NicolePromptSuggestionsProps> = (
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <h2 className="text-xl font-bold text-white">Nicole's Suggestions</h2>
+              <h2 className="text-xl font-bold text-white">Nicole&apos;s Suggestions</h2>
               <Sparkles className="w-5 h-5 text-purple-400" />
             </div>
             <p className="text-white/80 text-sm leading-relaxed">{analysis.analysis_summary}</p>
@@ -201,7 +201,7 @@ export const NicolePromptSuggestions: React.FC<NicolePromptSuggestionsProps> = (
           <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/30">
             <h3 className="text-green-300 font-semibold mb-2 text-sm flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" />
-              What's Already Great
+              What&apos;s Already Great
             </h3>
             <ul className="space-y-1 text-xs text-green-200/80">
               {analysis.strengths.map((strength, idx) => (
@@ -298,7 +298,7 @@ export const NicolePromptSuggestions: React.FC<NicolePromptSuggestionsProps> = (
                       
                       <div className="p-2 bg-black/30 rounded border border-white/10 mb-2">
                         <p className={`text-${color}-300 text-xs font-mono`}>
-                          "{suggestion.enhanced_prompt}"
+                          &ldquo;{suggestion.enhanced_prompt}&rdquo;
                         </p>
                       </div>
                       
@@ -334,7 +334,7 @@ export const NicolePromptSuggestions: React.FC<NicolePromptSuggestionsProps> = (
           </div>
           <h3 className="text-white font-semibold mb-2">Your Prompt Looks Great!</h3>
           <p className="text-white/70 text-sm">
-            Nicole couldn't find any meaningful improvements to suggest. You're all set! 🎉
+            Nicole couldn&apos;t find any meaningful improvements to suggest. You&apos;re all set! 🎉
           </p>
         </div>
       )}
