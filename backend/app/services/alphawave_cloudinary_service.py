@@ -136,6 +136,62 @@ class CloudinaryService:
             logger.error(f"[CLOUDINARY] Upload failed: {e}")
             return {"error": str(e), "success": False}
     
+    async def upload_from_base64(
+        self,
+        base64_data: str,
+        folder: str,
+        public_id: str,
+        tags: Optional[list] = None
+    ) -> Dict[str, Any]:
+        """
+        Upload a base64-encoded image to Cloudinary.
+        
+        Args:
+            base64_data: Base64-encoded image data (without data URI prefix)
+            folder: Destination folder path
+            public_id: Public ID for the uploaded image
+            tags: Optional list of tags
+            
+        Returns:
+            Dict with url and metadata
+        """
+        if not self._configured:
+            return {"error": "Cloudinary not configured", "success": False}
+        
+        try:
+            # Clean base64 data (remove data URI prefix if present)
+            if "," in base64_data:
+                base64_data = base64_data.split(",")[1]
+            
+            result = cloudinary.uploader.upload(
+                f"data:image/png;base64,{base64_data}",
+                folder=f"nicole/{folder}",
+                public_id=public_id,
+                resource_type="image",
+                tags=tags or ["nicole", "generated"],
+                transformation={
+                    "quality": "auto:good",
+                    "fetch_format": "auto"
+                }
+            )
+            
+            logger.info(f"[CLOUDINARY] Base64 image uploaded: {result.get('public_id')}")
+            
+            return {
+                "success": True,
+                "url": result.get("secure_url"),
+                "secure_url": result.get("secure_url"),
+                "public_id": result.get("public_id"),
+                "width": result.get("width"),
+                "height": result.get("height"),
+                "format": result.get("format"),
+                "bytes": result.get("bytes")
+            }
+            
+        except Exception as e:
+            logger.error(f"[CLOUDINARY] Base64 upload failed: {e}")
+            return {"error": str(e), "success": False}
+    
     async def upload_image(
         self,
         image_data: bytes,
