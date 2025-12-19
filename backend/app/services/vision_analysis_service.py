@@ -178,7 +178,7 @@ class VisionAnalysisService:
     """
     
     # Model configuration
-    MODEL = "claude-3-5-sonnet-20241022"
+    MODEL = "claude-sonnet-4-5-20250929"  # Latest Claude 4.5 Sonnet
     MAX_TOKENS = 4096
     TEMPERATURE = 0.3  # Lower for more consistent structured output
     

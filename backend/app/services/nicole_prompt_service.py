@@ -73,7 +73,7 @@ class NicolePromptService:
     """
     
     # Model configuration
-    MODEL = "claude-3-5-sonnet-20241022"
+    MODEL = "claude-sonnet-4-5-20250929"  # Latest Claude 4.5 Sonnet
     MAX_TOKENS = 3072
     TEMPERATURE = 0.7  # Slightly warmer for Nicole's personality
     

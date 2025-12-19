@@ -32,12 +32,25 @@ logger = logging.getLogger(__name__)
 # COST CONSTANTS (as of Dec 2024)
 # =============================================================================
 
-# Claude API Pricing (per 1M tokens)
+# Claude API Pricing (per 1M tokens) - Updated Dec 2025
 CLAUDE_PRICING = {
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-    "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00},
+    # Claude 4.5 models (latest)
+    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+    "claude-opus-4-5-20251101": {"input": 5.00, "output": 25.00},
+    # Claude 4 legacy models
+    "claude-opus-4-1-20250805": {"input": 15.00, "output": 75.00},
+    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "claude-3-7-sonnet-20250219": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
+    # Claude 3 legacy models
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
+    "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00},
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+    # Aliases
+    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-opus-4-5": {"input": 5.00, "output": 25.00},
 }
 
 # OpenAI Embedding Pricing (per 1M tokens)
@@ -137,14 +150,14 @@ class AlphawaveUsageService:
         
         Args:
             user_id: Tiger user ID
-            model: Model used (e.g., "claude-3-5-sonnet-20241022")
+            model: Model used (e.g., "claude-sonnet-4-5-20250929")
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
             request_type: Type of request (chat, analysis, etc.)
             conversation_id: Associated conversation if any
         """
         # Calculate cost
-        pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING["claude-3-5-sonnet-20241022"])
+        pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING["claude-sonnet-4-5-20250929"])
         input_cost = Decimal(str(input_tokens)) * Decimal(str(pricing["input"])) / Decimal("1000000")
         output_cost = Decimal(str(output_tokens)) * Decimal(str(pricing["output"])) / Decimal("1000000")
         total_cost = input_cost + output_cost
