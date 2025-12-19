@@ -1364,20 +1364,35 @@ Your output will be sent directly to the image generation API."""
             prediction = await self._run_replicate(replicate_model, model_input)
             
             # Extract URL from response (format varies by model)
+            # Replicate can return FileOutput objects, lists, or strings
             if isinstance(prediction, list):
-                output_url = prediction[0] if prediction else None
+                raw_output = prediction[0] if prediction else None
             elif isinstance(prediction, str):
-                output_url = prediction
+                raw_output = prediction
             elif hasattr(prediction, 'output'):
-                output_url = prediction.output[0] if prediction.output else None
+                raw_output = prediction.output[0] if prediction.output else None
             else:
-                output_url = str(prediction)
+                raw_output = prediction
             
-            if not output_url:
+            # Convert FileOutput or other objects to string URL
+            if raw_output is None:
                 logger.error(f"[IMAGE] Replicate returned no output for iteration {i+1}")
                 continue
             
-            image_hash = hashlib.sha256(str(output_url).encode("utf-8")).hexdigest()[:12]
+            # Handle replicate.helpers.FileOutput - it has a url attribute or can be cast to str
+            if hasattr(raw_output, 'url'):
+                output_url = str(raw_output.url)
+            elif hasattr(raw_output, 'read'):
+                # It's a file-like object, get URL if available
+                output_url = str(raw_output)
+            else:
+                output_url = str(raw_output)
+            
+            if not output_url or output_url == 'None':
+                logger.error(f"[IMAGE] Replicate returned invalid output for iteration {i+1}: {type(raw_output)}")
+                continue
+            
+            image_hash = hashlib.sha256(output_url.encode("utf-8")).hexdigest()[:12]
             elapsed_ms = int((datetime.utcnow() - iter_start).total_seconds() * 1000)
 
             variant = await db_manager.pool.fetchrow(
