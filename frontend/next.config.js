@@ -3,7 +3,7 @@ const nextConfig = {
   // React strict mode for better dev experience
   reactStrictMode: true,
   
-  // Image domains for user avatars, etc.
+  // Image domains for user avatars, generated images, etc.
   images: {
     remotePatterns: [
       {
@@ -13,6 +13,22 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: '*.supabase.co', // Supabase storage
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com', // Cloudinary image storage
+      },
+      {
+        protocol: 'https',
+        hostname: '*.cloudinary.com', // Cloudinary subdomains
+      },
+      {
+        protocol: 'https',
+        hostname: 'replicate.delivery', // Replicate generated images
+      },
+      {
+        protocol: 'https',
+        hostname: '*.replicate.delivery', // Replicate subdomains
       },
     ],
   },
