@@ -788,7 +788,7 @@ TECHNICAL RESEARCH MODE:
                     for part in candidate.content.parts:
                         if hasattr(part, 'inline_data') and part.inline_data:
                             image_data = part.inline_data.data
-                        if hasattr(part, 'text'):
+                        if hasattr(part, 'text') and part.text:
                             text_response += part.text
                 
                 if not image_data:
