@@ -7,7 +7,7 @@ import { FazCodePanel } from '@/components/faz/FazCodePanel';
 import { AlphawaveMemoryDashboard } from '@/components/memory/AlphawaveMemoryDashboard';
 import { AlphawaveJournalPanel } from '@/components/journal/AlphawaveJournalPanel';
 import { AlphawaveChatsPanel } from '@/components/chat/AlphawaveChatsPanel';
-import { AlphawaveImageStudio } from '@/components/image/AlphawaveImageStudio';
+import AlphawaveImageStudio from '@/components/image/AlphawaveImageStudio';
 import { ResearchPanel } from '@/components/research/ResearchPanel';
 import { useResearch } from '@/lib/hooks/useResearch';
 import { ConversationProvider, useConversation } from '@/lib/context/ConversationContext';
