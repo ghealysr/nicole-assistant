@@ -1193,13 +1193,16 @@ class AgentOrchestrator:
     
     async def _upload_screenshot_to_cloudinary(
         self,
-        result: Dict[str, Any]
+        result: Any
     ) -> Optional[Dict[str, Any]]:
         """
         Upload a screenshot (base64) to Cloudinary and return the URL.
         
         This intercepts puppeteer_screenshot results and uploads them to Cloudinary
         so Claude can include the permanent URL in responses.
+        
+        MCP bridge returns format:
+        [{"type": "text", "text": "{\"success\": true, \"data\": \"<base64>\", ...}"}]
         
         Args:
             result: The raw MCP tool result containing base64 screenshot data
@@ -1211,19 +1214,37 @@ class AgentOrchestrator:
             from app.services.alphawave_cloudinary_service import cloudinary_service
             from datetime import datetime
             
-            # Extract base64 data from result
-            base64_data = None
+            logger.debug(f"[ORCHESTRATOR] Screenshot result type: {type(result)}, preview: {str(result)[:200]}")
             
-            if isinstance(result, dict):
+            # Extract base64 data from result - handle MCP bridge format
+            base64_data = None
+            parsed_data = None
+            
+            # MCP bridge returns: [{"type": "text", "text": "{...json...}"}]
+            if isinstance(result, list) and len(result) > 0:
+                first_item = result[0]
+                if isinstance(first_item, dict) and first_item.get("type") == "text":
+                    text_content = first_item.get("text", "")
+                    try:
+                        parsed_data = json.loads(text_content)
+                        base64_data = parsed_data.get("data")
+                        logger.debug(f"[ORCHESTRATOR] Parsed MCP response, found data: {bool(base64_data)}")
+                    except json.JSONDecodeError:
+                        logger.warning("[ORCHESTRATOR] Failed to parse MCP text content as JSON")
+            
+            # Also handle dict format (direct result)
+            if not base64_data and isinstance(result, dict):
                 # Try common keys where screenshot data might be
                 base64_data = (
                     result.get("data") or 
                     result.get("screenshot") or 
                     result.get("image") or
-                    result.get("result", {}).get("data") if isinstance(result.get("result"), dict) else None
+                    (result.get("result", {}).get("data") if isinstance(result.get("result"), dict) else None)
                 )
-            elif isinstance(result, str) and len(result) > 100:
-                # Direct base64 string
+                parsed_data = result
+            
+            # Direct base64 string
+            if not base64_data and isinstance(result, str) and len(result) > 100:
                 base64_data = result
             
             if not base64_data:
