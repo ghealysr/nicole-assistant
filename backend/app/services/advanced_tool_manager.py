@@ -55,22 +55,13 @@ class ToolDefinition:
         if self.defer_loading and not include_deferred:
             return None
         
+        # Standard Claude tool format - NO input_examples (requires beta header)
+        # Instead, examples are embedded in the description for context
         tool = {
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
         }
-        
-        # Add input_examples if present (Anthropic recommended format)
-        if self.input_examples:
-            tool["input_examples"] = [
-                {
-                    "description": ex.description,
-                    "input": ex.input,
-                    **({"output": ex.output} if ex.output else {})
-                }
-                for ex in self.input_examples
-            ]
         
         return tool
 
