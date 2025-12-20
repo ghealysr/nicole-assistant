@@ -456,6 +456,9 @@ export function AlphawaveChatContainer() {
                 </div>
               )}
               
+              {/* Scroll anchor - BEFORE LotusSphere so scroll doesn't push first message out of view */}
+              <div ref={messagesEndRef} />
+              
               {/* SINGLE PERSISTENT LOTUS SPHERE - left aligned under response */}
               <div className="px-6 pt-2 pb-4">
                 <div className="max-w-[800px] mx-auto pl-11">
@@ -466,9 +469,6 @@ export function AlphawaveChatContainer() {
                   />
                 </div>
               </div>
-              
-              {/* Scroll anchor */}
-              <div ref={messagesEndRef} />
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />
