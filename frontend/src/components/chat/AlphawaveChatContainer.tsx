@@ -315,6 +315,7 @@ export function AlphawaveChatContainer() {
   const { showToast } = useToast();
   const { currentConversationId, setCurrentConversationId } = useConversation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   
   const { 
     messages, 
@@ -374,10 +375,26 @@ export function AlphawaveChatContainer() {
     }
   }, [currentConversationId, messages.length]);
 
-  // Auto-scroll to bottom when messages change or when pending
+  // Smart scroll: only auto-scroll if user is already near bottom, 
+  // and ensure content doesn't get clipped at top
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    const anchor = messagesEndRef.current;
+    
+    if (!container || !anchor) return;
+    
+    // Check if user is near the bottom (within 150px)
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+    
+    // Always scroll when there's new activity or if already near bottom
+    if (isNearBottom || isPendingAssistant) {
+      // Use scrollTop instead of scrollIntoView for more control
+      // This scrolls to show the anchor but won't push first message out of view
+      const targetScroll = container.scrollHeight - container.clientHeight;
+      container.scrollTo({
+        top: targetScroll,
+        behavior: 'smooth'
+      });
     }
   }, [messages, isPendingAssistant, activityStatus]);
 
@@ -428,7 +445,7 @@ export function AlphawaveChatContainer() {
         <div className="flex-1 flex flex-col min-w-[400px] transition-all duration-300 bg-[#F5F4ED]">
           {/* Messages area */}
           {hasMessages || isPendingAssistant ? (
-            <div className="flex-1 overflow-y-auto pt-8 pb-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto pt-8 pb-4">
               {/* All messages - first message gets extra top margin for header clearance */}
               {messages.map((message, index) => {
                 const isLastMessage = index === messages.length - 1;
