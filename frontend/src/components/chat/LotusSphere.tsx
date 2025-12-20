@@ -16,7 +16,6 @@ export interface LotusSphereProps {
   size?: number;
   className?: string;
   isActive?: boolean;
-  withBackground?: boolean;
 }
 
 const noise = (x: number, y: number, t: number): number => {
@@ -29,7 +28,6 @@ export const LotusSphere = memo(function LotusSphere({
   size = 96,
   className = '',
   isActive = true,
-  withBackground = false,
 }: LotusSphereProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -198,15 +196,8 @@ export const LotusSphere = memo(function LotusSphere({
       // Clear canvas to transparent
       ctx.clearRect(0, 0, size, size);
       
-      // Only draw black background if explicitly requested (sidebar logo)
-      // withBackground is false by default
-      if (withBackground === true) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, size, size);
-      }
-      
-      // DEBUG: Log each instance with size to identify which is which
-      console.log(`[LotusSphere] size=${size} withBackground=${withBackground}`);
+      // No black background - keep canvas transparent for all instances
+      // The sidebar itself has bg-[#1a1a1a] which provides the dark background
       
       // Outer ambient glow - contained within canvas bounds
       const maxGlowRadius = Math.min(cx, cy) * 0.98; // Stay within canvas
@@ -486,7 +477,7 @@ export const LotusSphere = memo(function LotusSphere({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [size, state, isActive, prefersReducedMotion, energyBursts, withBackground]);
+  }, [size, state, isActive, prefersReducedMotion, energyBursts]);
   
   return (
     <canvas 
