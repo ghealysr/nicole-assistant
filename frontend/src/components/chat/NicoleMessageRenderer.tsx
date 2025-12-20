@@ -35,16 +35,17 @@ import {
 // TYPES
 // ============================================================================
 
-interface ParsedBlock {
-  type: 'text' | 'thinking' | 'note' | 'file' | 'table' | 'code' | 'image';
-  content: string;
-  metadata?: Record<string, unknown>;
-}
-
 interface ImageBlockData {
   url: string;
   alt?: string;
   caption?: string;
+  [key: string]: unknown; // Index signature for Record<string, unknown> compatibility
+}
+
+interface ParsedBlock {
+  type: 'text' | 'thinking' | 'note' | 'file' | 'table' | 'code' | 'image';
+  content: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface ThinkingBlockData {
