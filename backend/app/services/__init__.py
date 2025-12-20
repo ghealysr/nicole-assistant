@@ -31,7 +31,14 @@ from app.services.alphawave_cloudinary_service import cloudinary_service
 from app.services.think_tool import think_tool_service, ThinkingStep, ThinkingSession
 from app.services.tool_search_service import tool_search_service, ToolCategory
 from app.services.tool_examples import tool_examples_service
-from app.services.workflow_engine import workflow_engine, WorkflowExecution
+from app.services.workflow_engine import (
+    workflow_registry,
+    WorkflowExecutor,
+    WorkflowDefinition,
+    WorkflowState,
+    WorkflowStepDefinition,
+    WorkflowStepState,
+)
 
 # Agent Orchestration (Integration Layer)
 from app.services.agent_orchestrator import agent_orchestrator
@@ -65,8 +72,12 @@ __all__ = [
     "tool_search_service",
     "ToolCategory",
     "tool_examples_service",
-    "workflow_engine",
-    "WorkflowExecution",
+    "workflow_registry",
+    "WorkflowExecutor",
+    "WorkflowDefinition",
+    "WorkflowState",
+    "WorkflowStepDefinition",
+    "WorkflowStepState",
     
     # Orchestration
     "agent_orchestrator",
