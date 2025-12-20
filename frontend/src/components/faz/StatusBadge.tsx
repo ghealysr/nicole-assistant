@@ -9,6 +9,7 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<ProjectStatus, { bg: string; text: string; label: string; glow?: string }> = {
+  // Standard pipeline states
   intake: { bg: 'bg-[#2a2a3a]/60', text: 'text-[#94A3B8]', label: 'Intake' },
   planning: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', label: 'Planning', glow: 'shadow-indigo-500/20' },
   researching: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Researching', glow: 'shadow-blue-500/20' },
@@ -23,11 +24,23 @@ const statusConfig: Record<ProjectStatus, { bg: string; text: string; label: str
   failed: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Failed' },
   paused: { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'Paused' },
   archived: { bg: 'bg-gray-500/20', text: 'text-gray-500', label: 'Archived' },
+  cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Cancelled' },
+  // Interactive approval gates
+  awaiting_confirm: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Awaiting Confirm', glow: 'shadow-purple-500/20' },
+  awaiting_research_review: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Review Research', glow: 'shadow-blue-500/20' },
+  awaiting_plan_approval: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', label: 'Approve Plan', glow: 'shadow-indigo-500/20' },
+  awaiting_design_approval: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Approve Design', glow: 'shadow-pink-500/20' },
+  awaiting_qa_approval: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'QA Review', glow: 'shadow-orange-500/20' },
+  awaiting_final_approval: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Final Approval', glow: 'shadow-green-500/20' },
 };
 
 export function StatusBadge({ status, className, animate = false }: StatusBadgeProps) {
   const config = statusConfig[status] || statusConfig.intake;
-  const isActive = ['planning', 'researching', 'designing', 'building', 'processing', 'qa', 'deploying', 'review'].includes(status);
+  const isActive = [
+    'planning', 'researching', 'designing', 'building', 'processing', 'qa', 'deploying', 'review',
+    'awaiting_confirm', 'awaiting_research_review', 'awaiting_plan_approval', 
+    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_final_approval'
+  ].includes(status);
 
   return (
     <span
