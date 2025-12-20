@@ -2,7 +2,9 @@ from typing import Callable
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.database import get_redis
+import logging
 
+logger = logging.getLogger(__name__)
 
 ENDPOINT_LIMITS = {
     "/chat": 60,
@@ -47,23 +49,28 @@ async def rate_limit_middleware(request: Request, call_next: Callable):
 
     user_id = getattr(request.state, "user_id", "anonymous")
     limit = ENDPOINT_LIMITS.get(endpoint, 60)
-
     key = f"rate_limit:{user_id}:{endpoint}"
-    current = redis_client.get(key)
 
-    if current is None:
-        # initialize bucket (60s ttl)
-        redis_client.setex(key, 60, limit - 1)
-    else:
-        remaining = int(current)
-        if remaining <= 0:
-            # Return 429 with CORS headers
-            cors_headers = _get_cors_headers(request)
-            return JSONResponse(
-                status_code=429,
-                content={"error": "Rate limit exceeded. Please try again later."},
-                headers=cors_headers
-            )
-        redis_client.decr(key)
+    try:
+        current = redis_client.get(key)
+
+        if current is None:
+            # initialize bucket (60s ttl)
+            redis_client.setex(key, 60, limit - 1)
+        else:
+            remaining = int(current)
+            if remaining <= 0:
+                # Return 429 with CORS headers
+                cors_headers = _get_cors_headers(request)
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "Rate limit exceeded. Please try again later."},
+                    headers=cors_headers
+                )
+            redis_client.decr(key)
+    except Exception as e:
+        # If Redis fails (read-only replica, connection error, etc.), 
+        # skip rate limiting and continue with the request
+        logger.warning(f"Rate limit check failed (Redis error): {e}. Skipping rate limit.")
 
     return await call_next(request)
