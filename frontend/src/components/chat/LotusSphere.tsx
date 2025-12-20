@@ -196,17 +196,18 @@ export const LotusSphere = memo(function LotusSphere({
         centerSize = 25 * scale;
       }
       
-      // Clear with black background
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, size, size);
+      // Clear canvas (transparent for chat, black for sidebar)
+      ctx.clearRect(0, 0, size, size);
       
-      // Ambient glow (v5 exact)
+      // Ambient glow (v5 exact - works on any background)
       const ambientGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.8, cx, cy, sphereRadius * 1.5);
       ambientGlow.addColorStop(0, 'rgba(130, 80, 200, 0.12)');
       ambientGlow.addColorStop(0.5, 'rgba(80, 40, 150, 0.06)');
       ambientGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = ambientGlow;
-      ctx.fillRect(0, 0, size, size);
+      ctx.beginPath();
+      ctx.arc(cx, cy, sphereRadius * 1.5, 0, Math.PI * 2);
+      ctx.fill();
       
       // Glass sphere background (v5 exact)
       ctx.beginPath();
