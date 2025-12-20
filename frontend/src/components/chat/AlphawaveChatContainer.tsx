@@ -38,7 +38,7 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
         <div className="w-24 h-24 flex items-center justify-center mx-auto mb-5">
           <LotusSphere 
             state="default"
-            size={192}
+            size={120}
             isActive={true}
           />
         </div>
