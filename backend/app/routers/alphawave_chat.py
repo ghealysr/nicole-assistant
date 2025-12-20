@@ -636,10 +636,33 @@ async def send_message(
             # Reverse to chronological order (oldest first)
             history_rows = list(reversed(history_rows))
             
-            messages = [
-                {"role": row["message_role"], "content": row["content"]}
-                for row in history_rows
-            ]
+            # TOKEN GUARD: Truncate individual messages and cap total history size
+            # This prevents "prompt is too long" errors (max 200K tokens ~ 800K chars)
+            MAX_MSG_CHARS = settings.MAX_MESSAGE_CHARS  # ~4K tokens per message
+            MAX_TOTAL_CHARS = settings.MAX_TOTAL_HISTORY_CHARS  # ~20K tokens total
+            
+            messages = []
+            total_chars = 0
+            truncated_count = 0
+            
+            for row in history_rows:
+                content = row["content"] or ""
+                
+                # Truncate individual oversized messages (usually tool results)
+                if len(content) > MAX_MSG_CHARS:
+                    content = content[:MAX_MSG_CHARS] + "\n...[truncated for context window]"
+                    truncated_count += 1
+                
+                # Stop adding messages if we've hit the total char limit
+                if total_chars + len(content) > MAX_TOTAL_CHARS:
+                    logger.info(f"[STREAM] History truncated at {len(messages)} messages due to token limit")
+                    break
+                
+                messages.append({"role": row["message_role"], "content": content})
+                total_chars += len(content)
+            
+            if truncated_count > 0:
+                logger.info(f"[STREAM] Truncated {truncated_count} oversized messages for token efficiency")
             
             # FALLBACK: If history is empty (race condition), add current message directly
             # This ensures Claude always has at least the user's message
@@ -647,7 +670,7 @@ async def send_message(
                 logger.warning(f"[STREAM] History empty for conversation {conversation_id} - adding message directly")
                 messages = [{"role": "user", "content": chat_request.text}]
             
-            logger.info(f"[STREAM] Messages for Claude: {len(messages)} (context window: 25)")
+            logger.info(f"[STREAM] Messages for Claude: {len(messages)} (~{total_chars//1000}K chars, limit: {MAX_TOTAL_CHARS//1000}K)")
             
             # ================================================================
             # SYSTEM PROMPT - Nicole's Complete Personality & Memory System

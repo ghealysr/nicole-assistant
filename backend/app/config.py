@@ -153,9 +153,13 @@ class Settings(BaseSettings):
     MEMORY_ARCHIVE_THRESHOLD: float = 0.15
     
     # Conversation Settings
-    CONVERSATION_HISTORY_LIMIT: int = 25
+    CONVERSATION_HISTORY_LIMIT: int = 15  # Reduced from 25 to prevent token overflow
     MEMORY_SEARCH_LIMIT: int = 10
     MEMORY_SEARCH_MIN_CONFIDENCE: float = 0.3
+    
+    # Token Management - Prevent prompt overflow
+    MAX_MESSAGE_CHARS: int = 15000  # Truncate individual messages over this length (~4K tokens)
+    MAX_TOTAL_HISTORY_CHARS: int = 80000  # Max chars for all history combined (~20K tokens)
     
     # Skill Activation
     SKILL_ACTIVATION_THRESHOLD: float = 5.0
