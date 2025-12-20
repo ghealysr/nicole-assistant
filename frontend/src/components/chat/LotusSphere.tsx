@@ -3,14 +3,10 @@
 import React, { useEffect, useRef, memo, useMemo } from 'react';
 
 /**
- * LOTUS SPHERE - Nicole Edition v5 (Exact Match)
+ * LOTUS SPHERE - Nicole Edition v5 (Exact Port)
  * 
- * Features:
- * - Dark purple petals with glowing edges
- * - Glass sphere with rim gradient
- * - Smokey heavenly glow center
- * - Energy bursts flow inward during processing
- * - Purple/violet color scheme throughout
+ * This is a direct port of lotus-sphere-v5.jsx with proper scaling.
+ * The design is soft, ethereal, and glassy - NOT sharp or intimidating.
  */
 
 export type ThinkingState = 'default' | 'searching' | 'thinking' | 'processing' | 'speaking';
@@ -20,6 +16,7 @@ export interface LotusSphereProps {
   size?: number;
   className?: string;
   isActive?: boolean;
+  withBackground?: boolean; // Only true for sidebar
 }
 
 const noise = (x: number, y: number, t: number): number => {
@@ -27,94 +24,12 @@ const noise = (x: number, y: number, t: number): number => {
          Math.sin((x + y) * 0.03 + t * 0.5);
 };
 
-const drawPetal = (
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  angle: number,
-  innerRadius: number,
-  outerRadius: number,
-  width: number,
-  isOuter: boolean,
-  glowIntensity: number
-) => {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(angle);
-  
-  const tipX = outerRadius;
-  const tipY = 0;
-  const baseWidth = width;
-  
-  ctx.beginPath();
-  
-  if (isOuter) {
-    ctx.moveTo(innerRadius, 0);
-    ctx.bezierCurveTo(
-      innerRadius + (outerRadius - innerRadius) * 0.3, -baseWidth * 0.8,
-      outerRadius - 20, -baseWidth * 0.4,
-      tipX, tipY
-    );
-    ctx.bezierCurveTo(
-      outerRadius - 20, baseWidth * 0.4,
-      innerRadius + (outerRadius - innerRadius) * 0.3, baseWidth * 0.8,
-      innerRadius, 0
-    );
-  } else {
-    ctx.moveTo(innerRadius, 0);
-    ctx.bezierCurveTo(
-      innerRadius + (outerRadius - innerRadius) * 0.4, -baseWidth * 0.6,
-      outerRadius - 10, -baseWidth * 0.15,
-      tipX, tipY
-    );
-    ctx.bezierCurveTo(
-      outerRadius - 10, baseWidth * 0.15,
-      innerRadius + (outerRadius - innerRadius) * 0.4, baseWidth * 0.6,
-      innerRadius, 0
-    );
-  }
-  
-  ctx.closePath();
-  
-  // Deep purple gradient fill (v5 exact)
-  const fillGrad = ctx.createLinearGradient(innerRadius, 0, outerRadius, 0);
-  fillGrad.addColorStop(0, 'rgba(45, 20, 80, 0.95)');
-  fillGrad.addColorStop(0.4, 'rgba(70, 35, 120, 0.9)');
-  fillGrad.addColorStop(0.7, 'rgba(100, 50, 160, 0.85)');
-  fillGrad.addColorStop(1, 'rgba(130, 70, 190, 0.8)');
-  ctx.fillStyle = fillGrad;
-  ctx.fill();
-  
-  // Purple edge glow (v5 exact)
-  const glowColors = [
-    { width: 10, color: `rgba(150, 100, 255, ${0.12 * glowIntensity})` },
-    { width: 6, color: `rgba(180, 130, 255, ${0.25 * glowIntensity})` },
-    { width: 3, color: `rgba(200, 160, 255, ${0.5 * glowIntensity})` },
-    { width: 1.5, color: `rgba(230, 200, 255, ${0.8 * glowIntensity})` },
-  ];
-  
-  glowColors.forEach(g => {
-    ctx.strokeStyle = g.color;
-    ctx.lineWidth = g.width;
-    ctx.stroke();
-  });
-  
-  // Inner vein
-  ctx.beginPath();
-  ctx.moveTo(innerRadius + 10, 0);
-  ctx.lineTo(outerRadius - 15, 0);
-  ctx.strokeStyle = `rgba(180, 140, 220, ${0.25 * glowIntensity})`;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  
-  ctx.restore();
-};
-
 export const LotusSphere = memo(function LotusSphere({
   state = 'default',
   size = 96,
   className = '',
   isActive = true,
+  withBackground = false,
 }: LotusSphereProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -155,6 +70,88 @@ export const LotusSphere = memo(function LotusSphere({
     const cy = size / 2;
     const sphereRadius = 180 * scale;
     
+    // Draw petal function - v5 exact with proper scaling
+    const drawPetal = (
+      angle: number,
+      innerRadius: number,
+      outerRadius: number,
+      width: number,
+      isOuter: boolean,
+      glowIntensity: number
+    ) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      
+      const tipX = outerRadius;
+      const tipY = 0;
+      const baseWidth = width;
+      
+      ctx.beginPath();
+      
+      // v5 exact bezier curves - these create soft, rounded petals
+      if (isOuter) {
+        ctx.moveTo(innerRadius, 0);
+        ctx.bezierCurveTo(
+          innerRadius + (outerRadius - innerRadius) * 0.3, -baseWidth * 0.8,
+          outerRadius - 20 * scale, -baseWidth * 0.4,
+          tipX, tipY
+        );
+        ctx.bezierCurveTo(
+          outerRadius - 20 * scale, baseWidth * 0.4,
+          innerRadius + (outerRadius - innerRadius) * 0.3, baseWidth * 0.8,
+          innerRadius, 0
+        );
+      } else {
+        ctx.moveTo(innerRadius, 0);
+        ctx.bezierCurveTo(
+          innerRadius + (outerRadius - innerRadius) * 0.4, -baseWidth * 0.6,
+          outerRadius - 10 * scale, -baseWidth * 0.15,
+          tipX, tipY
+        );
+        ctx.bezierCurveTo(
+          outerRadius - 10 * scale, baseWidth * 0.15,
+          innerRadius + (outerRadius - innerRadius) * 0.4, baseWidth * 0.6,
+          innerRadius, 0
+        );
+      }
+      
+      ctx.closePath();
+      
+      // Purple gradient fill (v5 exact - soft, not dark)
+      const fillGrad = ctx.createLinearGradient(innerRadius, 0, outerRadius, 0);
+      fillGrad.addColorStop(0, 'rgba(45, 20, 80, 0.95)');
+      fillGrad.addColorStop(0.4, 'rgba(70, 35, 120, 0.9)');
+      fillGrad.addColorStop(0.7, 'rgba(100, 50, 160, 0.85)');
+      fillGrad.addColorStop(1, 'rgba(130, 70, 190, 0.8)');
+      ctx.fillStyle = fillGrad;
+      ctx.fill();
+      
+      // Purple edge glow (v5 exact - creates soft glowing edges)
+      const glowColors = [
+        { width: 10 * scale, color: `rgba(150, 100, 255, ${0.12 * glowIntensity})` },
+        { width: 6 * scale, color: `rgba(180, 130, 255, ${0.25 * glowIntensity})` },
+        { width: 3 * scale, color: `rgba(200, 160, 255, ${0.5 * glowIntensity})` },
+        { width: 1.5 * scale, color: `rgba(230, 200, 255, ${0.8 * glowIntensity})` },
+      ];
+      
+      glowColors.forEach(g => {
+        ctx.strokeStyle = g.color;
+        ctx.lineWidth = g.width;
+        ctx.stroke();
+      });
+      
+      // Inner vein
+      ctx.beginPath();
+      ctx.moveTo(innerRadius + 10 * scale, 0);
+      ctx.lineTo(outerRadius - 15 * scale, 0);
+      ctx.strokeStyle = `rgba(180, 140, 220, ${0.25 * glowIntensity})`;
+      ctx.lineWidth = 1 * scale;
+      ctx.stroke();
+      
+      ctx.restore();
+    };
+    
     const animate = () => {
       if (!isActive && !prefersReducedMotion) {
         timeRef.current = 0;
@@ -180,7 +177,7 @@ export const LotusSphere = memo(function LotusSphere({
         rotationSpeed = 1.0;
         glowPulse = 0.9 + Math.sin(time * 2) * 0.1;
         centerSize = (22 + Math.sin(time * 3) * 10) * scale;
-        glowColor = { r: 200, g: 255, b: 200 }; // Green tint
+        glowColor = { r: 200, g: 255, b: 200 };
       } else if (state === 'processing') {
         rotationSpeed = 0.15;
         glowPulse = 0.7 + Math.sin(time * 4) * 0.3;
@@ -189,17 +186,23 @@ export const LotusSphere = memo(function LotusSphere({
         rotationSpeed = 0.08;
         glowPulse = 0.95 + Math.sin(time * 3) * 0.05;
         centerSize = (28 + Math.sin(time * 2) * 5) * scale;
-        glowColor = { r: 180, g: 220, b: 255 }; // Blue tint
+        glowColor = { r: 180, g: 220, b: 255 };
       } else {
         rotationSpeed = 0.1;
         glowPulse = 0.85;
         centerSize = 25 * scale;
       }
       
-      // Clear canvas (transparent for chat, black for sidebar)
+      // Clear canvas
       ctx.clearRect(0, 0, size, size);
       
-      // Ambient glow (v5 exact - works on any background)
+      // Background only if withBackground is true (for sidebar)
+      if (withBackground) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, size, size);
+      }
+      
+      // Ambient glow (v5 exact)
       const ambientGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.8, cx, cy, sphereRadius * 1.5);
       ambientGlow.addColorStop(0, 'rgba(130, 80, 200, 0.12)');
       ambientGlow.addColorStop(0.5, 'rgba(80, 40, 150, 0.06)');
@@ -259,7 +262,6 @@ export const LotusSphere = memo(function LotusSphere({
           const opacity = fadeIn * fadeOut;
           
           if (opacity > 0.05) {
-            // Outer glow
             const outerGlowGrad = ctx.createRadialGradient(
               burstX, burstY, 0,
               burstX, burstY, 20 * scale
@@ -273,7 +275,6 @@ export const LotusSphere = memo(function LotusSphere({
             ctx.fillStyle = outerGlowGrad;
             ctx.fill();
             
-            // Main burst elongated toward center
             ctx.save();
             ctx.translate(burstX, burstY);
             ctx.rotate(burst.angle);
@@ -291,7 +292,6 @@ export const LotusSphere = memo(function LotusSphere({
             ctx.fillStyle = burstGrad;
             ctx.fill();
             
-            // Bright leading edge
             ctx.beginPath();
             ctx.ellipse(burstLength / 4, 0, burstLength / 6, 2.5 * scale, 0, 0, Math.PI * 2);
             ctx.fillStyle = `rgba(255, 255, 240, ${0.6 * opacity})`;
@@ -304,16 +304,16 @@ export const LotusSphere = memo(function LotusSphere({
         ctx.restore();
       }
       
-      // Outer petals (v5 exact dimensions scaled)
+      // Outer petals (v5 exact dimensions: 50, 140, 45)
       for (let i = 0; i < 8; i++) {
         const angle = (i / 8) * Math.PI * 2 + rotation + Math.PI / 8;
-        drawPetal(ctx, cx, cy, angle, 50 * scale, 140 * scale, 45 * scale, true, glowPulse);
+        drawPetal(angle, 50 * scale, 140 * scale, 45 * scale, true, glowPulse);
       }
       
-      // Inner petals (v5 exact)
+      // Inner petals (v5 exact dimensions: 30, 110, 35)
       for (let i = 0; i < 8; i++) {
         const angle = (i / 8) * Math.PI * 2 + rotation;
-        drawPetal(ctx, cx, cy, angle, 30 * scale, 110 * scale, 35 * scale, false, glowPulse);
+        drawPetal(angle, 30 * scale, 110 * scale, 35 * scale, false, glowPulse);
       }
       
       // Center radiating lines (v5 exact)
@@ -336,7 +336,7 @@ export const LotusSphere = memo(function LotusSphere({
       // SMOKEY HEAVENLY GLOW CENTER (v5 exact)
       const { r, g, b } = glowColor;
       
-      // Smoke layers
+      // Smoke layers (5 layers like v5)
       const smokeLayers = 5;
       for (let layer = 0; layer < smokeLayers; layer++) {
         const noiseVal = noise(layer * 50, time * 100, time * 2);
@@ -400,7 +400,7 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = coreGrad;
       ctx.fill();
       
-      // Center point - LIGHT not shape (v5 exact)
+      // Center point (v5 exact - small glowing dot)
       const dotGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 5 * scale);
       dotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
       dotGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.7)`);
@@ -472,14 +472,14 @@ export const LotusSphere = memo(function LotusSphere({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [size, state, isActive, prefersReducedMotion, energyBursts]);
+  }, [size, state, isActive, prefersReducedMotion, energyBursts, withBackground]);
   
   return (
     <canvas 
       ref={canvasRef}
       className={className}
       style={{
-        filter: isActive ? 'drop-shadow(0 0 50px rgba(120, 60, 180, 0.4))' : 'none',
+        filter: isActive ? 'drop-shadow(0 0 30px rgba(120, 60, 180, 0.3))' : 'none',
         display: 'block',
       }}
       aria-label="Nicole thinking indicator"
