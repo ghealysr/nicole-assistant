@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { AlphawaveChatInput, type FileAttachment } from './AlphawaveChatInput';
 import { AlphawaveDashPanel } from './AlphawaveDashPanel';
 import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
@@ -11,6 +10,7 @@ import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
+import { NicoleOrbAnimation } from './NicoleOrbAnimation';
 import type { ThinkingStep, ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
 interface Message {
@@ -33,13 +33,12 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
   return (
     <div className="empty-state">
       <div className="text-center">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5">
-          <Image 
-            src="/images/nicole-thinking-avatar.png" 
-            alt="Nicole" 
-            width={80} 
-            height={80}
-            className="rounded-full"
+        <div className="w-24 h-24 flex items-center justify-center mx-auto mb-5">
+          <NicoleOrbAnimation 
+            isActive={true}
+            size="large"
+            variant="single"
+            showParticles={true}
           />
         </div>
         <h2 className="empty-title">{greeting || 'Hey Glen. What can I help you with?'}</h2>

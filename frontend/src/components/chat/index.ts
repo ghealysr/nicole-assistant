@@ -14,6 +14,14 @@ export { AlphawaveChatsPanel } from './AlphawaveChatsPanel';
 // Nicole's Message Renderer (enhanced markdown + components)
 export { NicoleMessageRenderer } from './NicoleMessageRenderer';
 
+// Nicole's Orb Animation (premium thinking indicator)
+export { NicoleOrbAnimation, NicoleThinkingIndicator } from './NicoleOrbAnimation';
+export type { NicoleOrbAnimationProps, ThinkingIndicatorProps } from './NicoleOrbAnimation';
+
+// Nicole's Thinking Block (extended thinking display)
+export { NicoleThinkingBlock } from './NicoleThinkingBlock';
+export type { ThinkingBlockProps, ToolUse } from './NicoleThinkingBlock';
+
 // Nicole's Thinking UI Components
 export {
   // Main components

@@ -1,4 +1,6 @@
-import Image from 'next/image';
+'use client';
+
+import { NicoleOrbAnimation } from './NicoleOrbAnimation';
 
 /**
  * Interface for thinking step objects.
@@ -18,21 +20,20 @@ interface AlphawaveThinkingInterfaceProps {
 
 /**
  * Thinking interface component for Nicole V7.
- * Displays a rotating purple flower avatar and thinking steps.
+ * Displays stunning glowing orb animation with thinking steps.
  */
 export function AlphawaveThinkingInterface({ steps }: AlphawaveThinkingInterfaceProps) {
+  const hasActiveStep = steps.some(s => s.active);
+  
   return (
     <div className="flex items-center space-x-4 p-4">
-      {/* Purple flower avatar - rotating */}
-      <div className="relative">
-        <Image
-          src="/images/nicole-thinking-avatar.png"
-          alt="Nicole thinking"
-          width={40}
-          height={40}
-          className="animate-spin"
-        />
-      </div>
+      {/* Nicole's orb animation */}
+      <NicoleOrbAnimation 
+        isActive={hasActiveStep}
+        size="medium"
+        variant="single"
+        showParticles={true}
+      />
 
       {/* Steps */}
       <div className="flex space-x-2">
@@ -49,4 +50,3 @@ export function AlphawaveThinkingInterface({ steps }: AlphawaveThinkingInterface
     </div>
   );
 }
-

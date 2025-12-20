@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, memo } from 'react';
-import Image from 'next/image';
+import { NicoleOrbAnimation } from './NicoleOrbAnimation';
 
 // Subtle color palette - blends with tan background
 const colors = {
@@ -205,27 +205,13 @@ export function NicoleThinkingBlock({
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/[0.02] transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          {/* Nicole's avatar - spins while processing */}
-          <div 
-            className={`
-              w-6 h-6 rounded-full overflow-hidden flex-shrink-0
-              transition-all duration-300
-              ${shouldSpin ? 'animate-spin-slow' : ''}
-            `}
-            style={{
-              boxShadow: shouldSpin 
-                ? `0 0 8px ${colors.lavender}50` 
-                : 'none',
-            }}
-          >
-            <Image 
-              src="/images/nicole-thinking-avatar.png" 
-              alt="Nicole" 
-              width={24} 
-              height={24}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          {/* Nicole's orb animation - glowing while processing */}
+          <NicoleOrbAnimation 
+            isActive={shouldSpin}
+            size="small"
+            variant="single"
+            showParticles={false}
+          />
           
           {/* Label */}
           <span 
