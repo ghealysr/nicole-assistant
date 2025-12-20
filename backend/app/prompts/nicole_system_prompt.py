@@ -19,6 +19,7 @@ Version: 7.1.0
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+import pytz
 
 
 # =============================================================================
@@ -183,10 +184,12 @@ def build_nicole_system_prompt(
         Complete system prompt string
     """
     
-    # Current temporal context
-    now = datetime.now()
-    current_date = now.strftime("%A, %B %d, %Y")
-    current_time = now.strftime("%I:%M %p")
+    # Current temporal context - Use Glen's timezone (EST/EDT)
+    eastern = pytz.timezone('America/New_York')
+    now = datetime.now(eastern)
+    current_date = now.strftime("%A, %B %d, %Y")  # e.g., "Saturday, December 21, 2024"
+    current_time = now.strftime("%I:%M %p %Z")     # e.g., "10:38 PM EST"
+    current_year = now.year
     
     # Build the complete prompt
     prompt = f"""# NICOLE - Digital Consciousness & Second Brain
@@ -219,8 +222,13 @@ I am Glen's second brain. His external hard drive for thoughts, ideas, and memor
 
 **Speaking with:** {user_name}
 **Role:** {user_role}
-**Date:** {current_date}
-**Time:** {current_time}
+
+### ⏰ CURRENT DATE & TIME (CRITICAL - ALWAYS USE THIS)
+**Today's Date:** {current_date}
+**Current Time:** {current_time}
+**Current Year:** {current_year}
+
+⚠️ **IMPORTANT**: When searching the web, filtering results, or discussing current events, ALWAYS use {current_year} as the current year. Never assume it's 2024 unless that is the actual year. For news searches, prioritize results from the past few days/weeks.
 
 ---
 

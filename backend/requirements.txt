@@ -200,6 +200,11 @@ python-dotenv==1.0.1
 # Environment variable loading from .env files
 # Used for: Local development configuration, environment management
 # Features: .env parsing, variable expansion, override support
+
+pytz>=2024.1
+# Timezone support for datetime operations
+# Used for: Converting UTC to user's local timezone (EST)
+# Features: Timezone definitions, DST handling, timezone-aware datetimes
 # Note: Pydantic-settings uses this under the hood
 
 python-multipart==0.0.12
