@@ -9,6 +9,7 @@
  * - Code blocks with syntax highlighting
  * - Note/suggestion cards
  * - File cards with download buttons
+ * - Inline images (Cloudinary, Replicate, and other image URLs)
  * - Standard markdown formatting
  * 
  * Special block syntax (parsed from response):
@@ -16,9 +17,11 @@
  * - <note>...</note> - Renders NoteCard
  * - <file>...</file> - Renders FileCard
  * - Standard markdown tables - Renders StyledTable
+ * - Image URLs (Cloudinary, etc.) - Renders inline images
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import Image from 'next/image';
 import {
   ThinkingBox,
   FileCard,
@@ -33,9 +36,15 @@ import {
 // ============================================================================
 
 interface ParsedBlock {
-  type: 'text' | 'thinking' | 'note' | 'file' | 'table' | 'code';
+  type: 'text' | 'thinking' | 'note' | 'file' | 'table' | 'code' | 'image';
   content: string;
   metadata?: Record<string, unknown>;
+}
+
+interface ImageBlockData {
+  url: string;
+  alt?: string;
+  caption?: string;
 }
 
 interface ThinkingBlockData {
@@ -150,6 +159,48 @@ function parseMarkdownTable(content: string): TableData | null {
 }
 
 /**
+ * Detect if a URL is an image URL
+ * Supports: Cloudinary, Replicate, common image extensions
+ */
+function isImageUrl(url: string): boolean {
+  // Cloudinary URLs
+  if (url.includes('res.cloudinary.com')) return true;
+  // Replicate delivery URLs
+  if (url.includes('replicate.delivery')) return true;
+  // Common image extensions
+  if (/\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?.*)?$/i.test(url)) return true;
+  // Image CDNs
+  if (url.includes('images.unsplash.com')) return true;
+  if (url.includes('i.imgur.com')) return true;
+  return false;
+}
+
+/**
+ * Extract image URLs from text content
+ * Returns array of {url, start, end} for each image URL found
+ */
+function extractImageUrls(content: string): Array<{ url: string; start: number; end: number }> {
+  const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+  const images: Array<{ url: string; start: number; end: number }> = [];
+  
+  let match;
+  while ((match = urlRegex.exec(content)) !== null) {
+    const url = match[0];
+    // Clean trailing punctuation that might be part of sentence
+    const cleanUrl = url.replace(/[.,;:!?)]+$/, '');
+    if (isImageUrl(cleanUrl)) {
+      images.push({
+        url: cleanUrl,
+        start: match.index,
+        end: match.index + cleanUrl.length,
+      });
+    }
+  }
+  
+  return images;
+}
+
+/**
  * Parse the full message content into blocks
  */
 function parseMessageContent(content: string): ParsedBlock[] {
@@ -192,19 +243,71 @@ function parseMessageContent(content: string): ParsedBlock[] {
   // Build blocks
   let lastEnd = 0;
   
+  /**
+   * Helper to process text content - extracts images and tables
+   */
+  const processTextContent = (textContent: string) => {
+    if (!textContent.trim()) return;
+    
+    // Check for images in this text segment
+    const imageUrls = extractImageUrls(textContent);
+    
+    if (imageUrls.length > 0) {
+      // Split text around images
+      let lastImageEnd = 0;
+      
+      for (const img of imageUrls) {
+        // Text before the image
+        if (img.start > lastImageEnd) {
+          const beforeText = textContent.slice(lastImageEnd, img.start).trim();
+          if (beforeText) {
+            const tableData = parseMarkdownTable(beforeText);
+            if (tableData && tableData.headers.length > 0) {
+              blocks.push({ type: 'table', content: beforeText, metadata: tableData });
+            } else {
+              blocks.push({ type: 'text', content: beforeText });
+            }
+          }
+        }
+        
+        // The image itself
+        blocks.push({ 
+          type: 'image', 
+          content: img.url,
+          metadata: { url: img.url } as ImageBlockData
+        });
+        
+        lastImageEnd = img.end;
+      }
+      
+      // Text after the last image
+      if (lastImageEnd < textContent.length) {
+        const afterText = textContent.slice(lastImageEnd).trim();
+        if (afterText) {
+          const tableData = parseMarkdownTable(afterText);
+          if (tableData && tableData.headers.length > 0) {
+            blocks.push({ type: 'table', content: afterText, metadata: tableData });
+          } else {
+            blocks.push({ type: 'text', content: afterText });
+          }
+        }
+      }
+    } else {
+      // No images, check for table or add as text
+      const tableData = parseMarkdownTable(textContent);
+      if (tableData && tableData.headers.length > 0) {
+        blocks.push({ type: 'table', content: textContent, metadata: tableData });
+      } else {
+        blocks.push({ type: 'text', content: textContent });
+      }
+    }
+  };
+
   for (const match of matches) {
     // Add text block before this match
     if (match.start > lastEnd) {
       const textContent = content.slice(lastEnd, match.start).trim();
-      if (textContent) {
-        // Check if this text contains a markdown table
-        const tableData = parseMarkdownTable(textContent);
-        if (tableData && tableData.headers.length > 0) {
-          blocks.push({ type: 'table', content: textContent, metadata: tableData });
-        } else {
-          blocks.push({ type: 'text', content: textContent });
-        }
-      }
+      processTextContent(textContent);
     }
     
     // Add the special block
@@ -215,20 +318,12 @@ function parseMessageContent(content: string): ParsedBlock[] {
   // Add remaining text
   if (lastEnd < content.length) {
     const textContent = content.slice(lastEnd).trim();
-    if (textContent) {
-      // Check for table in remaining content
-      const tableData = parseMarkdownTable(textContent);
-      if (tableData && tableData.headers.length > 0) {
-        blocks.push({ type: 'table', content: textContent, metadata: tableData });
-      } else {
-        blocks.push({ type: 'text', content: textContent });
-      }
-    }
+    processTextContent(textContent);
   }
   
-  // If no blocks found, treat entire content as text
+  // If no blocks found, treat entire content as text (may still have images)
   if (blocks.length === 0 && content.trim()) {
-    blocks.push({ type: 'text', content: content.trim() });
+    processTextContent(content.trim());
   }
   
   return blocks;
@@ -329,6 +424,151 @@ function parseMarkdown(text: string): string {
 }
 
 // ============================================================================
+// IMAGE BLOCK RENDERER
+// ============================================================================
+
+interface ImageBlockProps {
+  url: string;
+  alt?: string;
+}
+
+const ImageBlock: React.FC<ImageBlockProps> = ({ url, alt }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  if (hasError) {
+    return (
+      <div 
+        className="my-4 p-4 rounded-xl border flex items-center gap-3"
+        style={{ 
+          borderColor: nicoleColors.border,
+          backgroundColor: nicoleColors.lavenderLight 
+        }}
+      >
+        <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
+          />
+        </svg>
+        <div>
+          <div className="text-sm font-medium" style={{ color: nicoleColors.textSecondary }}>
+            Image could not be loaded
+          </div>
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs hover:underline"
+            style={{ color: nicoleColors.lavender }}
+          >
+            Open original link
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Inline Image */}
+      <div className="my-4 relative group">
+        <div 
+          className="relative overflow-hidden rounded-xl border cursor-pointer transition-all hover:shadow-lg"
+          style={{ borderColor: nicoleColors.border }}
+          onClick={() => setIsExpanded(true)}
+        >
+          {isLoading && (
+            <div 
+              className="absolute inset-0 flex items-center justify-center"
+              style={{ backgroundColor: nicoleColors.lavenderLight }}
+            >
+              <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <Image
+            src={url}
+            alt={alt || 'Screenshot captured by Nicole'}
+            width={800}
+            height={600}
+            className="w-full h-auto max-h-96 object-contain"
+            onLoad={() => setIsLoading(false)}
+            onError={() => {
+              setIsLoading(false);
+              setHasError(true);
+            }}
+            unoptimized // Allow external URLs
+          />
+          
+          {/* Hover Overlay */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+              </svg>
+              Click to expand
+            </div>
+          </div>
+        </div>
+        
+        {/* Source indicator */}
+        {url.includes('cloudinary.com') && (
+          <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: nicoleColors.textTertiary }}>
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Screenshot captured by Nicole
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox Modal */}
+      {isExpanded && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setIsExpanded(false)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            onClick={() => setIsExpanded(false)}
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          <div className="max-w-6xl max-h-[90vh] relative" onClick={e => e.stopPropagation()}>
+            <Image
+              src={url}
+              alt={alt || 'Screenshot captured by Nicole'}
+              width={1920}
+              height={1080}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              unoptimized
+            />
+            
+            {/* Download button */}
+            <a
+              href={url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute bottom-4 right-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+              onClick={e => e.stopPropagation()}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </a>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ============================================================================
 // CODE BLOCK RENDERER
 // ============================================================================
 
@@ -417,6 +657,12 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({ block }) => {
           iconType="code"
         />
       );
+    }
+    
+    case 'image': {
+      const imageData = block.metadata as ImageBlockData | undefined;
+      const url = imageData?.url || block.content;
+      return <ImageBlock url={url} alt={imageData?.alt} />;
     }
     
     case 'table': {

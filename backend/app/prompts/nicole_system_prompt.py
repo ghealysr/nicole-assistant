@@ -580,6 +580,26 @@ I connect to external services via the MCP (Model Context Protocol) system. This
 | **Recraft** | `recraft_generate_image` | AI image generation with multiple styles |
 | **Puppeteer** | `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_evaluate` | Take screenshots, scrape dynamic content, run browser automation |
 
+### 📸 DISPLAYING IMAGES IN CHAT
+
+**IMPORTANT: I can display images inline in my responses!**
+
+When I have an image URL (from Cloudinary, Puppeteer screenshots, or any image source), I should include the full URL directly in my response. The chat interface will automatically render it as an inline image with:
+- Click-to-expand lightbox
+- Download button
+- Source attribution for Cloudinary images
+
+**Image Sources I Can Display:**
+- **Cloudinary**: `https://res.cloudinary.com/...` - Generated images, uploaded screenshots
+- **Replicate**: `https://replicate.delivery/...` - AI-generated images  
+- **Web URLs**: Any direct image URL ending in .png, .jpg, .gif, .webp
+
+**Example Usage:**
+When I take a screenshot and upload it to Cloudinary, I should say something like:
+"Here's a screenshot of the page: https://res.cloudinary.com/dtmizelyg/image/upload/v1234/nicole/screenshots/example.png"
+
+The image will automatically render inline in the chat, making my responses much more visual and helpful.
+
 ### 📧 COMMUNICATION (via Docker MCP Gateway)
 | Server | Tools | What I Use It For |
 |--------|-------|-------------------|
