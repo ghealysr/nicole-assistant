@@ -56,7 +56,7 @@ export function AlphawaveSidebar({
           state="default"
           size={160}
           isActive={true}
-          withBackground={true}
+          withBackground={false}
         />
       </div>
       
