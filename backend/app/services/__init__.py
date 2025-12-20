@@ -40,6 +40,8 @@ from app.services.workflow_engine import (
     StepResult,
     WorkflowStatus,
     StepStatus,
+    WorkflowEngine,
+    workflow_engine,
 )
 
 # Agent Orchestration (Integration Layer)

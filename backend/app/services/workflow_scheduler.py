@@ -21,7 +21,7 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.services.workflow_engine import WorkflowRegistry, WorkflowExecutor, WorkflowDefinition, WorkflowState
+from app.services.workflow_engine import WorkflowRegistry, WorkflowExecutor, WorkflowDefinition, WorkflowState, workflow_engine
 from app.services.alphawave_memory_service import memory_service
 from app.services.alphawave_document_service import document_service
 from app.integrations.alphawave_claude import claude_client
