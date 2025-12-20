@@ -101,6 +101,7 @@ const GlowingOrb = memo(function GlowingOrb({
   isActive, 
   isPrimary = false,
   index = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   totalOrbs = 1
 }: OrbProps) {
   const size = isPrimary ? 64 : 40;
@@ -255,34 +256,6 @@ const GlowingOrb = memo(function GlowingOrb({
         />
       )}
     </div>
-  );
-});
-
-// ============================================================================
-// CONNECTING ENERGY BEAMS - Between orbs
-// ============================================================================
-
-interface EnergyBeamProps {
-  isActive: boolean;
-  fromIndex: number;
-  toIndex: number;
-}
-
-const EnergyBeam = memo(function EnergyBeam({ isActive, fromIndex, toIndex }: EnergyBeamProps) {
-  if (!isActive) return null;
-  
-  const delay = (fromIndex + toIndex) * 0.1;
-  
-  return (
-    <div
-      className="absolute h-[2px] pointer-events-none"
-      style={{
-        width: '20px',
-        background: 'linear-gradient(90deg, transparent, rgba(147, 112, 219, 0.5), transparent)',
-        animation: `beamFlow 1s ease-in-out ${delay}s infinite`,
-        opacity: 0.6,
-      }}
-    />
   );
 });
 
