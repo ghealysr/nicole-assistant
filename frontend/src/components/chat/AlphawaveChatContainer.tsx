@@ -11,7 +11,8 @@ import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
 import { LotusSphere } from './LotusSphere';
-import { ThinkingIndicator, useThinkingState, type ThinkingState } from './ThinkingIndicator';
+// ThinkingIndicator & useThinkingState available for future use
+// import { ThinkingIndicator, useThinkingState, type ThinkingState } from './ThinkingIndicator';
 import type { ThinkingStep, ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
 interface Message {
