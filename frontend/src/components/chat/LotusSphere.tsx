@@ -66,7 +66,8 @@ export const LotusSphere = memo(function LotusSphere({
     const scale = size / 500;
     const cx = size / 2;
     const cy = size / 2;
-    const sphereRadius = 180 * scale;
+    // Reduced from 180 to 160 to ensure nothing is clipped
+    const sphereRadius = 160 * scale;
     
     // Draw petal with luminous glow
     const drawPetal = (
@@ -203,15 +204,16 @@ export const LotusSphere = memo(function LotusSphere({
         ctx.fillRect(0, 0, size, size);
       }
       
-      // Outer ambient glow - larger, softer
-      const outerAmbient = ctx.createRadialGradient(cx, cy, sphereRadius * 0.5, cx, cy, sphereRadius * 1.8);
-      outerAmbient.addColorStop(0, 'rgba(150, 100, 220, 0.15)');
-      outerAmbient.addColorStop(0.4, 'rgba(120, 70, 180, 0.1)');
-      outerAmbient.addColorStop(0.7, 'rgba(90, 50, 150, 0.05)');
+      // Outer ambient glow - contained within canvas bounds
+      const maxGlowRadius = Math.min(cx, cy) * 0.98; // Stay within canvas
+      const outerAmbient = ctx.createRadialGradient(cx, cy, sphereRadius * 0.5, cx, cy, maxGlowRadius);
+      outerAmbient.addColorStop(0, 'rgba(150, 100, 220, 0.12)');
+      outerAmbient.addColorStop(0.5, 'rgba(120, 70, 180, 0.06)');
+      outerAmbient.addColorStop(0.8, 'rgba(90, 50, 150, 0.02)');
       outerAmbient.addColorStop(1, 'rgba(60, 30, 100, 0)');
       ctx.fillStyle = outerAmbient;
       ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius * 1.8, 0, Math.PI * 2);
+      ctx.arc(cx, cy, maxGlowRadius, 0, Math.PI * 2);
       ctx.fill();
       
       // Glass sphere - more translucent with purple tint
@@ -455,17 +457,17 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = topHighlight;
       ctx.fill();
       
-      // Bottom rim glow - purple accents
+      // Bottom rim glow - purple accents (contained within sphere)
       ctx.beginPath();
-      ctx.arc(cx, cy + sphereRadius * 0.08, sphereRadius * 0.92, Math.PI * 0.55, Math.PI * 0.95);
-      ctx.strokeStyle = 'rgba(160, 120, 230, 0.3)';
-      ctx.lineWidth = 14 * scale;
+      ctx.arc(cx, cy, sphereRadius * 0.88, Math.PI * 0.6, Math.PI * 0.9);
+      ctx.strokeStyle = 'rgba(160, 120, 230, 0.25)';
+      ctx.lineWidth = 10 * scale;
       ctx.stroke();
       
       ctx.beginPath();
-      ctx.arc(cx, cy + sphereRadius * 0.08, sphereRadius * 0.92, Math.PI * 0.05, Math.PI * 0.45);
-      ctx.strokeStyle = 'rgba(160, 120, 230, 0.3)';
-      ctx.lineWidth = 14 * scale;
+      ctx.arc(cx, cy, sphereRadius * 0.88, Math.PI * 0.1, Math.PI * 0.4);
+      ctx.strokeStyle = 'rgba(160, 120, 230, 0.25)';
+      ctx.lineWidth = 10 * scale;
       ctx.stroke();
       
       if (isActive && !prefersReducedMotion) {
