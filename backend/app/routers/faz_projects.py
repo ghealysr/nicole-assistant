@@ -652,13 +652,28 @@ async def update_project_architecture(
 # DEPLOYMENT
 # =============================================================================
 
+class DeployRequest(BaseModel):
+    """Deploy request options."""
+    skip_github: bool = False  # If True, only deploy to Vercel (requires existing repo)
+    private_repo: bool = False  # Create private GitHub repo
+
+
 @router.post("/projects/{project_id}/deploy")
 async def deploy_project(
     project_id: int,
     background_tasks: BackgroundTasks,
+    request: Optional[DeployRequest] = None,
     user = Depends(get_current_user),
 ):
-    """Deploy project to Vercel."""
+    """
+    Deploy project to GitHub and Vercel.
+    
+    Steps:
+    1. Create GitHub repository
+    2. Commit all project files
+    3. Create Vercel project linked to GitHub
+    4. Trigger Vercel deployment
+    """
     try:
         project = await db.fetchrow(
             "SELECT * FROM faz_projects WHERE project_id = $1 AND user_id = $2",
@@ -669,8 +684,21 @@ async def deploy_project(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        if project["status"] not in ["approved", "review"]:
-            raise HTTPException(status_code=400, detail="Project must be approved before deployment")
+        # Allow deployment from approved, review, or delivered states
+        if project["status"] not in ["approved", "review", "delivered", "deployed"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Project must be approved before deployment (current: {project['status']})"
+            )
+        
+        # Check if we have files
+        file_count = await db.fetchval(
+            "SELECT COUNT(*) FROM faz_files WHERE project_id = $1",
+            project_id,
+        )
+        
+        if not file_count:
+            raise HTTPException(status_code=400, detail="No files to deploy")
         
         # Update status
         await db.execute(
@@ -679,69 +707,95 @@ async def deploy_project(
         )
         
         # Deploy in background
+        req = request or DeployRequest()
+        
         async def deploy_in_background():
             try:
-                from app.integrations.github_service import github_service
-                from app.integrations.vercel_service import vercel_service
+                from app.services.faz_github_service import deploy_project_to_github
+                from app.services.faz_vercel_service import deploy_project_to_vercel
                 
-                # Get files
-                files = await db.fetch(
-                    "SELECT path, content FROM faz_files WHERE project_id = $1",
-                    project_id,
-                )
-                
-                file_dict = {f["path"]: f["content"] for f in files}
-                
-                # Create GitHub repo
-                repo_name = project["slug"]
-                repo_result = await github_service.create_repo(repo_name)
-                
-                if repo_result.get("success"):
-                    # Push files
-                    await github_service.push_files(repo_name, file_dict)
-                    
-                    # Create Vercel project
-                    vercel_result = await vercel_service.create_project(
-                        repo_name,
-                        repo_result.get("full_name"),
+                # Step 1: Deploy to GitHub
+                if not req.skip_github or not project.get("github_repo"):
+                    github_result = await deploy_project_to_github(
+                        project_id,
+                        user.user_id,
                     )
                     
-                    if vercel_result.get("success"):
-                        # Trigger deployment
-                        deploy_result = await vercel_service.trigger_deployment(
-                            vercel_result.get("project_id"),
-                        )
-                        
-                        # Update project
+                    if github_result.get("error"):
+                        logger.error(f"[Faz] GitHub deploy failed: {github_result['error']}")
                         await db.execute(
-                            """
-                            UPDATE faz_projects
-                            SET status = 'deployed',
-                                github_repo = $1,
-                                vercel_project_id = $2,
-                                preview_url = $3,
-                                deployed_at = NOW(),
-                                updated_at = NOW()
-                            WHERE project_id = $4
-                            """,
-                            repo_result.get("full_name"),
-                            vercel_result.get("project_id"),
-                            deploy_result.get("url"),
+                            """UPDATE faz_projects 
+                               SET status = 'failed', 
+                                   status_history = status_history || $1::jsonb,
+                                   updated_at = NOW() 
+                               WHERE project_id = $2""",
+                            json.dumps([{"status": "failed", "error": github_result["error"], 
+                                       "stage": "github", "timestamp": datetime.utcnow().isoformat()}]),
                             project_id,
                         )
-                        
                         return
+                    
+                    github_repo = github_result.get("repo_name")
+                    github_url = github_result.get("github_url")
+                    logger.info(f"[Faz] GitHub deploy success: {github_url}")
+                else:
+                    github_repo = project.get("github_repo")
+                    if "github.com" in github_repo:
+                        github_repo = github_repo.replace("https://github.com/", "")
                 
-                # If we get here, something failed
+                # Step 2: Deploy to Vercel
+                vercel_result = await deploy_project_to_vercel(
+                    project_id,
+                    user.user_id,
+                    github_repo,
+                )
+                
+                if vercel_result.get("error"):
+                    logger.error(f"[Faz] Vercel deploy failed: {vercel_result['error']}")
+                    await db.execute(
+                        """UPDATE faz_projects 
+                           SET status = 'failed', 
+                               status_history = status_history || $1::jsonb,
+                               updated_at = NOW() 
+                           WHERE project_id = $2""",
+                        json.dumps([{"status": "failed", "error": vercel_result["error"],
+                                   "stage": "vercel", "timestamp": datetime.utcnow().isoformat()}]),
+                        project_id,
+                    )
+                    return
+                
+                # Step 3: Update project with deployment info
                 await db.execute(
-                    "UPDATE faz_projects SET status = 'failed', updated_at = NOW() WHERE project_id = $1",
+                    """UPDATE faz_projects
+                       SET status = 'deployed',
+                           production_url = $1,
+                           vercel_project_id = $2,
+                           status_history = status_history || $3::jsonb,
+                           updated_at = NOW()
+                       WHERE project_id = $4""",
+                    vercel_result.get("production_url"),
+                    vercel_result.get("vercel_project_id"),
+                    json.dumps([{
+                        "status": "deployed",
+                        "production_url": vercel_result.get("production_url"),
+                        "github_repo": github_repo,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }]),
                     project_id,
                 )
+                
+                logger.info(f"[Faz] Project {project_id} deployed to {vercel_result.get('production_url')}")
                 
             except Exception as e:
                 logger.exception(f"[Faz] Deployment failed for project {project_id}: {e}")
                 await db.execute(
-                    "UPDATE faz_projects SET status = 'failed', updated_at = NOW() WHERE project_id = $1",
+                    """UPDATE faz_projects 
+                       SET status = 'failed', 
+                           status_history = status_history || $1::jsonb,
+                           updated_at = NOW() 
+                       WHERE project_id = $2""",
+                    json.dumps([{"status": "failed", "error": str(e),
+                               "timestamp": datetime.utcnow().isoformat()}]),
                     project_id,
                 )
         
@@ -751,11 +805,54 @@ async def deploy_project(
             "success": True,
             "message": "Deployment started",
             "project_id": project_id,
+            "status": "deploying",
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"[Faz] Failed to start deployment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/deploy/status")
+async def get_deploy_status(
+    project_id: int,
+    user = Depends(get_current_user),
+):
+    """Get deployment status for a project."""
+    try:
+        project = await db.fetchrow(
+            """SELECT project_id, status, github_repo, vercel_project_id, 
+                      preview_url, production_url, status_history
+               FROM faz_projects 
+               WHERE project_id = $1 AND user_id = $2""",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # If deploying, check Vercel status
+        live_status = None
+        if project["status"] == "deploying" and project["vercel_project_id"]:
+            from app.services.faz_vercel_service import check_deployment_status
+            live_status = await check_deployment_status(project_id)
+        
+        return {
+            "project_id": project_id,
+            "status": project["status"],
+            "github_repo": project["github_repo"],
+            "vercel_project_id": project["vercel_project_id"],
+            "preview_url": project["preview_url"],
+            "production_url": project["production_url"],
+            "deployment_status": live_status,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to get deploy status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

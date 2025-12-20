@@ -1,21 +1,65 @@
-version: "3.9"
+# =============================================================================
+# FAZ CODE - DOCKER COMPOSE
+# =============================================================================
+#
+# Supporting services for Faz Code dashboard.
+# Use with: docker compose up -d
+#
+# Services:
+#   - Redis: Session cache, pub/sub
+#   - Qdrant: Vector database for embeddings
+#
+# The main API runs via Supervisor, not Docker.
+#
+# =============================================================================
+
+version: '3.8'
+
 services:
+  # ---------------------------------------------------------------------------
+  # Redis - Cache & Pub/Sub
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
+    container_name: nicole-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # ---------------------------------------------------------------------------
+  # Qdrant - Vector Database
+  # ---------------------------------------------------------------------------
   qdrant:
     image: qdrant/qdrant:latest
+    container_name: nicole-qdrant
+    restart: unless-stopped
     ports:
       - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-    restart: always
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   redis_data:
+    driver: local
   qdrant_data:
+    driver: local
+
+networks:
+  default:
+    name: nicole-network
