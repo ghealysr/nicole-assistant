@@ -385,21 +385,34 @@ export function AlphawaveChatContainer() {
 
   // Calculate LotusSphere state based on activity
   const getLotusSphereState = (): ThinkingState => {
-    if (!hasMessages && !isPendingAssistant) return 'default';
-    
-    if (isPendingAssistant) {
-      // Check for specific tool activity
+    // Active states - user sent message and awaiting response
+    if (isLoading || isPendingAssistant) {
+      // Check for specific tool activity first
       if (activityStatus?.toolUses?.some(t => t.isActive)) {
         const activeTool = activityStatus.toolUses.find(t => t.isActive);
-        if (activeTool?.name?.toLowerCase().includes('search')) return 'searching';
+        const toolName = activeTool?.name?.toLowerCase() || '';
+        
+        // Map tool types to animations
+        if (toolName.includes('search') || toolName.includes('brave') || toolName.includes('web')) {
+          return 'searching';
+        }
+        if (toolName.includes('memory') || toolName.includes('recall')) {
+          return 'thinking';
+        }
+        // All other tools = processing (orange bursts)
         return 'processing';
       }
+      
+      // Extended thinking active
       if (activityStatus?.extendedThinking?.isThinking) return 'thinking';
       if (activityStatus?.extendedThinking?.isStreaming) return 'thinking';
-      return 'searching'; // Default "waiting" state
+      
+      // Loading but no specific activity yet - searching (yellow pulse)
+      return 'searching';
     }
     
-    return 'default'; // Idle
+    // Idle state
+    return 'default';
   };
 
   return (
@@ -441,13 +454,15 @@ export function AlphawaveChatContainer() {
                 </div>
               )}
               
-              {/* SINGLE PERSISTENT LOTUS SPHERE - always at bottom */}
-              <div className="flex justify-center py-6">
-                <LotusSphere 
-                  state={getLotusSphereState()}
-                  size={56}
-                  isActive={true}
-                />
+              {/* SINGLE PERSISTENT LOTUS SPHERE - left aligned under response */}
+              <div className="px-6 pt-2 pb-4">
+                <div className="max-w-[800px] mx-auto pl-11">
+                  <LotusSphere 
+                    state={getLotusSphereState()}
+                    size={72}
+                    isActive={true}
+                  />
+                </div>
               </div>
               
               {/* Scroll anchor */}

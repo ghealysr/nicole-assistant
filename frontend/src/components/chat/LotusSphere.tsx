@@ -356,27 +356,30 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = haloGrad;
       ctx.fill();
       
-      // Inner core
-      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, centerSize * 0.6);
-      coreGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.95)`);
-      coreGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.55)`);
+      // PURE LIGHT CENTER - no visible shape, just radiant glow
+      // Larger, softer core glow
+      const coreSize = centerSize * 1.2;
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreSize);
+      coreGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
+      coreGrad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, 0.5)`);
+      coreGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.25)`);
       coreGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
       
       ctx.beginPath();
-      ctx.arc(cx, cy, centerSize * 0.6, 0, Math.PI * 2);
+      ctx.arc(cx, cy, coreSize, 0, Math.PI * 2);
       ctx.fillStyle = coreGrad;
       ctx.fill();
       
-      // Center bright point
-      const dotSize = Math.max(2, 3.5 * scale);
-      const dotGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dotSize);
-      dotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
-      dotGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.65)`);
-      dotGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      // Inner bright bloom - pure light, no hard edges
+      const bloomSize = centerSize * 0.5;
+      const bloomGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, bloomSize);
+      bloomGrad.addColorStop(0, `rgba(255, 255, 255, 0.9)`);
+      bloomGrad.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, 0.6)`);
+      bloomGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
       
       ctx.beginPath();
-      ctx.arc(cx, cy, dotSize, 0, Math.PI * 2);
-      ctx.fillStyle = dotGrad;
+      ctx.arc(cx, cy, bloomSize, 0, Math.PI * 2);
+      ctx.fillStyle = bloomGrad;
       ctx.fill();
       
       // PURPLE BORDER/STROKE - makes sphere look rounder
