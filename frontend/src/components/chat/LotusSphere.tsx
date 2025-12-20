@@ -205,9 +205,8 @@ export const LotusSphere = memo(function LotusSphere({
         centerSize = 25 * scaleFactor;
       }
       
-      // Clear with black background
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, size, size);
+      // Clear canvas (transparent background)
+      ctx.clearRect(0, 0, size, size);
       
       // Ambient glow
       const ambientGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.8, cx, cy, sphereRadius * 1.5);
