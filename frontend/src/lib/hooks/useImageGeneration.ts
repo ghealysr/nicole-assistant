@@ -37,6 +37,8 @@ export interface ImageVariant {
   user_rating?: number;
   error_message?: string;
   created_at: string;
+  width?: number;
+  height?: number;
 }
 
 export interface ImagePreset {
@@ -334,19 +336,21 @@ export function useImageGeneration() {
                   // Extract variants from response and transform to frontend format
                   const rawVariants = parsed.variants || [];
                   const transformedVariants: ImageVariant[] = rawVariants.map((v: Record<string, unknown>, index: number) => ({
-                    id: v.variant_id || v.id || index,
-                    job_id: v.job_id || parsed.job_id || 0,
-                    variant_number: v.version_number || index + 1,
-                    image_url: v.cdn_url || v.image_url,
-                    thumbnail_url: v.thumbnail_url,
-                    enhanced_prompt: v.enhanced_prompt,
-                    model_used: v.model_key || v.model_used || 'recraft',
-                    generation_time_ms: v.generation_time_ms,
-                    cost: v.cost_usd || v.cost,
+                    id: (v.variant_id || v.id || index) as number,
+                    job_id: (v.job_id || parsed.job_id || 0) as number,
+                    variant_number: (v.version_number || index + 1) as number,
+                    image_url: (v.cdn_url || v.image_url) as string | undefined,
+                    thumbnail_url: v.thumbnail_url as string | undefined,
+                    enhanced_prompt: v.enhanced_prompt as string | undefined,
+                    model_used: (v.model_key || v.model_used || 'recraft') as string,
+                    generation_time_ms: v.generation_time_ms as number | undefined,
+                    cost: (v.cost_usd || v.cost) as number | undefined,
                     status: 'completed' as const,
-                    is_favorite: v.is_favorite || false,
-                    user_rating: v.user_rating,
-                    created_at: v.created_at || new Date().toISOString(),
+                    is_favorite: (v.is_favorite || false) as boolean,
+                    user_rating: v.user_rating as number | undefined,
+                    created_at: (v.created_at || new Date().toISOString()) as string,
+                    width: (v.width || 1024) as number,
+                    height: (v.height || 1024) as number,
                   }));
                   
                   if (transformedVariants.length > 0) {

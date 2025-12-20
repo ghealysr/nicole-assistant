@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { useImageGeneration } from '@/lib/hooks/useImageGeneration';
+import { useImageGeneration, ImageVariant } from '@/lib/hooks/useImageGeneration';
 import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, Wand2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { ReferenceImageAnalysis } from '../image-studio/ReferenceImageAnalysis';
@@ -130,6 +130,9 @@ export default function AlphawaveImageStudio({
   const [promptAnalysis, setPromptAnalysis] = useState<PromptAnalysis | null>(null);
   const [isGettingSuggestions, setIsGettingSuggestions] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  
+  // Lightbox State
+  const [lightboxImage, setLightboxImage] = useState<ImageVariant | null>(null);
   
   const { 
     startGeneration, 
@@ -454,6 +457,28 @@ export default function AlphawaveImageStudio({
     }
   };
   
+  // Download image handler
+  const handleDownload = async (variant: ImageVariant) => {
+    if (!variant.image_url) return;
+    
+    try {
+      const response = await fetch(variant.image_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `alphawave-${variant.id}-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      // Fallback: open in new tab
+      window.open(variant.image_url, '_blank');
+    }
+  };
+  
   // Don't render if not open
   if (!isOpen) return null;
   
@@ -465,10 +490,10 @@ export default function AlphawaveImageStudio({
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-purple-400" />
-              Advanced Image Studio
+              AlphaWave Image Studio
             </h1>
-            <p className="text-sm text-gray-400 mt-1">
-              Multi-agent system • Gemini 3 Pro • GPT Image • FLUX • Ideogram • Seedream • Recraft
+            <p className="text-sm mt-1" style={{ color: '#00CED1' }}>
+              Multi-agent System
             </p>
           </div>
           
@@ -508,6 +533,123 @@ export default function AlphawaveImageStudio({
           
           {selectedTab === 'create' && (
             <>
+              {/* Generated Images Section - AT TOP */}
+              {(isGenerating || currentJobId !== null || (variants.length > 0)) && (
+                <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">
+                      {isGenerating ? 'Generating Images...' : 'Generated Images'}
+                    </h3>
+                    {isGenerating && (
+                      <div className="flex items-center gap-2 text-purple-400">
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">In progress</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className={`grid gap-4 ${
+                    imageCount === 1 ? 'grid-cols-1' :
+                    imageCount === 2 ? 'grid-cols-2' :
+                    'grid-cols-2'
+                  }`}>
+                    {/* Show slots during generation or actual variants after */}
+                    {isGenerating ? (
+                      // Placeholder slots during generation
+                      Array.from({ length: imageCount }).map((_, index) => {
+                        const displayJobId = currentJobId || jobs[0]?.id;
+                        const variant = variants.find((v, i) => i === index && v.job_id === displayJobId);
+                        const isComplete = variant?.status === 'completed' && variant?.image_url;
+                        
+                        return (
+                          <div
+                            key={index}
+                            className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
+                          >
+                            <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
+                              {isComplete ? (
+                                <Image
+                                  src={variant.image_url!}
+                                  alt={`Generated ${index + 1}`}
+                                  fill
+                                  className="object-contain"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                                  <RefreshCw className="w-12 h-12 text-purple-400 animate-spin" />
+                                  <div className="text-sm text-gray-400">
+                                    {variant?.status === 'generating' ? 'Generating...' : 'Waiting...'}
+                                  </div>
+                                  {multiModelMode && modelSlots[index] && (
+                                    <div className="text-xs text-gray-500">
+                                      {models.find(m => m.key === modelSlots[index].model)?.name}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                              Slot {index + 1}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      // Completed variants - use currentJobId first, fallback to jobs[0]?.id
+                      variants.filter(v => v.job_id === (currentJobId || jobs[0]?.id)).slice(0, imageCount).map((variant, index: number) => (
+                        <div
+                          key={variant.id}
+                          className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
+                        >
+                          <div 
+                            className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden cursor-pointer"
+                            onClick={() => setLightboxImage(variant)}
+                          >
+                            {variant.image_url ? (
+                              <Image
+                                src={variant.image_url}
+                                alt={`Generated ${index + 1}`}
+                                fill
+                                className="object-contain"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon className="w-16 h-16 text-gray-700" />
+                              </div>
+                            )}
+                            
+                            {/* Overlay on Hover */}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setLightboxImage(variant); }}
+                                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
+                                title="View fullscreen"
+                              >
+                                <Eye className="w-5 h-5" />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDownload(variant); }}
+                                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
+                                title="Download image"
+                              >
+                                <Download className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Model Badge */}
+                          {multiModelMode && modelSlots[index] && (
+                            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+                              {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+              
               {/* Prompt Input Section */}
               <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -817,112 +959,6 @@ export default function AlphawaveImageStudio({
                   </>
                 )}
               </button>
-              
-              {/* Generation Progress/Results */}
-              {(isGenerating || currentJobId !== null || (jobs.length > 0 && jobs[0].status !== 'failed')) && (
-                <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-white">
-                      {isGenerating ? 'Generating Images...' : 'Generated Images'}
-                    </h3>
-                    {isGenerating && (
-                      <div className="flex items-center gap-2 text-purple-400">
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span className="text-sm">In progress</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className={`grid gap-4 ${
-                    imageCount === 1 ? 'grid-cols-1' :
-                    imageCount === 2 ? 'grid-cols-2' :
-                    'grid-cols-2'
-                  }`}>
-                    {/* Show slots during generation or actual variants after */}
-                    {isGenerating ? (
-                      // Placeholder slots during generation
-                      Array.from({ length: imageCount }).map((_, index) => {
-                        const displayJobId = currentJobId || jobs[0]?.id;
-                        const variant = variants.find((v, i) => i === index && v.job_id === displayJobId);
-                        const isComplete = variant?.status === 'completed' && variant?.image_url;
-                        
-                        return (
-                          <div
-                            key={index}
-                            className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
-                          >
-                            <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
-                              {isComplete ? (
-                                <Image
-                                  src={variant.image_url!}
-                                  alt={`Generated ${index + 1}`}
-                                  fill
-                                  className="object-contain"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                  <RefreshCw className="w-12 h-12 text-purple-400 animate-spin" />
-                                  <div className="text-sm text-gray-400">
-                                    {variant?.status === 'generating' ? 'Generating...' : 'Waiting...'}
-                                  </div>
-                                  {multiModelMode && modelSlots[index] && (
-                                    <div className="text-xs text-gray-500">
-                                      {models.find(m => m.key === modelSlots[index].model)?.name}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                              Slot {index + 1}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      // Completed variants - use currentJobId first, fallback to jobs[0]?.id
-                      variants.filter(v => v.job_id === (currentJobId || jobs[0]?.id)).slice(0, imageCount).map((variant, index: number) => (
-                        <div
-                          key={variant.id}
-                          className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
-                        >
-                          <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
-                            {variant.image_url ? (
-                              <Image
-                                src={variant.image_url}
-                                alt={`Generated ${index + 1}`}
-                                fill
-                                className="object-contain"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <ImageIcon className="w-16 h-16 text-gray-700" />
-                              </div>
-                            )}
-                            
-                            {/* Overlay on Hover */}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                              <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
-                                <Eye className="w-5 h-5" />
-                              </button>
-                              <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all">
-                                <Download className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {/* Model Badge */}
-                          {multiModelMode && modelSlots[index] && (
-                            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
-                              {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
             </>
           )}
           
@@ -971,6 +1007,57 @@ export default function AlphawaveImageStudio({
           )}
         </div>
       </div>
+      
+      {/* Lightbox Modal */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            {/* Close Button */}
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute -top-12 right-0 text-white/70 hover:text-white transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+            
+            {/* Image */}
+            {lightboxImage.image_url && (
+              <Image
+                src={lightboxImage.image_url}
+                alt="Generated image fullscreen"
+                width={lightboxImage.width || 1024}
+                height={lightboxImage.height || 1024}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
+            
+            {/* Actions Bar */}
+            <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-4">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDownload(lightboxImage); }}
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg transition-all"
+              >
+                <Download className="w-5 h-5" />
+                Download
+              </button>
+            </div>
+            
+            {/* Prompt Info */}
+            <div 
+              className="absolute left-0 right-0 -bottom-32 bg-black/50 backdrop-blur-sm rounded-lg p-4 max-w-2xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm text-gray-300 line-clamp-2">
+                {lightboxImage.enhanced_prompt || 'Generated image'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
