@@ -633,18 +633,23 @@ export default function AlphawaveImageStudio({
                               {/* Sparkle/bubble animation overlay */}
                               <div className="absolute inset-0 overflow-hidden">
                                 {/* CSS-based sparkle animation */}
-                                <div className="sparkle-container absolute inset-0">
-                                  {isGenerating && Array.from({ length: 20 }).map((_, i) => (
-                                    <div
-                                      key={i}
-                                      className="absolute w-1 h-1 bg-white/30 rounded-full animate-sparkle-rise"
-                                      style={{
-                                        left: `${Math.random() * 100}%`,
-                                        animationDelay: `${Math.random() * 2}s`,
-                                        animationDuration: `${1.5 + Math.random() * 1}s`,
-                                      }}
-                                    />
-                                  ))}
+                                <div className="absolute inset-0">
+                                  {isGenerating && Array.from({ length: 20 }).map((_, i) => {
+                                    const leftPos = 5 + (i * 4.5); // Spread evenly
+                                    const delay = (i % 5) * 0.4;
+                                    const duration = 1.5 + (i % 3) * 0.5;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="absolute w-1 h-1 bg-white/40 rounded-full"
+                                        style={{
+                                          left: `${leftPos}%`,
+                                          bottom: '-4px',
+                                          animation: `sparkleRise ${duration}s linear ${delay}s infinite`,
+                                        }}
+                                      />
+                                    );
+                                  })}
                                 </div>
                                 
                                 {/* Subtle texture overlay */}
@@ -690,28 +695,25 @@ export default function AlphawaveImageStudio({
                 </div>
                 
                 {/* Add CSS for sparkle animation */}
-                <style jsx>{`
-                  @keyframes sparkle-rise {
+                <style dangerouslySetInnerHTML={{ __html: `
+                  @keyframes sparkleRise {
                     0% {
-                      transform: translateY(100%) scale(0);
+                      transform: translateY(0) scale(0.5);
                       opacity: 0;
                     }
                     10% {
-                      opacity: 1;
-                      transform: translateY(90%) scale(1);
+                      opacity: 0.8;
+                      transform: translateY(-20px) scale(1);
                     }
                     90% {
-                      opacity: 0.8;
+                      opacity: 0.6;
                     }
                     100% {
-                      transform: translateY(-20%) scale(0.5);
+                      transform: translateY(-200px) scale(0.3);
                       opacity: 0;
                     }
                   }
-                  .animate-sparkle-rise {
-                    animation: sparkle-rise linear infinite;
-                  }
-                `}</style>
+                `}} />
               </div>
               
               {/* Prompt Input Section */}
