@@ -1070,6 +1070,13 @@ class AgentOrchestrator:
                     logger.debug(f"[ORCHESTRATOR] Found {tool_name} in Docker Gateway, executing via MCP")
                     # Execute via call_mcp_tool which will route to Docker Gateway
                     result = await call_mcp_tool(tool_name, tool_input)
+                    
+                    # Special handling: Upload screenshots to Cloudinary
+                    if tool_name == "puppeteer_screenshot":
+                        cloudinary_result = await self._upload_screenshot_to_cloudinary(result)
+                        if cloudinary_result:
+                            return cloudinary_result
+                    
                     return result
         except Exception as e:
             logger.debug(f"[ORCHESTRATOR] Docker Gateway check failed: {e}")
@@ -1124,6 +1131,12 @@ class AgentOrchestrator:
                     "remediation": remediation,
                 }
             
+            # Special handling: Upload screenshots to Cloudinary
+            if tool_name == "puppeteer_screenshot":
+                cloudinary_result = await self._upload_screenshot_to_cloudinary(result)
+                if cloudinary_result:
+                    return cloudinary_result
+            
             return {
                 "status": "success",
                 "result": result.get("result", result) if isinstance(result, dict) else result,
@@ -1177,6 +1190,85 @@ class AgentOrchestrator:
             return f"Check the input parameters for {tool_name}. Some required fields may be missing."
         
         return f"Review the error message and {server_name} documentation for guidance."
+    
+    async def _upload_screenshot_to_cloudinary(
+        self,
+        result: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Upload a screenshot (base64) to Cloudinary and return the URL.
+        
+        This intercepts puppeteer_screenshot results and uploads them to Cloudinary
+        so Claude can include the permanent URL in responses.
+        
+        Args:
+            result: The raw MCP tool result containing base64 screenshot data
+            
+        Returns:
+            Dict with Cloudinary URL, or None if upload fails
+        """
+        try:
+            from app.services.alphawave_cloudinary_service import cloudinary_service
+            from datetime import datetime
+            
+            # Extract base64 data from result
+            base64_data = None
+            
+            if isinstance(result, dict):
+                # Try common keys where screenshot data might be
+                base64_data = (
+                    result.get("data") or 
+                    result.get("screenshot") or 
+                    result.get("image") or
+                    result.get("result", {}).get("data") if isinstance(result.get("result"), dict) else None
+                )
+            elif isinstance(result, str) and len(result) > 100:
+                # Direct base64 string
+                base64_data = result
+            
+            if not base64_data:
+                logger.warning("[ORCHESTRATOR] No base64 data found in screenshot result")
+                return None
+            
+            # Clean base64 data (remove data URI prefix if present)
+            if isinstance(base64_data, str) and "," in base64_data:
+                base64_data = base64_data.split(",")[1]
+            
+            # Generate unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            public_id = f"screenshot_{timestamp}"
+            
+            # Upload to Cloudinary
+            upload_result = cloudinary_service.upload_from_base64(
+                base64_data=base64_data,
+                folder="screenshots",
+                public_id=public_id,
+                tags=["nicole", "puppeteer", "screenshot"]
+            )
+            
+            if upload_result.get("success") and upload_result.get("url"):
+                cloudinary_url = upload_result.get("url")
+                logger.info(f"[ORCHESTRATOR] Screenshot uploaded to Cloudinary: {cloudinary_url}")
+                
+                return {
+                    "status": "success",
+                    "result": {
+                        "screenshot_url": cloudinary_url,
+                        "message": f"Screenshot captured successfully. The image is available at: {cloudinary_url}",
+                        "width": upload_result.get("width"),
+                        "height": upload_result.get("height"),
+                    },
+                    "tool": "puppeteer_screenshot",
+                    "server": "puppeteer",
+                    "image_url": cloudinary_url,  # Also at top level for easy access
+                }
+            else:
+                logger.warning(f"[ORCHESTRATOR] Cloudinary upload failed: {upload_result.get('error')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Screenshot upload to Cloudinary failed: {e}", exc_info=True)
+            return None
     
     def get_tool_executor(self, user_id: int, session_id: Optional[str] = None):
         """
