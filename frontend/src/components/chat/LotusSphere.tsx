@@ -487,7 +487,6 @@ export const LotusSphere = memo(function LotusSphere({
       ref={canvasRef}
       className={className}
       style={{
-        filter: isActive ? 'drop-shadow(0 0 25px rgba(140, 100, 200, 0.35))' : 'none',
         display: 'block',
       }}
       aria-label="Nicole thinking indicator"
