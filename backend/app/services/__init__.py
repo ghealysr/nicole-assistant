@@ -32,7 +32,7 @@ from app.services.think_tool import think_tool_service, ThinkingStep, ThinkingSe
 from app.services.tool_search_service import tool_search_service, ToolCategory
 from app.services.tool_examples import tool_examples_service
 from app.services.workflow_engine import (
-    workflow_registry,
+    WorkflowRegistry,
     WorkflowExecutor,
     WorkflowDefinition,
     WorkflowState,
@@ -72,7 +72,7 @@ __all__ = [
     "tool_search_service",
     "ToolCategory",
     "tool_examples_service",
-    "workflow_registry",
+    "WorkflowRegistry",
     "WorkflowExecutor",
     "WorkflowDefinition",
     "WorkflowState",
