@@ -158,8 +158,14 @@ class Settings(BaseSettings):
     MEMORY_SEARCH_MIN_CONFIDENCE: float = 0.3
     
     # Token Management - Prevent prompt overflow
-    MAX_MESSAGE_CHARS: int = 15000  # Truncate individual messages over this length (~4K tokens)
-    MAX_TOTAL_HISTORY_CHARS: int = 80000  # Max chars for all history combined (~20K tokens)
+    # Claude 3.5 Sonnet has 200K token context, but we need to leave room for:
+    # - System prompt (~5K tokens)
+    # - Tool definitions (~10K tokens)
+    # - Extended thinking budget (8K tokens)
+    # - Response generation (4K tokens)
+    # So max input should be ~173K tokens = ~690K chars, but we use conservative limits
+    MAX_MESSAGE_CHARS: int = 10000  # Truncate individual messages over this length (~2.5K tokens)
+    MAX_TOTAL_HISTORY_CHARS: int = 50000  # Max chars for all history combined (~12.5K tokens)
     
     # Skill Activation
     SKILL_ACTIVATION_THRESHOLD: float = 5.0

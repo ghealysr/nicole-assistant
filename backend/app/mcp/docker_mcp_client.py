@@ -111,16 +111,50 @@ class DockerMCPClient:
                 )
 
             content = data.get("result", {}).get("content", [])
+            logger.debug(f"[MCP] Raw content type: {type(content).__name__}, preview: {str(content)[:200]}")
+            
             if isinstance(content, list):
                 # First check for image type (for screenshots)
                 for item in content:
-                    if isinstance(item, dict) and item.get("type") == "image":
-                        # Return the image data directly
-                        image_data = item.get("data", "")
-                        logger.info(f"[MCP] Found image content ({len(image_data)} chars)")
-                        return MCPToolResult(content=image_data)
+                    if isinstance(item, dict):
+                        item_type = item.get("type", "")
+                        
+                        # Handle image type with various data keys
+                        if item_type == "image":
+                            # Try multiple keys where image data might be
+                            image_data = (
+                                item.get("data") or 
+                                item.get("base64") or 
+                                item.get("image") or
+                                item.get("content") or
+                                ""
+                            )
+                            if image_data:
+                                logger.info(f"[MCP] Found image content ({len(image_data)} chars)")
+                                return MCPToolResult(content=image_data)
+                        
+                        # Puppeteer might return screenshot as text with JSON
+                        if item_type == "text":
+                            text_content = item.get("text", "")
+                            # Check if it's JSON with a screenshot/data field
+                            if text_content.startswith('{'):
+                                try:
+                                    import json
+                                    parsed = json.loads(text_content)
+                                    # Look for base64 screenshot data in the parsed JSON
+                                    screenshot_data = (
+                                        parsed.get("data") or 
+                                        parsed.get("screenshot") or 
+                                        parsed.get("base64") or 
+                                        parsed.get("image")
+                                    )
+                                    if screenshot_data and len(str(screenshot_data)) > 1000:
+                                        logger.info(f"[MCP] Found screenshot in text JSON ({len(screenshot_data)} chars)")
+                                        return MCPToolResult(content=screenshot_data)
+                                except json.JSONDecodeError:
+                                    pass
                 
-                # Then check for text parts
+                # Then check for text parts (fallback for non-screenshot tools)
                 text_parts = [
                     i.get("text", "")
                     for i in content
