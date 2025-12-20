@@ -22,6 +22,9 @@ export type { NicoleOrbAnimationProps, ThinkingIndicatorProps } from './NicoleOr
 export { NicoleThinkingBlock } from './NicoleThinkingBlock';
 export type { ThinkingBlockProps, ToolUse } from './NicoleThinkingBlock';
 
+// Nicole's Workflow Progress (multi-step workflow tracking)
+export { WorkflowProgress } from './WorkflowProgress';
+
 // Nicole's Thinking UI Components
 export {
   // Main components

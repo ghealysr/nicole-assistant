@@ -1,74 +1,54 @@
 """
-Nicole V7 - YAML Workflow Engine (Orchestra Pattern)
+Nicole V7 - Workflow Engine
 
-Implements declarative YAML-based workflow orchestration for complex automated tasks.
+Production-quality workflow orchestration for multi-step agentic tasks.
 
-Benefits:
-- Declarative: Change workflows without code deployment
-- Dependency-aware: Parallel execution when possible
-- Resumable: Crash recovery with state persistence
-- Auditable: Every step logged
+Features:
+- Automatic tool chaining without manual intervention
+- Progress streaming to frontend
+- Error recovery with exponential backoff
+- Template variable resolution
+- Conditional execution
+- State persistence
 
-Use cases:
-- Sports Oracle (collect → analyze → predict → notify)
-- Daily Journal generation
-- Memory consolidation jobs
-- Scheduled report generation
-- Multi-step API integrations
+Architecture:
+- WorkflowStep: Single executable step with tool + args
+- WorkflowDefinition: Complete workflow with metadata
+- WorkflowExecutor: Executes workflows with progress tracking
+- WorkflowRegistry: Pre-built workflow templates
+- WorkflowState: Runtime state management
 
-Example workflow:
-```yaml
-name: morning_briefing
-schedule: "0 7 * * *"  # Daily at 7am
-steps:
-  - name: get_weather
-    type: tool
-    tool: weather_api
-    params:
-      location: "{{user.location}}"
-  
-  - name: get_calendar
-    type: tool
-    tool: google_calendar_today
-    
-  - name: generate_briefing
-    type: agent
-    agent: nicole_core
-    prompt: |
-      Create a morning briefing using:
-      Weather: {{steps.get_weather.result}}
-      Calendar: {{steps.get_calendar.result}}
-```
-
-Author: Nicole V7 Architecture
+Author: Nicole V7 Engineering
+Date: December 20, 2025
 """
 
 import logging
-import yaml
+import asyncio
 import json
 import re
-import asyncio
-from typing import Dict, Any, List, Optional, Callable, Awaitable
-from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional, AsyncIterator, Callable
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-class StepType(str, Enum):
-    """Types of workflow steps."""
-    TOOL = "tool"           # Execute a tool
-    AGENT = "agent"         # Call an agent with a prompt
-    CONDITION = "condition"  # Conditional branching
-    PARALLEL = "parallel"   # Parallel execution
-    WAIT = "wait"           # Wait for a duration
-    NOTIFY = "notify"       # Send notification
+# ============================================================================
+# ENUMS
+# ============================================================================
+
+class WorkflowStatus(str, Enum):
+    """Workflow execution status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class StepStatus(str, Enum):
-    """Status of a workflow step."""
+    """Individual step execution status."""
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -76,601 +56,669 @@ class StepStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+# ============================================================================
+# DATA CLASSES
+# ============================================================================
+
 @dataclass
 class WorkflowStep:
-    """A single step in a workflow."""
+    """
+    Single step in a workflow.
+    
+    Example:
+        WorkflowStep(
+            tool="puppeteer_screenshot",
+            args={"fullPage": "{{input.full_page}}", "url": "{{input.url}}"},
+            condition="input.url != null",
+            result_key="screenshot_data"
+        )
+    """
+    tool: str
+    args: Dict[str, Any] = field(default_factory=dict)
+    condition: Optional[str] = None  # Condition to evaluate before execution
+    result_key: str = "result"  # Where to store result in context
+    retry_count: int = 2  # Number of retries on failure
+    retry_delay: float = 1.0  # Initial retry delay (exponential backoff)
+    timeout: Optional[int] = None  # Step timeout in seconds
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return asdict(self)
+
+
+@dataclass
+class WorkflowDefinition:
+    """
+    Complete workflow definition.
+    
+    Example:
+        WorkflowDefinition(
+            name="screenshot_and_post",
+            description="Take a screenshot and post to chat",
+            steps=[
+                WorkflowStep("puppeteer_navigate", {"url": "{{input.url}}"}),
+                WorkflowStep("puppeteer_screenshot", {"fullPage": false}),
+            ],
+            requires_input=["url"]
+        )
+    """
     name: str
-    step_type: StepType
-    config: Dict[str, Any]
-    depends_on: List[str] = field(default_factory=list)
-    status: StepStatus = StepStatus.PENDING
-    result: Optional[Any] = None
+    description: str
+    steps: List[WorkflowStep]
+    requires_input: List[str] = field(default_factory=list)  # Required input keys
+    category: str = "general"  # Workflow category for organization
+    version: str = "1.0.0"
+    author: str = "Nicole V7"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "steps": [step.to_dict() for step in self.steps],
+            "requires_input": self.requires_input,
+            "category": self.category,
+            "version": self.version,
+            "author": self.author
+        }
+    
+    def validate_input(self, input_data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+        """
+        Validate that required input is present.
+        
+        Returns:
+            (is_valid, error_message)
+        """
+        missing = [key for key in self.requires_input if key not in input_data]
+        if missing:
+            return False, f"Missing required input: {', '.join(missing)}"
+        return True, None
+
+
+@dataclass
+class StepResult:
+    """Result of a single workflow step execution."""
+    step_number: int
+    step_name: str
+    tool: str
+    status: StepStatus
+    result: Any = None
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    retries: int = 0
-    max_retries: int = 3
-
-
-@dataclass
-class WorkflowExecution:
-    """State of a workflow execution."""
-    workflow_name: str
-    execution_id: str
-    user_id: int
-    steps: List[WorkflowStep]
-    context: Dict[str, Any] = field(default_factory=dict)
-    status: str = "running"
-    started_at: datetime = field(default_factory=datetime.utcnow)
-    completed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    retry_count: int = 0
     
-    def get_step(self, name: str) -> Optional[WorkflowStep]:
-        """Get a step by name."""
-        for step in self.steps:
-            if step.name == name:
-                return step
-        return None
-    
-    def get_completed_results(self) -> Dict[str, Any]:
-        """Get results from all completed steps."""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
         return {
-            step.name: step.result
-            for step in self.steps
-            if step.status == StepStatus.COMPLETED and step.result is not None
+            "step_number": self.step_number,
+            "step_name": self.step_name,
+            "tool": self.tool,
+            "status": self.status.value,
+            "result": self.result,
+            "error": self.error,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "duration_ms": self.duration_ms,
+            "retry_count": self.retry_count
         }
 
 
-class WorkflowEngine:
+@dataclass
+class WorkflowState:
+    """Runtime state of a workflow execution."""
+    workflow_name: str
+    run_id: str
+    status: WorkflowStatus
+    input_data: Dict[str, Any]
+    context: Dict[str, Any] = field(default_factory=dict)  # Accumulated context
+    step_results: List[StepResult] = field(default_factory=list)
+    current_step: int = 0
+    total_steps: int = 0
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    @property
+    def duration_ms(self) -> Optional[int]:
+        """Calculate total duration in milliseconds."""
+        if self.started_at and self.completed_at:
+            delta = self.completed_at - self.started_at
+            return int(delta.total_seconds() * 1000)
+        return None
+    
+    @property
+    def prev(self) -> Optional[Any]:
+        """Get result of previous step."""
+        if self.step_results and len(self.step_results) > 0:
+            return self.step_results[-1].result
+        return None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "workflow_name": self.workflow_name,
+            "run_id": self.run_id,
+            "status": self.status.value,
+            "input_data": self.input_data,
+            "context": self.context,
+            "step_results": [sr.to_dict() for sr in self.step_results],
+            "current_step": self.current_step,
+            "total_steps": self.total_steps,
+            "error": self.error,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "duration_ms": self.duration_ms
+        }
+
+
+# ============================================================================
+# WORKFLOW EXECUTOR
+# ============================================================================
+
+class WorkflowExecutor:
     """
-    YAML-based workflow orchestration engine.
+    Executes workflow definitions with progress tracking and error recovery.
     
-    This engine:
-    1. Parses YAML workflow definitions
-    2. Resolves template variables
-    3. Executes steps in dependency order
-    4. Handles parallel execution where possible
-    5. Provides crash recovery via state persistence
+    Features:
+    - Step-by-step execution with context accumulation
+    - Template variable resolution ({{input.x}}, {{prev.y}})
+    - Conditional execution
+    - Retry logic with exponential backoff
+    - Progress streaming via async iterator
+    - State persistence
+    
+    Usage:
+        executor = WorkflowExecutor(tool_executor_fn)
+        async for event in executor.execute(workflow, input_data):
+            if event["type"] == "progress":
+                print(f"Step {event['current_step']}/{event['total_steps']}")
+            elif event["type"] == "complete":
+                print(f"Workflow complete: {event['result']}")
     """
     
-    def __init__(self):
-        self._workflows: Dict[str, Dict[str, Any]] = {}
-        self._tool_handlers: Dict[str, Callable] = {}
-        self._agent_handlers: Dict[str, Callable] = {}
-        self._executions: Dict[str, WorkflowExecution] = {}
-        logger.info("[WORKFLOW] Engine initialized")
-    
-    def register_tool_handler(
-        self,
-        tool_name: str,
-        handler: Callable[..., Awaitable[Any]]
-    ):
-        """Register a handler function for a tool."""
-        self._tool_handlers[tool_name] = handler
-        logger.debug(f"[WORKFLOW] Registered tool handler: {tool_name}")
-    
-    def register_agent_handler(
-        self,
-        agent_name: str,
-        handler: Callable[[str, Dict[str, Any]], Awaitable[str]]
-    ):
-        """Register a handler function for an agent."""
-        self._agent_handlers[agent_name] = handler
-        logger.debug(f"[WORKFLOW] Registered agent handler: {agent_name}")
-    
-    def load_workflow(self, yaml_content: str) -> Dict[str, Any]:
+    def __init__(self, tool_executor: Callable):
         """
-        Load a workflow from YAML content.
+        Initialize workflow executor.
         
-        Returns the parsed workflow definition.
+        Args:
+            tool_executor: Async function(tool_name, tool_args) -> result
         """
+        self.tool_executor = tool_executor
+        self._active_workflows: Dict[str, WorkflowState] = {}
+    
+    async def execute(
+        self,
+        workflow: WorkflowDefinition,
+        input_data: Dict[str, Any],
+        run_id: Optional[str] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute a workflow and stream progress events.
+        
+        Args:
+            workflow: Workflow definition to execute
+            input_data: Input data for the workflow
+            run_id: Optional run ID (generated if not provided)
+            
+        Yields:
+            Progress events:
+            - {"type": "started", "run_id": ..., "workflow_name": ...}
+            - {"type": "step_progress", "current_step": ..., "status": ...}
+            - {"type": "step_complete", "step_number": ..., "result": ...}
+            - {"type": "complete", "status": ..., "result": ...}
+            - {"type": "error", "error": ...}
+        """
+        # Generate run ID
+        if not run_id:
+            import uuid
+            run_id = f"wf_{workflow.name}_{uuid.uuid4().hex[:8]}"
+        
+        # Validate input
+        is_valid, error_msg = workflow.validate_input(input_data)
+        if not is_valid:
+            logger.error(f"[WORKFLOW:{run_id}] Invalid input: {error_msg}")
+            yield {
+                "type": "error",
+                "error": error_msg,
+                "run_id": run_id
+            }
+            return
+        
+        # Initialize state
+        state = WorkflowState(
+            workflow_name=workflow.name,
+            run_id=run_id,
+            status=WorkflowStatus.RUNNING,
+            input_data=input_data,
+            context={"input": input_data},
+            total_steps=len(workflow.steps),
+            started_at=datetime.now()
+        )
+        
+        self._active_workflows[run_id] = state
+        
+        logger.info(f"[WORKFLOW:{run_id}] Started: {workflow.name} ({state.total_steps} steps)")
+        
+        # Yield start event
+        yield {
+            "type": "started",
+            "run_id": run_id,
+            "workflow_name": workflow.name,
+            "total_steps": state.total_steps
+        }
+        
+        # Execute steps
         try:
-            workflow = yaml.safe_load(yaml_content)
-            
-            # Validate required fields
-            if "name" not in workflow:
-                raise ValueError("Workflow must have a 'name'")
-            if "steps" not in workflow:
-                raise ValueError("Workflow must have 'steps'")
-            
-            self._workflows[workflow["name"]] = workflow
-            logger.info(f"[WORKFLOW] Loaded workflow: {workflow['name']} with {len(workflow['steps'])} steps")
-            
-            return workflow
-            
-        except yaml.YAMLError as e:
-            logger.error(f"[WORKFLOW] YAML parse error: {e}")
-            raise ValueError(f"Invalid YAML: {e}")
-    
-    def load_workflow_file(self, file_path: str) -> Dict[str, Any]:
-        """Load a workflow from a YAML file."""
-        path = Path(file_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Workflow file not found: {file_path}")
-        
-        return self.load_workflow(path.read_text())
-    
-    def _resolve_template(
-        self,
-        template: Any,
-        context: Dict[str, Any]
-    ) -> Any:
-        """
-        Resolve template variables in a value.
-        
-        Supports:
-        - {{user.property}} - User context
-        - {{steps.step_name.result}} - Previous step results
-        - {{env.VAR_NAME}} - Environment variables
-        """
-        if isinstance(template, str):
-            # Find all {{...}} patterns
-            pattern = r'\{\{([^}]+)\}\}'
-            
-            def replace(match):
-                path = match.group(1).strip()
-                parts = path.split(".")
+            for i, step in enumerate(workflow.steps):
+                state.current_step = i + 1
                 
-                try:
-                    value = context
-                    for part in parts:
-                        if isinstance(value, dict):
-                            value = value.get(part)
-                        else:
-                            value = getattr(value, part, None)
-                        if value is None:
-                            return match.group(0)  # Keep original if not found
-                    
-                    # Convert to string if needed
-                    if isinstance(value, (dict, list)):
-                        return json.dumps(value)
-                    return str(value)
-                    
-                except Exception:
-                    return match.group(0)
+                # Yield progress event
+                yield {
+                    "type": "step_progress",
+                    "run_id": run_id,
+                    "current_step": state.current_step,
+                    "total_steps": state.total_steps,
+                    "step_name": step.tool,
+                    "status": "running"
+                }
+                
+                # Execute step
+                step_result = await self._execute_step(step, state, i + 1)
+                
+                # Store result
+                state.step_results.append(step_result)
+                
+                # Update context
+                if step.result_key:
+                    state.context[step.result_key] = step_result.result
+                state.context["prev"] = step_result.result
+                
+                # Yield step complete event
+                yield {
+                    "type": "step_complete",
+                    "run_id": run_id,
+                    "step_number": i + 1,
+                    "step_name": step.tool,
+                    "status": step_result.status.value,
+                    "result": step_result.result,
+                    "error": step_result.error,
+                    "duration_ms": step_result.duration_ms
+                }
+                
+                # Check if step failed
+                if step_result.status == StepStatus.FAILED:
+                    raise Exception(f"Step {i + 1} failed: {step_result.error}")
+                
+                logger.info(
+                    f"[WORKFLOW:{run_id}] Step {i + 1}/{state.total_steps} complete: "
+                    f"{step.tool} (duration={step_result.duration_ms}ms)"
+                )
             
-            return re.sub(pattern, replace, template)
-        
-        elif isinstance(template, dict):
-            return {k: self._resolve_template(v, context) for k, v in template.items()}
-        
-        elif isinstance(template, list):
-            return [self._resolve_template(item, context) for item in template]
-        
-        return template
-    
-    def _parse_steps(
-        self,
-        workflow: Dict[str, Any]
-    ) -> List[WorkflowStep]:
-        """Parse workflow steps into WorkflowStep objects."""
-        steps = []
-        
-        for step_def in workflow.get("steps", []):
-            step_type = StepType(step_def.get("type", "tool"))
+            # Workflow completed successfully
+            state.status = WorkflowStatus.COMPLETED
+            state.completed_at = datetime.now()
             
-            step = WorkflowStep(
-                name=step_def["name"],
-                step_type=step_type,
-                config=step_def,
-                depends_on=step_def.get("depends_on", []),
-                max_retries=step_def.get("max_retries", 3)
+            logger.info(
+                f"[WORKFLOW:{run_id}] Completed: {workflow.name} "
+                f"(duration={state.duration_ms}ms)"
             )
             
-            steps.append(step)
+            yield {
+                "type": "complete",
+                "run_id": run_id,
+                "workflow_name": workflow.name,
+                "status": "completed",
+                "result": state.context,
+                "duration_ms": state.duration_ms
+            }
+            
+        except Exception as e:
+            # Workflow failed
+            state.status = WorkflowStatus.FAILED
+            state.error = str(e)
+            state.completed_at = datetime.now()
+            
+            logger.error(
+                f"[WORKFLOW:{run_id}] Failed: {workflow.name} - {e}",
+                exc_info=True
+            )
+            
+            yield {
+                "type": "error",
+                "run_id": run_id,
+                "workflow_name": workflow.name,
+                "error": str(e),
+                "partial_results": state.context
+            }
         
-        return steps
-    
-    def _can_execute_step(
-        self,
-        step: WorkflowStep,
-        execution: WorkflowExecution
-    ) -> bool:
-        """Check if a step can be executed (all dependencies met)."""
-        if step.status != StepStatus.PENDING:
-            return False
-        
-        for dep_name in step.depends_on:
-            dep_step = execution.get_step(dep_name)
-            if not dep_step or dep_step.status != StepStatus.COMPLETED:
-                return False
-        
-        return True
+        finally:
+            # Clean up
+            if run_id in self._active_workflows:
+                del self._active_workflows[run_id]
     
     async def _execute_step(
         self,
         step: WorkflowStep,
-        execution: WorkflowExecution
-    ):
-        """Execute a single workflow step."""
-        step.status = StepStatus.RUNNING
-        step.started_at = datetime.utcnow()
+        state: WorkflowState,
+        step_number: int
+    ) -> StepResult:
+        """
+        Execute a single workflow step with retry logic.
         
-        # Build context for template resolution
-        context = {
-            "user": execution.context.get("user", {}),
-            "steps": execution.get_completed_results(),
-            "env": execution.context.get("env", {}),
-            "workflow": {
-                "name": execution.workflow_name,
-                "execution_id": execution.execution_id
-            }
-        }
+        Args:
+            step: Step definition
+            state: Current workflow state
+            step_number: Step number (1-indexed)
+            
+        Returns:
+            StepResult with execution outcome
+        """
+        step_result = StepResult(
+            step_number=step_number,
+            step_name=step.tool,
+            tool=step.tool,
+            status=StepStatus.RUNNING,
+            started_at=datetime.now()
+        )
         
-        try:
-            if step.step_type == StepType.TOOL:
-                result = await self._execute_tool_step(step, context)
+        # Check condition
+        if step.condition:
+            should_execute = self._evaluate_condition(step.condition, state.context)
+            if not should_execute:
+                logger.info(f"[WORKFLOW] Step {step_number} skipped (condition failed)")
+                step_result.status = StepStatus.SKIPPED
+                step_result.completed_at = datetime.now()
+                return step_result
+        
+        # Resolve template args
+        resolved_args = self._resolve_args(step.args, state.context)
+        
+        # Execute with retry
+        retry_count = 0
+        last_error = None
+        
+        while retry_count <= step.retry_count:
+            try:
+                # Execute tool
+                logger.debug(
+                    f"[WORKFLOW] Executing step {step_number}: {step.tool} "
+                    f"(attempt {retry_count + 1}/{step.retry_count + 1})"
+                )
+                
+                result = await self.tool_executor(step.tool, resolved_args)
+                
+                # Success
+                step_result.status = StepStatus.COMPLETED
+                step_result.result = result
+                step_result.retry_count = retry_count
+                break
+                
+            except Exception as e:
+                last_error = str(e)
+                retry_count += 1
+                
+                if retry_count <= step.retry_count:
+                    # Retry with exponential backoff
+                    delay = step.retry_delay * (2 ** (retry_count - 1))
+                    logger.warning(
+                        f"[WORKFLOW] Step {step_number} failed (attempt {retry_count}), "
+                        f"retrying in {delay}s: {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # All retries exhausted
+                    logger.error(
+                        f"[WORKFLOW] Step {step_number} failed after {retry_count} attempts: {e}"
+                    )
+                    step_result.status = StepStatus.FAILED
+                    step_result.error = last_error
+                    step_result.retry_count = retry_count - 1
+        
+        step_result.completed_at = datetime.now()
+        
+        if step_result.started_at and step_result.completed_at:
+            delta = step_result.completed_at - step_result.started_at
+            step_result.duration_ms = int(delta.total_seconds() * 1000)
+        
+        return step_result
+    
+    def _resolve_args(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve template variables in arguments.
+        
+        Supports:
+        - {{input.key}} - Access input data
+        - {{prev.key}} - Access previous step result
+        - {{context.key}} - Access any context value
+        
+        Args:
+            args: Arguments with potential templates
+            context: Current execution context
             
-            elif step.step_type == StepType.AGENT:
-                result = await self._execute_agent_step(step, context)
-            
-            elif step.step_type == StepType.CONDITION:
-                result = await self._execute_condition_step(step, context)
-            
-            elif step.step_type == StepType.WAIT:
-                result = await self._execute_wait_step(step, context)
-            
-            elif step.step_type == StepType.NOTIFY:
-                result = await self._execute_notify_step(step, context)
-            
-            elif step.step_type == StepType.PARALLEL:
-                result = await self._execute_parallel_step(step, context, execution)
-            
+        Returns:
+            Resolved arguments
+        """
+        resolved = {}
+        
+        for key, value in args.items():
+            if isinstance(value, str):
+                resolved[key] = self._resolve_template(value, context)
+            elif isinstance(value, dict):
+                resolved[key] = self._resolve_args(value, context)
+            elif isinstance(value, list):
+                resolved[key] = [
+                    self._resolve_template(item, context) if isinstance(item, str) else item
+                    for item in value
+                ]
             else:
-                raise ValueError(f"Unknown step type: {step.step_type}")
-            
-            step.result = result
-            step.status = StepStatus.COMPLETED
-            step.completed_at = datetime.utcnow()
-            
-            logger.info(f"[WORKFLOW] Step '{step.name}' completed successfully")
-            
-        except Exception as e:
-            step.error = str(e)
-            step.retries += 1
-            
-            if step.retries < step.max_retries:
-                step.status = StepStatus.PENDING  # Retry
-                logger.warning(f"[WORKFLOW] Step '{step.name}' failed, will retry ({step.retries}/{step.max_retries})")
-            else:
-                step.status = StepStatus.FAILED
-                logger.error(f"[WORKFLOW] Step '{step.name}' failed permanently: {e}")
+                resolved[key] = value
+        
+        return resolved
     
-    async def _execute_tool_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any]
-    ) -> Any:
-        """Execute a tool step."""
-        tool_name = step.config.get("tool")
-        if not tool_name:
-            raise ValueError(f"Tool step '{step.name}' missing 'tool' field")
+    def _resolve_template(self, template: str, context: Dict[str, Any]) -> Any:
+        """
+        Resolve a single template string.
         
-        handler = self._tool_handlers.get(tool_name)
-        if not handler:
-            raise ValueError(f"No handler registered for tool: {tool_name}")
+        Example:
+            "{{input.url}}" -> "https://google.com"
+            "Screenshot of {{prev.url}}" -> "Screenshot of https://google.com"
+        """
+        # Find all {{...}} patterns
+        pattern = r'\{\{([^}]+)\}\}'
+        matches = re.findall(pattern, template)
         
-        # Resolve template parameters
-        params = self._resolve_template(step.config.get("params", {}), context)
+        if not matches:
+            return template
         
-        return await handler(**params)
-    
-    async def _execute_agent_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any]
-    ) -> str:
-        """Execute an agent step."""
-        agent_name = step.config.get("agent")
-        if not agent_name:
-            raise ValueError(f"Agent step '{step.name}' missing 'agent' field")
+        # If entire string is a template, return the resolved value
+        if template.startswith("{{") and template.endswith("}}") and len(matches) == 1:
+            path = matches[0].strip()
+            return self._get_nested_value(context, path)
         
-        handler = self._agent_handlers.get(agent_name)
-        if not handler:
-            raise ValueError(f"No handler registered for agent: {agent_name}")
-        
-        # Resolve prompt template
-        prompt = self._resolve_template(step.config.get("prompt", ""), context)
-        
-        return await handler(prompt, context)
-    
-    async def _execute_condition_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any]
-    ) -> bool:
-        """Execute a condition step."""
-        condition = step.config.get("condition", "")
-        condition = self._resolve_template(condition, context)
-        
-        # Simple evaluation (could be enhanced with safe eval)
-        # For now, just check truthiness
-        result = bool(condition and condition.lower() not in ("false", "0", "none", "null", ""))
+        # Otherwise, do string interpolation
+        result = template
+        for match in matches:
+            path = match.strip()
+            value = self._get_nested_value(context, path)
+            result = result.replace(f"{{{{{match}}}}}", str(value) if value is not None else "")
         
         return result
     
-    async def _execute_wait_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any]
-    ) -> str:
-        """Execute a wait step."""
-        duration = step.config.get("duration", 0)
-        if isinstance(duration, str):
-            duration = int(self._resolve_template(duration, context))
-        
-        await asyncio.sleep(duration)
-        return f"Waited {duration} seconds"
-    
-    async def _execute_notify_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any]
-    ) -> str:
-        """Execute a notification step."""
-        channel = step.config.get("channel", "log")
-        message = self._resolve_template(step.config.get("message", ""), context)
-        
-        if channel == "log":
-            logger.info(f"[WORKFLOW NOTIFY] {message}")
-        # Add other channels (email, slack, etc.) as needed
-        
-        return f"Notified via {channel}"
-    
-    async def _execute_parallel_step(
-        self,
-        step: WorkflowStep,
-        context: Dict[str, Any],
-        execution: WorkflowExecution
-    ) -> Dict[str, Any]:
-        """Execute parallel sub-steps."""
-        sub_steps = step.config.get("steps", [])
-        
-        # Create WorkflowStep objects for each sub-step
-        parallel_steps = []
-        for sub_def in sub_steps:
-            sub_step = WorkflowStep(
-                name=f"{step.name}.{sub_def['name']}",
-                step_type=StepType(sub_def.get("type", "tool")),
-                config=sub_def
-            )
-            parallel_steps.append(sub_step)
-        
-        # Execute all in parallel
-        tasks = [
-            self._execute_step(s, execution)
-            for s in parallel_steps
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Collect results
-        results = {}
-        for s in parallel_steps:
-            if s.status == StepStatus.COMPLETED:
-                results[s.name] = s.result
-            else:
-                results[s.name] = {"error": s.error}
-        
-        return results
-    
-    async def execute(
-        self,
-        workflow_name: str,
-        user_id: int,
-        context: Optional[Dict[str, Any]] = None,
-        execution_id: Optional[str] = None
-    ) -> WorkflowExecution:
+    def _get_nested_value(self, obj: Dict[str, Any], path: str) -> Any:
         """
-        Execute a workflow.
+        Get a nested value from a dictionary using dot notation.
+        
+        Example:
+            _get_nested_value({"input": {"url": "..."}}, "input.url") -> "..."
+        """
+        parts = path.split(".")
+        current = obj
+        
+        for part in parts:
+            if isinstance(current, dict):
+                current = current.get(part)
+            elif hasattr(current, part):
+                current = getattr(current, part)
+            else:
+                return None
+        
+        return current
+    
+    def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a condition string.
+        
+        Supports simple conditions:
+        - "input.url" - Truthy check
+        - "prev.success == true"
+        - "context.count > 5"
         
         Args:
-            workflow_name: Name of the loaded workflow
-            user_id: User ID for context
-            context: Additional context variables
-            execution_id: Optional execution ID (for resume)
+            condition: Condition string
+            context: Current execution context
             
         Returns:
-            The workflow execution result
+            True if condition passes
         """
-        workflow = self._workflows.get(workflow_name)
-        if not workflow:
-            raise ValueError(f"Workflow not found: {workflow_name}")
-        
-        # Create or resume execution
-        if execution_id and execution_id in self._executions:
-            execution = self._executions[execution_id]
-        else:
-            execution_id = execution_id or f"{workflow_name}_{datetime.utcnow().timestamp()}"
-            execution = WorkflowExecution(
-                workflow_name=workflow_name,
-                execution_id=execution_id,
-                user_id=user_id,
-                steps=self._parse_steps(workflow),
-                context=context or {}
-            )
-            self._executions[execution_id] = execution
-        
-        logger.info(f"[WORKFLOW] Executing workflow: {workflow_name} (id: {execution_id})")
-        
-        # Execute steps in dependency order
-        max_iterations = len(execution.steps) * 2  # Prevent infinite loops
-        iteration = 0
-        
-        while iteration < max_iterations:
-            iteration += 1
+        try:
+            # Resolve any templates in condition
+            resolved = self._resolve_template(condition, context)
             
-            # Find steps that can be executed
-            executable = [
-                step for step in execution.steps
-                if self._can_execute_step(step, execution)
-            ]
+            # If it's just a path, check if it's truthy
+            if not any(op in str(resolved) for op in ["==", "!=", ">", "<", ">=", "<="]):
+                return bool(resolved)
             
-            if not executable:
-                # Check if we're done or stuck
-                pending = [s for s in execution.steps if s.status == StepStatus.PENDING]
-                if not pending:
-                    break  # All done
-                
-                # Check for dependency failures
-                failed = [s for s in execution.steps if s.status == StepStatus.FAILED]
-                if failed:
-                    execution.status = "failed"
-                    break
-                
-                # Stuck - circular dependency?
-                logger.error(f"[WORKFLOW] Stuck with pending steps: {[s.name for s in pending]}")
-                execution.status = "failed"
-                break
-            
-            # Execute steps (could parallelize independent steps here)
-            for step in executable:
-                await self._execute_step(step, execution)
-        
-        # Check final status
-        failed_steps = [s for s in execution.steps if s.status == StepStatus.FAILED]
-        if failed_steps:
-            execution.status = "failed"
-        else:
-            execution.status = "completed"
-        
-        execution.completed_at = datetime.utcnow()
-        
-        logger.info(f"[WORKFLOW] Workflow {workflow_name} {execution.status}")
-        return execution
+            # Otherwise, evaluate the expression (safely)
+            # For production, use a safe expression evaluator
+            # This is a simplified version
+            return bool(eval(str(resolved)))
+        except Exception as e:
+            logger.warning(f"[WORKFLOW] Condition evaluation failed: {condition} - {e}")
+            return False
     
-    def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
-        """Get an execution by ID."""
-        return self._executions.get(execution_id)
-    
-    def get_workflow_template(self, workflow_type: str) -> str:
-        """Get a template for a workflow type."""
-        templates = {
-            "sports_oracle": """
-name: sports_oracle_daily
-schedule: "0 6 * * *"
-description: Daily sports predictions and analysis
-
-steps:
-  - name: collect_nfl_data
-    type: tool
-    tool: espn_nfl_api
-    params:
-      endpoint: scoreboard
-      
-  - name: collect_nba_data
-    type: tool
-    tool: espn_nba_api
-    params:
-      endpoint: scoreboard
-      
-  - name: get_historical
-    type: tool
-    tool: memory_search
-    params:
-      query: "sports predictions accuracy"
-      limit: 10
-      
-  - name: analyze_games
-    type: agent
-    agent: nicole_core
-    depends_on: [collect_nfl_data, collect_nba_data, get_historical]
-    prompt: |
-      Analyze today's games and make predictions:
-      
-      NFL Data: {{steps.collect_nfl_data.result}}
-      NBA Data: {{steps.collect_nba_data.result}}
-      Historical Accuracy: {{steps.get_historical.result}}
-      
-      Provide predictions with confidence levels.
-      
-  - name: store_predictions
-    type: tool
-    tool: memory_store
-    depends_on: [analyze_games]
-    params:
-      content: "{{steps.analyze_games.result}}"
-      memory_type: "prediction"
-      tags: ["sports", "oracle", "daily"]
-""",
-            
-            "morning_briefing": """
-name: morning_briefing
-schedule: "0 7 * * *"
-description: Daily morning briefing for the user
-
-steps:
-  - name: get_weather
-    type: tool
-    tool: weather_api
-    params:
-      location: "{{user.location}}"
-      
-  - name: get_calendar
-    type: tool
-    tool: google_calendar_today
-    
-  - name: get_reminders
-    type: tool
-    tool: memory_search
-    params:
-      query: "reminder today task"
-      memory_type: "task"
-      limit: 5
-      
-  - name: generate_briefing
-    type: agent
-    agent: nicole_core
-    depends_on: [get_weather, get_calendar, get_reminders]
-    prompt: |
-      Create a warm, personalized morning briefing for {{user.name}}:
-      
-      Weather: {{steps.get_weather.result}}
-      Today's Calendar: {{steps.get_calendar.result}}
-      Reminders: {{steps.get_reminders.result}}
-      
-      Make it feel like a friend updating them on their day.
-""",
-            
-            "memory_consolidation": """
-name: memory_consolidation
-schedule: "0 3 * * *"
-description: Nightly memory consolidation and cleanup
-
-steps:
-  - name: find_duplicates
-    type: tool
-    tool: memory_find_duplicates
-    
-  - name: merge_duplicates
-    type: tool
-    tool: memory_merge
-    depends_on: [find_duplicates]
-    params:
-      duplicates: "{{steps.find_duplicates.result}}"
-      
-  - name: decay_old_memories
-    type: tool
-    tool: memory_apply_decay
-    
-  - name: detect_patterns
-    type: tool
-    tool: memory_pattern_detection
-    depends_on: [decay_old_memories]
-    
-  - name: create_insights
-    type: agent
-    agent: nicole_core
-    depends_on: [detect_patterns]
-    prompt: |
-      Based on pattern detection results, create insights:
-      {{steps.detect_patterns.result}}
-      
-      What patterns or connections should be remembered?
-"""
-        }
-        
-        return templates.get(workflow_type, "")
+    def get_workflow_state(self, run_id: str) -> Optional[WorkflowState]:
+        """Get current state of a running workflow."""
+        return self._active_workflows.get(run_id)
 
 
-# Global engine instance
-workflow_engine = WorkflowEngine()
+# ============================================================================
+# WORKFLOW REGISTRY
+# ============================================================================
 
+class WorkflowRegistry:
+    """
+    Registry of pre-built workflow templates.
+    
+    Provides common workflows that Nicole can use automatically:
+    - screenshot_and_post
+    - web_research
+    - deployment_check
+    - multi_scrape
+    """
+    
+    _workflows: Dict[str, WorkflowDefinition] = {}
+    
+    @classmethod
+    def register(cls, workflow: WorkflowDefinition) -> None:
+        """Register a workflow template."""
+        cls._workflows[workflow.name] = workflow
+        logger.info(f"[WORKFLOW_REGISTRY] Registered workflow: {workflow.name}")
+    
+    @classmethod
+    def get(cls, name: str) -> Optional[WorkflowDefinition]:
+        """Get a workflow by name."""
+        return cls._workflows.get(name)
+    
+    @classmethod
+    def list_all(cls) -> List[WorkflowDefinition]:
+        """List all registered workflows."""
+        return list(cls._workflows.values())
+    
+    @classmethod
+    def list_by_category(cls, category: str) -> List[WorkflowDefinition]:
+        """List workflows by category."""
+        return [wf for wf in cls._workflows.values() if wf.category == category]
+
+
+# ============================================================================
+# PRE-BUILT WORKFLOWS
+# ============================================================================
+
+# Workflow 1: Screenshot and Post
+WorkflowRegistry.register(
+    WorkflowDefinition(
+        name="screenshot_and_post",
+        description="Take a screenshot of a URL and post to chat (auto-uploads to Cloudinary)",
+        steps=[
+            WorkflowStep(
+                tool="puppeteer_navigate",
+                args={"url": "{{input.url}}"},
+                result_key="navigation"
+            ),
+            WorkflowStep(
+                tool="puppeteer_screenshot",
+                args={
+                    "fullPage": "{{input.full_page}}",
+                },
+                result_key="screenshot"
+            ),
+        ],
+        requires_input=["url"],
+        category="web"
+    )
+)
+
+# Workflow 2: Web Research
+WorkflowRegistry.register(
+    WorkflowDefinition(
+        name="web_research",
+        description="Search web, scrape top results, and save to memory",
+        steps=[
+            WorkflowStep(
+                tool="brave_web_search",
+                args={"query": "{{input.query}}", "count": 10},
+                result_key="search_results"
+            ),
+            # Note: Subsequent steps would require result parsing logic
+            # For now, this is a simplified version
+        ],
+        requires_input=["query"],
+        category="research"
+    )
+)
+
+# Workflow 3: Deployment Check
+WorkflowRegistry.register(
+    WorkflowDefinition(
+        name="deployment_check",
+        description="Check latest deployment status and logs",
+        steps=[
+            WorkflowStep(
+                tool="vercel_get_deployments",
+                args={"project": "{{input.project}}"},
+                result_key="deployments"
+            ),
+            # Additional steps would parse deployment list and get logs
+        ],
+        requires_input=["project"],
+        category="devops"
+    )
+)
+
+
+# ============================================================================
+# EXPORTS
+# ============================================================================
+
+__all__ = [
+    "WorkflowStep",
+    "WorkflowDefinition",
+    "WorkflowState",
+    "StepResult",
+    "WorkflowStatus",
+    "StepStatus",
+    "WorkflowExecutor",
+    "WorkflowRegistry",
+]

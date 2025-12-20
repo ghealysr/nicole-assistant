@@ -39,6 +39,12 @@ from app.services.skill_run_service import skill_run_service
 from app.skills.adapters.base import SkillExecutionError
 from app.services.alphawave_claude_skills_service import claude_skills_service
 from app.services.advanced_tool_manager import advanced_tool_manager
+from app.services.workflow_engine import (
+    WorkflowExecutor,
+    WorkflowRegistry,
+    WorkflowDefinition,
+    WorkflowStatus,
+)
 
 # MCP imports
 from app.mcp import (
@@ -70,6 +76,10 @@ class AgentOrchestrator:
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
         self.skill_memory_manager = get_skill_memory_manager(skill_runner.registry)
         self._mcp_initialized = False
+        
+        # Workflow engine integration
+        self.workflow_executor = WorkflowExecutor(tool_executor=self._workflow_tool_executor)
+        
         logger.info("[ORCHESTRATOR] Agent Orchestrator initialized")
     
     async def initialize_mcp(self) -> Dict[str, bool]:
@@ -1351,6 +1361,132 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"[ORCHESTRATOR] Screenshot upload to Cloudinary failed: {e}", exc_info=True)
             return None
+    
+    # =========================================================================
+    # WORKFLOW EXECUTION
+    # =========================================================================
+    
+    async def _workflow_tool_executor(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
+        """
+        Tool executor for workflow engine.
+        
+        This is passed to WorkflowExecutor and is used to execute individual
+        workflow steps. It routes to execute_tool with a dummy user_id since
+        workflows are system-level operations.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            tool_args: Tool arguments
+            
+        Returns:
+            Tool execution result
+        """
+        # Extract user_id from workflow context if available
+        # For now, use a default - in production, pass user_id through workflow context
+        user_id = tool_args.pop("_user_id", 1)  # Remove _user_id from args if present
+        
+        result = await self.execute_tool(
+            tool_name=tool_name,
+            tool_input=tool_args,
+            user_id=user_id,
+            session_id=None
+        )
+        
+        # Unwrap result if it's wrapped in status/result format
+        if isinstance(result, dict):
+            if "result" in result and "status" in result:
+                return result["result"]
+        
+        return result
+    
+    async def execute_workflow(
+        self,
+        workflow_name: str,
+        input_data: Dict[str, Any],
+        user_id: int
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute a pre-defined workflow by name.
+        
+        This is a convenience method for Nicole to execute common workflows
+        like "screenshot_and_post" without manually calling each tool.
+        
+        Args:
+            workflow_name: Name of the workflow to execute
+            input_data: Input data for the workflow
+            user_id: User ID for context
+            
+        Yields:
+            Progress events from workflow execution
+            
+        Example:
+            async for event in orchestrator.execute_workflow(
+                "screenshot_and_post",
+                {"url": "https://google.com", "full_page": False},
+                user_id=1
+            ):
+                if event["type"] == "complete":
+                    print(event["result"])
+        """
+        # Get workflow from registry
+        workflow = WorkflowRegistry.get(workflow_name)
+        
+        if not workflow:
+            yield {
+                "type": "error",
+                "error": f"Workflow '{workflow_name}' not found. Available workflows: {', '.join(w.name for w in WorkflowRegistry.list_all())}"
+            }
+            return
+        
+        logger.info(f"[ORCHESTRATOR] Executing workflow: {workflow_name} for user {user_id}")
+        
+        # Inject user_id into input data for tool executor
+        input_data["_user_id"] = user_id
+        
+        # Stream workflow execution
+        async for event in self.workflow_executor.execute(workflow, input_data):
+            yield event
+    
+    def list_workflows(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List available workflows.
+        
+        Args:
+            category: Optional category filter
+            
+        Returns:
+            List of workflow summaries
+        """
+        if category:
+            workflows = WorkflowRegistry.list_by_category(category)
+        else:
+            workflows = WorkflowRegistry.list_all()
+        
+        return [
+            {
+                "name": wf.name,
+                "description": wf.description,
+                "category": wf.category,
+                "requires_input": wf.requires_input,
+                "step_count": len(wf.steps)
+            }
+            for wf in workflows
+        ]
+    
+    def get_workflow_details(self, workflow_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get full details of a workflow.
+        
+        Args:
+            workflow_name: Name of the workflow
+            
+        Returns:
+            Complete workflow definition or None
+        """
+        workflow = WorkflowRegistry.get(workflow_name)
+        if workflow:
+            return workflow.to_dict()
+        return None
     
     def get_tool_executor(self, user_id: int, session_id: Optional[str] = None):
         """
