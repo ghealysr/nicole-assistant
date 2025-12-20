@@ -134,6 +134,23 @@ export default function AlphawaveImageStudio({
   // Lightbox State
   const [lightboxImage, setLightboxImage] = useState<ImageVariant | null>(null);
   
+  // Matte colors for placeholder backgrounds (random on mount)
+  const [placeholderColors] = useState(() => {
+    const matteColors = [
+      'from-slate-700 to-slate-800',
+      'from-zinc-700 to-zinc-800', 
+      'from-stone-700 to-stone-800',
+      'from-neutral-700 to-neutral-800',
+      'from-gray-700 to-gray-800',
+      'from-purple-900/60 to-indigo-900/60',
+      'from-blue-900/60 to-slate-900/60',
+      'from-emerald-900/60 to-teal-900/60',
+      'from-amber-900/60 to-orange-900/60',
+      'from-rose-900/60 to-pink-900/60',
+    ];
+    return Array.from({ length: 4 }, () => matteColors[Math.floor(Math.random() * matteColors.length)]);
+  });
+  
   const { 
     startGeneration, 
     isGenerating, 
@@ -153,6 +170,9 @@ export default function AlphawaveImageStudio({
     fetchJobs();
   }, [fetchModels, fetchPresets, fetchJobs]);
   
+  // Track which reference images have their notes expanded
+  const [expandedRefImageNotes, setExpandedRefImageNotes] = useState<Set<string>>(new Set());
+  
   // Reference image drag-and-drop
   const onDrop = useCallback((acceptedFiles: File[]) => {
     // Limit to 10 images total
@@ -165,6 +185,13 @@ export default function AlphawaveImageStudio({
       preview: URL.createObjectURL(file),
       inspirationNotes: ''
     }));
+    
+    // Auto-expand notes for newly added images
+    setExpandedRefImageNotes(prev => {
+      const next = new Set(prev);
+      newImages.forEach(img => next.add(img.id));
+      return next;
+    });
     
     setReferenceImages(prev => [...prev, ...newImages]);
   }, [referenceImages.length]);
@@ -435,10 +462,22 @@ export default function AlphawaveImageStudio({
     try {
       const { width, height } = getImageDimensions(aspectRatio, resolution);
       
+      // Build enhanced prompt with reference image notes
+      let enhancedPrompt = prompt;
+      
+      // Inject reference image inspiration notes into the prompt
+      const notesWithContent = referenceImages.filter(img => img.inspirationNotes.trim());
+      if (notesWithContent.length > 0) {
+        const referenceContext = notesWithContent
+          .map((img, i) => `[Reference ${i + 1}: ${img.inspirationNotes.trim()}]`)
+          .join(' ');
+        enhancedPrompt = `${prompt}\n\nStyle guidance from reference images: ${referenceContext}`;
+      }
+      
       // For now, use single model mode
       // TODO: Implement multi-model generation
       const params = {
-        prompt,
+        prompt: enhancedPrompt,
         model: multiModelMode ? modelSlots[0].model : singleModel,
         width,
         height,
@@ -533,122 +572,147 @@ export default function AlphawaveImageStudio({
           
           {selectedTab === 'create' && (
             <>
-              {/* Generated Images Section - AT TOP */}
-              {(isGenerating || currentJobId !== null || (variants.length > 0)) && (
-                <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-white">
-                      {isGenerating ? 'Generating Images...' : 'Generated Images'}
-                    </h3>
-                    {isGenerating && (
-                      <div className="flex items-center gap-2 text-purple-400">
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span className="text-sm">In progress</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className={`grid gap-4 ${
-                    imageCount === 1 ? 'grid-cols-1' :
-                    imageCount === 2 ? 'grid-cols-2' :
-                    'grid-cols-2'
-                  }`}>
-                    {/* Show slots during generation or actual variants after */}
-                    {isGenerating ? (
-                      // Placeholder slots during generation
-                      Array.from({ length: imageCount }).map((_, index) => {
-                        const displayJobId = currentJobId || jobs[0]?.id;
-                        const variant = variants.find((v, i) => i === index && v.job_id === displayJobId);
-                        const isComplete = variant?.status === 'completed' && variant?.image_url;
-                        
-                        return (
-                          <div
-                            key={index}
-                            className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
-                          >
-                            <div className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden">
-                              {isComplete ? (
-                                <Image
-                                  src={variant.image_url!}
-                                  alt={`Generated ${index + 1}`}
-                                  fill
-                                  className="object-contain"
+              {/* Image Canvas - ALWAYS VISIBLE */}
+              <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
+                <div className={`grid gap-4 ${
+                  imageCount === 1 ? 'grid-cols-1' :
+                  imageCount === 2 ? 'grid-cols-2' :
+                  'grid-cols-2'
+                }`}>
+                  {Array.from({ length: imageCount }).map((_, index) => {
+                    const displayJobId = currentJobId || jobs[0]?.id;
+                    const completedVariants = variants.filter(v => v.job_id === displayJobId);
+                    const variant = completedVariants[index];
+                    const hasImage = variant?.status === 'completed' && variant?.image_url;
+                    const colorClass = placeholderColors[index % placeholderColors.length];
+                    
+                    return (
+                      <div
+                        key={index}
+                        className="relative group rounded-2xl overflow-hidden border-2 border-[#333] bg-[#0a0a0a]"
+                        style={{ 
+                          aspectRatio: aspectRatio.replace(':', '/'),
+                        }}
+                      >
+                        {/* Inset container */}
+                        <div className="absolute inset-2 rounded-xl overflow-hidden">
+                          {hasImage ? (
+                            // Completed image
+                            <div 
+                              className="relative w-full h-full cursor-pointer"
+                              onClick={() => setLightboxImage(variant)}
+                            >
+                              <Image
+                                src={variant.image_url!}
+                                alt={`Generated ${index + 1}`}
+                                fill
+                                className="object-cover"
+                              />
+                              
+                              {/* Overlay on Hover */}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setLightboxImage(variant); }}
+                                  className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
+                                  title="View fullscreen"
+                                >
+                                  <Eye className="w-5 h-5" />
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDownload(variant); }}
+                                  className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
+                                  title="Download image"
+                                >
+                                  <Download className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Placeholder with animated background
+                            <div className={`relative w-full h-full bg-gradient-to-br ${colorClass}`}>
+                              {/* Sparkle/bubble animation overlay */}
+                              <div className="absolute inset-0 overflow-hidden">
+                                {/* CSS-based sparkle animation */}
+                                <div className="sparkle-container absolute inset-0">
+                                  {isGenerating && Array.from({ length: 20 }).map((_, i) => (
+                                    <div
+                                      key={i}
+                                      className="absolute w-1 h-1 bg-white/30 rounded-full animate-sparkle-rise"
+                                      style={{
+                                        left: `${Math.random() * 100}%`,
+                                        animationDelay: `${Math.random() * 2}s`,
+                                        animationDuration: `${1.5 + Math.random() * 1}s`,
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                                
+                                {/* Subtle texture overlay */}
+                                <div 
+                                  className="absolute inset-0 opacity-10"
+                                  style={{
+                                    backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)',
+                                    backgroundSize: '24px 24px'
+                                  }}
                                 />
-                              ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                  <RefreshCw className="w-12 h-12 text-purple-400 animate-spin" />
-                                  <div className="text-sm text-gray-400">
-                                    {variant?.status === 'generating' ? 'Generating...' : 'Waiting...'}
-                                  </div>
-                                  {multiModelMode && modelSlots[index] && (
-                                    <div className="text-xs text-gray-500">
-                                      {models.find(m => m.key === modelSlots[index].model)?.name}
-                                    </div>
-                                  )}
+                              </div>
+                              
+                              {/* "Nicole is Designing" blinking text */}
+                              {isGenerating && (
+                                <div className="absolute top-3 right-3 flex items-center gap-2">
+                                  <Sparkles className="w-4 h-4 text-purple-300 animate-pulse" />
+                                  <span className="text-xs font-medium text-purple-200 animate-pulse">
+                                    Nicole is Designing
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {/* Center content when not generating */}
+                              {!isGenerating && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                  <ImageIcon className="w-12 h-12 text-white/20 mb-2" />
+                                  <span className="text-sm text-white/30">Image {index + 1}</span>
                                 </div>
                               )}
                             </div>
-                            <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                              Slot {index + 1}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      // Completed variants - use currentJobId first, fallback to jobs[0]?.id
-                      variants.filter(v => v.job_id === (currentJobId || jobs[0]?.id)).slice(0, imageCount).map((variant, index: number) => (
-                        <div
-                          key={variant.id}
-                          className="relative group rounded-lg overflow-hidden bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 p-1"
-                        >
-                          <div 
-                            className="relative aspect-video bg-[#0a0a0a] rounded-lg overflow-hidden cursor-pointer"
-                            onClick={() => setLightboxImage(variant)}
-                          >
-                            {variant.image_url ? (
-                              <Image
-                                src={variant.image_url}
-                                alt={`Generated ${index + 1}`}
-                                fill
-                                className="object-contain"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <ImageIcon className="w-16 h-16 text-gray-700" />
-                              </div>
-                            )}
-                            
-                            {/* Overlay on Hover */}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); setLightboxImage(variant); }}
-                                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
-                                title="View fullscreen"
-                              >
-                                <Eye className="w-5 h-5" />
-                              </button>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleDownload(variant); }}
-                                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg p-3 transition-all"
-                                title="Download image"
-                              >
-                                <Download className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {/* Model Badge */}
-                          {multiModelMode && modelSlots[index] && (
-                            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
-                              {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
-                            </div>
                           )}
                         </div>
-                      ))
-                    )}
-                  </div>
+                        
+                        {/* Model Badge */}
+                        {multiModelMode && modelSlots[index] && (
+                          <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded z-10">
+                            {models.find(m => m.key === modelSlots[index].model)?.name || modelSlots[index].model}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+                
+                {/* Add CSS for sparkle animation */}
+                <style jsx>{`
+                  @keyframes sparkle-rise {
+                    0% {
+                      transform: translateY(100%) scale(0);
+                      opacity: 0;
+                    }
+                    10% {
+                      opacity: 1;
+                      transform: translateY(90%) scale(1);
+                    }
+                    90% {
+                      opacity: 0.8;
+                    }
+                    100% {
+                      transform: translateY(-20%) scale(0.5);
+                      opacity: 0;
+                    }
+                  }
+                  .animate-sparkle-rise {
+                    animation: sparkle-rise linear infinite;
+                  }
+                `}</style>
+              </div>
               
               {/* Prompt Input Section */}
               <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#333]">
@@ -747,43 +811,57 @@ export default function AlphawaveImageStudio({
                 
                 {/* Reference Image Grid */}
                 {referenceImages.length > 0 && (
-                  <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="space-y-4 mt-4">
                     {referenceImages.map((img, index) => (
                       <div
                         key={img.id}
-                        className="bg-[#0a0a0a] border border-[#444] rounded-lg p-4 space-y-3"
+                        className="bg-[#0a0a0a] border-2 border-purple-500/40 rounded-xl p-4 space-y-4 transition-all"
                       >
-                        {/* Image Preview */}
-                        <div className="relative aspect-video rounded-lg overflow-hidden bg-[#1a1a1a]">
-                          <Image
-                            src={img.preview}
-                            alt={`Reference ${index + 1}`}
-                            fill
-                            className="object-cover"
-                          />
-                          <button
-                            onClick={() => removeReferenceImage(img.id)}
-                            className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                            Reference {index + 1}
+                        <div className="flex gap-4">
+                          {/* Image Preview - Smaller */}
+                          <div className="relative w-32 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-[#1a1a1a]">
+                            <Image
+                              src={img.preview}
+                              alt={`Reference ${index + 1}`}
+                              fill
+                              className="object-cover"
+                            />
+                            <button
+                              onClick={() => {
+                                removeReferenceImage(img.id);
+                                setExpandedRefImageNotes(prev => {
+                                  const next = new Set(prev);
+                                  next.delete(img.id);
+                                  return next;
+                                });
+                              }}
+                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                            <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
+                              Ref {index + 1}
+                            </div>
                           </div>
-                        </div>
-                        
-                        {/* Inspiration Notes */}
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-2">
-                            What should I take from this image?
-                          </label>
-                          <textarea
-                            value={img.inspirationNotes}
-                            onChange={(e) => updateInspirationNotes(img.id, e.target.value)}
-                            placeholder="E.g., 'Use this color palette', 'Match this lighting style', 'Incorporate this composition'..."
-                            className="w-full bg-[#1a1a1a] border border-[#555] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                            rows={3}
-                          />
+                          
+                          {/* Inspiration Notes - Prominent & Auto-focused */}
+                          <div className="flex-1">
+                            <label className="flex items-center gap-2 text-sm font-medium text-purple-300 mb-2">
+                              <Sparkles className="w-4 h-4" />
+                              What should Nicole take from this image?
+                            </label>
+                            <textarea
+                              value={img.inspirationNotes}
+                              onChange={(e) => updateInspirationNotes(img.id, e.target.value)}
+                              autoFocus={expandedRefImageNotes.has(img.id)}
+                              placeholder="Be specific! E.g., 'Use these warm sunset colors', 'Copy the dramatic lighting angle', 'Match this composition with subject on right third'..."
+                              className="w-full bg-[#1a1a1a] border-2 border-purple-500/30 focus:border-purple-500 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none transition-all"
+                              rows={3}
+                            />
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              💡 Tip: Be descriptive! These notes will be combined with your prompt for more accurate results.
+                            </p>
+                          </div>
                         </div>
                       </div>
                     ))}
