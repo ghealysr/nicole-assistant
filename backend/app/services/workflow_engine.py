@@ -722,20 +722,28 @@ class WorkflowEngine:
     
     def __init__(self):
         self._registry = WorkflowRegistry()
-        self._executor = WorkflowExecutor()
-        self._workflows: Dict[str, Any] = {}
         self._tool_handlers: Dict[str, Any] = {}
         self._agent_handlers: Dict[str, Any] = {}
+        self._workflows: Dict[str, Any] = {}
+        # Create executor with a default tool executor that routes to registered handlers
+        self._executor = WorkflowExecutor(self._default_tool_executor)
+    
+    async def _default_tool_executor(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
+        """Default tool executor that routes to registered handlers."""
+        if tool_name in self._tool_handlers:
+            handler = self._tool_handlers[tool_name]
+            if asyncio.iscoroutinefunction(handler):
+                return await handler(**tool_args)
+            return handler(**tool_args)
+        raise ValueError(f"No handler registered for tool: {tool_name}")
     
     def register_tool_handler(self, name: str, handler: Any) -> None:
         """Register a tool handler."""
         self._tool_handlers[name] = handler
-        self._executor.register_tool_handler(name, handler)
     
     def register_agent_handler(self, name: str, handler: Any) -> None:
         """Register an agent handler."""
         self._agent_handlers[name] = handler
-        self._executor.register_agent_handler(name, handler)
     
     def load_workflow_file(self, path: str) -> None:
         """Load a workflow definition from a YAML file."""
@@ -767,7 +775,7 @@ class WorkflowEngine:
     
     def get_execution(self, execution_id: str) -> Optional[WorkflowState]:
         """Get a workflow execution by ID."""
-        return self._executor._executions.get(execution_id)
+        return self._executor._active_workflows.get(execution_id)
     
     def list_workflows(self) -> List[str]:
         """List all registered workflows."""
