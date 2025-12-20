@@ -490,6 +490,7 @@ export const LotusSphere = memo(function LotusSphere({
       className={className}
       style={{
         display: 'block',
+        background: 'transparent',
       }}
       aria-label="Nicole thinking indicator"
       role="status"
