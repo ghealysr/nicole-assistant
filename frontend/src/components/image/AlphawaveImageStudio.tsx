@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useImageGeneration, ImageVariant } from '@/lib/hooks/useImageGeneration';
-import { X, Upload, Sparkles, Image as ImageIcon, Trash2, Eye, Download, RefreshCw, Wand2, MessageCircle } from 'lucide-react';
+import { X, Upload, Sparkles, Image as ImageIcon, Eye, Download, RefreshCw, Wand2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { ReferenceImageAnalysis } from '../image-studio/ReferenceImageAnalysis';
 import { NicolePromptSuggestions } from '../image-studio/NicolePromptSuggestions';
