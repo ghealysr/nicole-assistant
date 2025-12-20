@@ -371,8 +371,8 @@ export const NicoleOrbAnimation = memo(function NicoleOrbAnimation({
         }
       `}} />
       
-      {/* Energy rings */}
-      {isActive && variant !== 'small' && (
+      {/* Energy rings - hide for small size */}
+      {isActive && size !== 'small' && (
         <>
           <EnergyRing isActive={isActive} size={config.container * 0.9} delay={0} />
           <EnergyRing isActive={isActive} size={config.container * 1.3} delay={0.3} />
