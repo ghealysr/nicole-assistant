@@ -28,11 +28,26 @@ router = APIRouter(prefix="/faz", tags=["Faz Code"])
 # SCHEMAS
 # =============================================================================
 
+class InspirationImage(BaseModel):
+    """Inspiration image with notes."""
+    url: str = Field(..., description="URL of the inspiration image")
+    notes: str = Field("", description="What elements to take from this image")
+    
+    
 class ProjectCreate(BaseModel):
     """Create project request."""
     name: str = Field(..., min_length=1, max_length=200)
     prompt: str = Field(..., min_length=10, max_length=10000)
     design_preferences: Optional[Dict[str, Any]] = None
+    inspiration_images: Optional[List[InspirationImage]] = Field(
+        default=None,
+        max_length=10,
+        description="Up to 10 inspiration images with notes"
+    )
+    auto_setup: bool = Field(
+        default=True,
+        description="Automatically set up GitHub repo and Vercel project"
+    )
 
 
 class ProjectResponse(BaseModel):
@@ -106,16 +121,348 @@ def generate_slug(name: str, project_id: int) -> str:
 
 
 # =============================================================================
+# COMING SOON PAGE TEMPLATE
+# =============================================================================
+
+COMING_SOON_HTML = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{project_name} - Coming Soon</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #FFFDF5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }}
+        .container {{
+            text-align: center;
+            padding: 2rem;
+        }}
+        h1 {{
+            font-size: clamp(3rem, 10vw, 6rem);
+            font-weight: 700;
+            color: #FF6B35;
+            letter-spacing: -0.02em;
+            text-transform: uppercase;
+        }}
+        p {{
+            margin-top: 1rem;
+            font-size: 1.25rem;
+            color: #8B7355;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Coming Soon</h1>
+        <p>We're building something amazing. Check back soon!</p>
+    </div>
+</body>
+</html>
+'''
+
+PACKAGE_JSON_TEMPLATE = '''{
+  "name": "faz-{slug}",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.0.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.10.5",
+    "@types/react": "18.2.45",
+    "typescript": "5.3.3"
+  }
+}
+'''
+
+NEXT_CONFIG = '''/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
+}
+
+module.exports = nextConfig
+'''
+
+TSCONFIG = '''{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}
+'''
+
+COMING_SOON_PAGE = '''export default function Home() {
+  return (
+    <main style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#FFFDF5',
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+    }}>
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <h1 style={{
+          fontSize: 'clamp(3rem, 10vw, 6rem)',
+          fontWeight: 700,
+          color: '#FF6B35',
+          letterSpacing: '-0.02em',
+          textTransform: 'uppercase',
+          margin: 0
+        }}>
+          Coming Soon
+        </h1>
+        <p style={{
+          marginTop: '1rem',
+          fontSize: '1.25rem',
+          color: '#8B7355'
+        }}>
+          We're building something amazing. Check back soon!
+        </p>
+      </div>
+    </main>
+  )
+}
+'''
+
+LAYOUT_TSX = '''import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: '{project_name}',
+  description: 'Coming Soon - Built with Faz Code',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+'''
+
+
+async def _setup_project_infrastructure(
+    project_id: int,
+    user_id: int,
+    slug: str,
+    project_name: str,
+) -> None:
+    """
+    Set up GitHub repo and Vercel project with Coming Soon page.
+    
+    This runs in the background after project creation.
+    """
+    from app.services.faz_github_service import github_service
+    from app.services.faz_vercel_service import vercel_service
+    
+    repo_name = f"faz-{slug}"
+    
+    try:
+        logger.info(f"[Faz] Setting up infrastructure for project {project_id}")
+        
+        # Step 1: Create GitHub repository
+        github_result = await github_service.create_repository(
+            name=repo_name,
+            description=f"Generated by Faz Code AI - {project_name}",
+            private=False,
+            auto_init=False,  # We'll push our own files
+        )
+        
+        if github_result.get("error"):
+            logger.error(f"[Faz] GitHub setup failed: {github_result['error']}")
+            await db.execute(
+                """UPDATE faz_projects 
+                   SET status_history = COALESCE(status_history, '[]'::jsonb) || $1::jsonb
+                   WHERE project_id = $2""",
+                json.dumps([{
+                    "event": "github_setup_failed",
+                    "error": github_result["error"],
+                    "timestamp": datetime.utcnow().isoformat(),
+                }]),
+                project_id,
+            )
+            return
+        
+        github_url = github_result.get("html_url")
+        github_full_name = github_result.get("full_name")
+        
+        logger.info(f"[Faz] Created GitHub repo: {github_url}")
+        
+        # Step 2: Create Coming Soon files and commit
+        coming_soon_files = {
+            "public/index.html": COMING_SOON_HTML.format(project_name=project_name),
+            "package.json": PACKAGE_JSON_TEMPLATE.format(slug=slug),
+            "next.config.js": NEXT_CONFIG,
+            "tsconfig.json": TSCONFIG,
+            "src/app/page.tsx": COMING_SOON_PAGE,
+            "src/app/layout.tsx": LAYOUT_TSX.format(project_name=project_name),
+            ".gitignore": "node_modules/\n.next/\nout/\n.env*.local\n",
+            "README.md": f"# {project_name}\\n\\nBuilt with Faz Code AI\\n",
+        }
+        
+        commit_result = await github_service.commit_files(
+            repo_name=github_result["name"],
+            files=coming_soon_files,
+            message="Initial commit - Coming Soon page",
+            branch="main",
+        )
+        
+        if commit_result.get("error"):
+            logger.error(f"[Faz] File commit failed: {commit_result['error']}")
+        else:
+            logger.info(f"[Faz] Committed {commit_result.get('files_committed')} files")
+        
+        # Step 3: Create Vercel project
+        vercel_result = await vercel_service.create_project(
+            name=repo_name,
+            github_repo=github_full_name,
+            framework="nextjs",
+        )
+        
+        if vercel_result.get("error"):
+            logger.error(f"[Faz] Vercel setup failed: {vercel_result['error']}")
+            # Still update with GitHub info
+            await db.execute(
+                """UPDATE faz_projects 
+                   SET github_repo = $1,
+                       status_history = COALESCE(status_history, '[]'::jsonb) || $2::jsonb,
+                       updated_at = NOW()
+                   WHERE project_id = $3""",
+                github_url,
+                json.dumps([{
+                    "event": "vercel_setup_failed",
+                    "error": vercel_result["error"],
+                    "github_url": github_url,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }]),
+                project_id,
+            )
+            return
+        
+        vercel_project_id = vercel_result.get("project_id")
+        production_url = f"https://{repo_name}.vercel.app"
+        
+        logger.info(f"[Faz] Created Vercel project: {production_url}")
+        
+        # Step 4: Store initial files in database (for editor display)
+        for path, content in coming_soon_files.items():
+            filename = path.split("/")[-1]
+            extension = filename.split(".")[-1] if "." in filename else None
+            
+            await db.execute(
+                """INSERT INTO faz_files 
+                   (project_id, path, filename, extension, content, file_type, 
+                    line_count, generated_by, version, status)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'generated')""",
+                project_id,
+                path,
+                filename,
+                extension,
+                content,
+                "code",
+                content.count("\n") + 1,
+                "system",
+            )
+        
+        # Step 5: Update project with setup info
+        await db.execute(
+            """UPDATE faz_projects 
+               SET github_repo = $1,
+                   vercel_project_id = $2,
+                   preview_url = $3,
+                   production_url = $3,
+                   status_history = COALESCE(status_history, '[]'::jsonb) || $4::jsonb,
+                   updated_at = NOW()
+               WHERE project_id = $5""",
+            github_url,
+            vercel_project_id,
+            production_url,
+            json.dumps([{
+                "event": "infrastructure_setup_complete",
+                "github_url": github_url,
+                "vercel_url": production_url,
+                "timestamp": datetime.utcnow().isoformat(),
+            }]),
+            project_id,
+        )
+        
+        logger.info(f"[Faz] Infrastructure setup complete for project {project_id}")
+        
+    except Exception as e:
+        logger.exception(f"[Faz] Infrastructure setup failed for project {project_id}: {e}")
+        await db.execute(
+            """UPDATE faz_projects 
+               SET status_history = COALESCE(status_history, '[]'::jsonb) || $1::jsonb
+               WHERE project_id = $2""",
+            json.dumps([{
+                "event": "infrastructure_setup_error",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat(),
+            }]),
+            project_id,
+        )
+
+
+# =============================================================================
 # PROJECT CRUD
 # =============================================================================
 
 @router.post("/projects", response_model=ProjectResponse)
 async def create_project(
     request: ProjectCreate,
+    background_tasks: BackgroundTasks,
     user = Depends(get_current_user),
 ):
-    """Create a new Faz Code project."""
+    """Create a new Faz Code project with optional auto-setup."""
     try:
+        # Prepare design preferences including inspiration images
+        design_prefs = request.design_preferences or {}
+        if request.inspiration_images:
+            design_prefs["inspiration_images"] = [
+                {"url": img.url, "notes": img.notes}
+                for img in request.inspiration_images
+            ]
+        
         # Create project
         project_id = await db.fetchval(
             """
@@ -127,7 +474,7 @@ async def create_project(
             user.user_id,
             request.name,
             request.prompt,
-            json.dumps(request.design_preferences or {}),
+            json.dumps(design_prefs),
         )
         
         # Generate slug with ID
@@ -139,6 +486,16 @@ async def create_project(
         )
         
         logger.info(f"[Faz] Created project {project_id}: {request.name}")
+        
+        # Auto-setup GitHub + Vercel with Coming Soon page
+        if request.auto_setup:
+            background_tasks.add_task(
+                _setup_project_infrastructure,
+                project_id,
+                user.user_id,
+                slug,
+                request.name,
+            )
         
         # Get full project
         project = await db.fetchrow(
@@ -854,5 +1211,186 @@ async def get_deploy_status(
         raise
     except Exception as e:
         logger.exception(f"[Faz] Failed to get deploy status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# INSPIRATION IMAGES
+# =============================================================================
+
+class AddInspirationImageRequest(BaseModel):
+    """Add inspiration image request."""
+    url: str = Field(..., description="URL of the inspiration image")
+    notes: str = Field("", description="What elements to take from this image")
+
+
+class InspirationImageResponse(BaseModel):
+    """Inspiration image response."""
+    url: str
+    notes: str
+    added_at: str
+
+
+@router.post("/projects/{project_id}/inspiration")
+async def add_inspiration_image(
+    project_id: int,
+    request: AddInspirationImageRequest,
+    user = Depends(get_current_user),
+):
+    """
+    Add an inspiration image to a project.
+    
+    Nicole will analyze the image and incorporate desired elements into the design.
+    Each image should have notes describing what you want her to take from it.
+    """
+    try:
+        # Get project and its design preferences
+        project = await db.fetchrow(
+            """SELECT project_id, design_preferences 
+               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Parse existing design preferences
+        design_prefs = project["design_preferences"] or {}
+        if isinstance(design_prefs, str):
+            design_prefs = json.loads(design_prefs)
+        
+        # Get or create inspiration images list
+        inspiration_images = design_prefs.get("inspiration_images", [])
+        
+        # Check limit (max 10 images)
+        if len(inspiration_images) >= 10:
+            raise HTTPException(
+                status_code=400, 
+                detail="Maximum of 10 inspiration images allowed"
+            )
+        
+        # Add new image
+        new_image = {
+            "url": request.url,
+            "notes": request.notes,
+            "added_at": datetime.utcnow().isoformat(),
+        }
+        inspiration_images.append(new_image)
+        design_prefs["inspiration_images"] = inspiration_images
+        
+        # Update project
+        await db.execute(
+            """UPDATE faz_projects 
+               SET design_preferences = $1, updated_at = NOW()
+               WHERE project_id = $2""",
+            json.dumps(design_prefs),
+            project_id,
+        )
+        
+        logger.info(f"[Faz] Added inspiration image to project {project_id}")
+        
+        return {
+            "success": True,
+            "message": "Inspiration image added",
+            "image": new_image,
+            "total_images": len(inspiration_images),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to add inspiration image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/inspiration")
+async def get_inspiration_images(
+    project_id: int,
+    user = Depends(get_current_user),
+):
+    """Get all inspiration images for a project."""
+    try:
+        project = await db.fetchrow(
+            """SELECT design_preferences 
+               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        design_prefs = project["design_preferences"] or {}
+        if isinstance(design_prefs, str):
+            design_prefs = json.loads(design_prefs)
+        
+        inspiration_images = design_prefs.get("inspiration_images", [])
+        
+        return {
+            "project_id": project_id,
+            "images": inspiration_images,
+            "count": len(inspiration_images),
+            "max_allowed": 10,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to get inspiration images: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/projects/{project_id}/inspiration/{image_index}")
+async def remove_inspiration_image(
+    project_id: int,
+    image_index: int,
+    user = Depends(get_current_user),
+):
+    """Remove an inspiration image by index."""
+    try:
+        project = await db.fetchrow(
+            """SELECT design_preferences 
+               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        design_prefs = project["design_preferences"] or {}
+        if isinstance(design_prefs, str):
+            design_prefs = json.loads(design_prefs)
+        
+        inspiration_images = design_prefs.get("inspiration_images", [])
+        
+        if image_index < 0 or image_index >= len(inspiration_images):
+            raise HTTPException(status_code=404, detail="Image not found at index")
+        
+        # Remove image
+        removed = inspiration_images.pop(image_index)
+        design_prefs["inspiration_images"] = inspiration_images
+        
+        # Update project
+        await db.execute(
+            """UPDATE faz_projects 
+               SET design_preferences = $1, updated_at = NOW()
+               WHERE project_id = $2""",
+            json.dumps(design_prefs),
+            project_id,
+        )
+        
+        return {
+            "success": True,
+            "message": "Inspiration image removed",
+            "removed_image": removed,
+            "remaining_count": len(inspiration_images),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to remove inspiration image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

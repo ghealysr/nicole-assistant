@@ -3,12 +3,13 @@
 /**
  * LivePreview Component
  * 
- * Renders project files in an iframe with live updates.
- * Supports HTML/CSS/JS preview with hot reload on file changes.
+ * Displays the live Vercel deployment in an iframe.
+ * Supports accurate device viewports (Desktop, iPad, iPhone).
+ * Falls back to "Coming Soon" placeholder when no deployment exists.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Monitor,
   Smartphone,
@@ -17,231 +18,161 @@ import {
   ExternalLink,
   Maximize2,
   Minimize2,
-  Code2,
-  Eye,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { useFazStore } from '@/lib/faz/store';
-import type { FazFile } from '@/types/faz';
 
-type ViewportSize = 'desktop' | 'tablet' | 'mobile';
+type ViewportSize = 'desktop' | 'ipad' | 'iphone';
 
-const VIEWPORT_SIZES: Record<ViewportSize, { width: number; label: string }> = {
-  desktop: { width: 1280, label: 'Desktop' },
-  tablet: { width: 768, label: 'Tablet' },
-  mobile: { width: 375, label: 'Mobile' },
+// Accurate device dimensions
+const VIEWPORT_SIZES: Record<ViewportSize, { width: number; height: number; label: string }> = {
+  desktop: { width: 1440, height: 900, label: 'Desktop (1440×900)' },
+  ipad: { width: 820, height: 1180, label: 'iPad Pro 11" (820×1180)' },
+  iphone: { width: 390, height: 844, label: 'iPhone 14 Pro (390×844)' },
 };
 
 interface LivePreviewProps {
-  files?: FazFile[];
-  initialFile?: string;
   className?: string;
+  externalUrl?: string; // Optional override URL
 }
 
-export function LivePreview({ files: propFiles, initialFile, className = '' }: LivePreviewProps) {
-  const { currentProject, files: storeFiles } = useFazStore();
+export function LivePreview({ className = '', externalUrl }: LivePreviewProps) {
+  const { currentProject, isLoading: storeLoading } = useFazStore();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   
   const [viewport, setViewport] = useState<ViewportSize>('desktop');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showCode, setShowCode] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   
-  // Use prop files or store files
-  const files = propFiles || storeFiles;
-  
-  // Find the entry HTML file
-  const entryFile = useMemo(() => {
-    if (selectedFile) {
-      return files.find(f => f.path === selectedFile);
-    }
-    // Priority: initialFile -> index.html -> page.tsx -> App.tsx -> first HTML
-    const priorities = [
-      initialFile,
-      'index.html',
-      'public/index.html',
-      'src/index.html',
-      'app/page.tsx',
-      'src/app/page.tsx',
-      'pages/index.tsx',
-      'src/pages/index.tsx',
-      'src/App.tsx',
-      'App.tsx',
-    ].filter(Boolean);
-    
-    for (const path of priorities) {
-      const file = files.find(f => f.path === path || f.path.endsWith(`/${path}`));
-      if (file) return file;
-    }
-    
-    // Fallback to first HTML file
-    return files.find(f => f.extension === 'html');
-  }, [files, initialFile, selectedFile]);
-  
-  // Generate preview HTML
-  const previewHTML = useMemo(() => {
-    if (!entryFile) return null;
-    
-    // If it's an HTML file, inject CSS and JS
-    if (entryFile.extension === 'html') {
-      let html = entryFile.content;
-      
-      // Find CSS files and inject
-      const cssFiles = files.filter(f => f.extension === 'css');
-      const cssContent = cssFiles.map(f => f.content).join('\n');
-      if (cssContent && !html.includes('<style')) {
-        html = html.replace('</head>', `<style>\n${cssContent}\n</style>\n</head>`);
-      }
-      
-      // Find JS files and inject
-      const jsFiles = files.filter(f => f.extension === 'js' && !f.path.includes('.config'));
-      const jsContent = jsFiles.map(f => f.content).join('\n');
-      if (jsContent && !html.includes('<script src')) {
-        html = html.replace('</body>', `<script>\n${jsContent}\n</script>\n</body>`);
-      }
-      
-      return html;
-    }
-    
-    // For React/TSX files, create a wrapper
-    if (entryFile.extension === 'tsx' || entryFile.extension === 'jsx') {
-      // Extract and display a simple preview message for now
-      // Full React rendering would require a bundler
-      return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>React Preview</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #e0e0e0;
-    }
-    .preview-container {
-      text-align: center;
-      padding: 3rem;
-      max-width: 600px;
-    }
-    h1 { 
-      font-size: 2rem; 
-      margin-bottom: 1rem;
-      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    p { color: #a0a0a0; line-height: 1.6; margin-bottom: 1.5rem; }
-    .code-box {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 1rem;
-      text-align: left;
-      font-family: 'Fira Code', monospace;
-      font-size: 0.85rem;
-      color: #7ee787;
-      overflow-x: auto;
-    }
-    .file-name { color: #79c0ff; margin-bottom: 0.5rem; }
-  </style>
-</head>
-<body>
-  <div class="preview-container">
-    <h1>React Component Preview</h1>
-    <p>This is a React/Next.js component. Full preview requires the development server to be running.</p>
-    <div class="code-box">
-      <div class="file-name">${entryFile.path}</div>
-      <pre>${escapeHtml(entryFile.content.slice(0, 500))}${entryFile.content.length > 500 ? '\n...' : ''}</pre>
-    </div>
-  </div>
-</body>
-</html>
-      `;
-    }
-    
+  // Determine the URL to display
+  const previewUrl = useMemo(() => {
+    if (externalUrl) return externalUrl;
+    if (currentProject?.preview_url) return currentProject.preview_url;
+    if (currentProject?.production_url) return currentProject.production_url;
     return null;
-  }, [entryFile, files]);
+  }, [externalUrl, currentProject?.preview_url, currentProject?.production_url]);
   
-  // Update iframe content
-  const updatePreview = useCallback(() => {
-    if (!iframeRef.current || !previewHTML) return;
-    
+  // Handle iframe load
+  const handleIframeLoad = useCallback(() => {
+    setIsLoading(false);
+    setHasError(false);
+  }, []);
+  
+  // Handle iframe error
+  const handleIframeError = useCallback(() => {
+    setIsLoading(false);
+    setHasError(true);
+  }, []);
+  
+  // Refresh preview
+  const handleRefresh = useCallback(() => {
     setIsLoading(true);
-    
-    const iframe = iframeRef.current;
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    
-    if (doc) {
-      doc.open();
-      doc.write(previewHTML);
-      doc.close();
+    setHasError(false);
+    setRefreshKey(prev => prev + 1);
+  }, []);
+  
+  // Open in new tab
+  const handleOpenExternal = useCallback(() => {
+    if (previewUrl) {
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
     }
-    
-    setTimeout(() => setIsLoading(false), 300);
-  }, [previewHTML]);
+  }, [previewUrl]);
   
-  // Update preview when content changes
+  // Current viewport dimensions
+  const currentViewport = VIEWPORT_SIZES[viewport];
+  
+  // Calculate scale to fit container
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  
   useEffect(() => {
-    updatePreview();
-  }, [updatePreview]);
+    const updateSize = () => {
+      if (containerRef.current) {
+        setContainerSize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
+      }
+    };
+    
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
   
-  // File list for navigation
-  const previewableFiles = useMemo(() => {
-    return files.filter(f => 
-      ['html', 'htm', 'tsx', 'jsx'].includes(f.extension || '')
-    );
-  }, [files]);
+  // Calculate scale to fit viewport in container
+  const scale = useMemo(() => {
+    if (isFullscreen) return 1;
+    
+    const padding = 32; // 16px on each side
+    const availableWidth = containerSize.width - padding;
+    const availableHeight = containerSize.height - padding;
+    
+    const scaleX = availableWidth / currentViewport.width;
+    const scaleY = availableHeight / currentViewport.height;
+    
+    return Math.min(scaleX, scaleY, 1); // Never scale up
+  }, [containerSize, currentViewport, isFullscreen]);
   
-  if (!entryFile && files.length === 0) {
-    return (
-      <div className={`flex items-center justify-center h-full bg-zinc-900 ${className}`}>
-        <div className="text-center text-zinc-500">
-          <Eye className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>No files to preview</p>
-          <p className="text-sm mt-1">Generate some code first!</p>
-        </div>
-      </div>
-    );
-  }
+  // Coming Soon placeholder
+  const ComingSoonPlaceholder = () => (
+    <div 
+      className="w-full h-full flex flex-col items-center justify-center"
+      style={{ 
+        backgroundColor: '#FFF8E7', // Cream color
+        color: '#F97316' // Orange
+      }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center"
+      >
+        <h1 className="text-6xl font-bold mb-4" style={{ color: '#F97316' }}>
+          Coming Soon
+        </h1>
+        <p className="text-xl opacity-70">
+          {currentProject?.name || 'Your website is being built'}
+        </p>
+      </motion.div>
+    </div>
+  );
   
   return (
     <div className={`flex flex-col bg-zinc-900 rounded-lg overflow-hidden border border-zinc-700/50 ${className}`}>
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 bg-zinc-800/80 border-b border-zinc-700/50">
         <div className="flex items-center gap-2">
-          {/* File selector */}
-          <select
-            value={selectedFile || entryFile?.path || ''}
-            onChange={(e) => setSelectedFile(e.target.value)}
-            className="bg-zinc-700 text-zinc-200 text-sm px-2 py-1 rounded border border-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {previewableFiles.map(f => (
-              <option key={f.file_id} value={f.path}>
-                {f.filename}
-              </option>
-            ))}
-          </select>
+          {/* URL display */}
+          <div className="flex items-center gap-2 px-2 py-1 bg-zinc-900/50 rounded text-xs text-zinc-400 max-w-[200px] truncate">
+            {previewUrl ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="truncate">{new URL(previewUrl).hostname}</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>No deployment</span>
+              </>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-1">
           {/* Viewport switcher */}
-          {Object.entries(VIEWPORT_SIZES).map(([key, { label }]) => {
-            const Icon = key === 'desktop' ? Monitor : key === 'tablet' ? Tablet : Smartphone;
+          {(Object.entries(VIEWPORT_SIZES) as [ViewportSize, typeof VIEWPORT_SIZES[ViewportSize]][]).map(([key, { label }]) => {
+            const Icon = key === 'desktop' ? Monitor : key === 'ipad' ? Tablet : Smartphone;
             return (
               <button
                 key={key}
-                onClick={() => setViewport(key as ViewportSize)}
+                onClick={() => setViewport(key)}
                 className={`p-1.5 rounded transition-colors ${
                   viewport === key 
-                    ? 'bg-blue-500/20 text-blue-400' 
+                    ? 'bg-orange-500/20 text-orange-400' 
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
                 }`}
                 title={label}
@@ -253,27 +184,17 @@ export function LivePreview({ files: propFiles, initialFile, className = '' }: L
           
           <div className="w-px h-4 bg-zinc-600 mx-1" />
           
-          {/* Actions */}
+          {/* Refresh */}
           <button
-            onClick={updatePreview}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+            onClick={handleRefresh}
+            disabled={!previewUrl}
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           
-          <button
-            onClick={() => setShowCode(!showCode)}
-            className={`p-1.5 rounded transition-colors ${
-              showCode 
-                ? 'bg-purple-500/20 text-purple-400' 
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
-            }`}
-            title="View Source"
-          >
-            <Code2 className="w-4 h-4" />
-          </button>
-          
+          {/* Fullscreen */}
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
@@ -282,77 +203,110 @@ export function LivePreview({ files: propFiles, initialFile, className = '' }: L
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
           
-          {currentProject?.preview_url && (
-            <a
-              href={currentProject.preview_url}
-              target="_blank"
-              rel="noopener noreferrer"
+          {/* Open external */}
+          {previewUrl && (
+            <button
+              onClick={handleOpenExternal}
               className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
               title="Open in New Tab"
             >
               <ExternalLink className="w-4 h-4" />
-            </a>
+            </button>
           )}
         </div>
       </div>
       
       {/* Preview Area */}
-      <div className="flex-1 relative bg-white overflow-hidden">
+      <div 
+        ref={containerRef}
+        className="flex-1 relative bg-zinc-800 overflow-hidden flex items-center justify-center p-4"
+        style={{ minHeight: 400 }}
+      >
         {/* Loading overlay */}
-        {isLoading && (
-          <div className="absolute inset-0 bg-zinc-900/80 flex items-center justify-center z-10">
-            <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-900/80 flex items-center justify-center z-10"
+            >
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 text-orange-400 animate-spin mx-auto mb-2" />
+                <p className="text-sm text-zinc-400">Loading preview...</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {/* Error state */}
+        {hasError && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="text-center text-zinc-400">
+              <AlertCircle className="w-12 h-12 mx-auto mb-3 text-amber-500" />
+              <p className="font-medium mb-1">Preview unavailable</p>
+              <p className="text-sm">The site may still be deploying</p>
+              <button
+                onClick={handleRefresh}
+                className="mt-3 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         )}
         
-        {/* Iframe container with viewport sizing */}
-        <div 
-          className="h-full flex items-start justify-center overflow-auto p-4 bg-zinc-800"
-          style={{ backgroundColor: '#1e1e1e' }}
+        {/* Device frame */}
+        <motion.div
+          layout
+          className="relative bg-black rounded-lg shadow-2xl overflow-hidden"
+          style={{
+            width: currentViewport.width * scale,
+            height: currentViewport.height * scale,
+            // Add device bezel styling
+            border: viewport !== 'desktop' ? '8px solid #1a1a1a' : 'none',
+            borderRadius: viewport !== 'desktop' ? 24 * scale : 8,
+          }}
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ 
-              opacity: 1, 
-              scale: 1,
-              width: isFullscreen ? '100%' : VIEWPORT_SIZES[viewport].width,
-            }}
-            transition={{ duration: 0.2 }}
-            className="bg-white shadow-2xl rounded-lg overflow-hidden h-full"
-            style={{ 
-              minHeight: 500,
-              maxWidth: '100%',
-            }}
-          >
-            {showCode ? (
-              <div className="h-full bg-zinc-900 overflow-auto">
-                <pre className="p-4 text-sm text-zinc-300 font-mono">
-                  {entryFile?.content}
-                </pre>
-              </div>
-            ) : (
-              <iframe
-                ref={iframeRef}
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-                title="Preview"
-              />
-            )}
-          </motion.div>
+          {previewUrl ? (
+            <iframe
+              ref={iframeRef}
+              key={refreshKey}
+              src={previewUrl}
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+              className="w-full h-full border-0 bg-white"
+              style={{
+                width: currentViewport.width,
+                height: currentViewport.height,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+              }}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              title="Live Preview"
+            />
+          ) : (
+            <div 
+              className="overflow-hidden"
+              style={{
+                width: currentViewport.width,
+                height: currentViewport.height,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              <ComingSoonPlaceholder />
+            </div>
+          )}
+        </motion.div>
+        
+        {/* Viewport label */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/50 rounded-full text-xs text-zinc-400">
+          {currentViewport.label}
         </div>
       </div>
     </div>
   );
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
 export default LivePreview;
-
