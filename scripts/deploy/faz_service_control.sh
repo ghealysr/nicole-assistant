@@ -247,11 +247,15 @@ show_logs() {
     case "$svc" in
         api)
             echo -e "${CYAN}Tailing API logs (Ctrl+C to exit)...${NC}"
-            tail -f /var/log/supervisor/nicole-api-*.log
+            tail -f /var/log/supervisor/nicole-api.log 2>/dev/null || \
+                tail -f /var/log/supervisor/nicole-api-*.log 2>/dev/null || \
+                echo "No API log files found. Check: ls /var/log/supervisor/"
             ;;
         worker)
             echo -e "${CYAN}Tailing Worker logs (Ctrl+C to exit)...${NC}"
-            tail -f /var/log/supervisor/nicole-worker-*.log
+            tail -f /var/log/supervisor/nicole-worker.log 2>/dev/null || \
+                tail -f /var/log/supervisor/nicole-worker-*.log 2>/dev/null || \
+                echo "No worker log files found. Check: ls /var/log/supervisor/"
             ;;
         nginx)
             echo -e "${CYAN}Tailing Nginx logs (Ctrl+C to exit)...${NC}"
