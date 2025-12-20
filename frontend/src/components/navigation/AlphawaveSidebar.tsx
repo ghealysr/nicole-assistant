@@ -1,7 +1,7 @@
 'use client';
 
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { LotusSphere } from '@/components/chat/LotusSphere';
 
 interface AlphawaveSidebarProps {
   onFazCodeClick?: () => void;
@@ -50,15 +50,12 @@ export function AlphawaveSidebar({
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
-      {/* Logo - AlphaWave logo with matching background */}
-      <div className="p-4 border-b border-[#333] flex justify-center">
-        <Image 
-          src="/images/alph_wave_logo.png" 
-          alt="AlphaWave" 
-          width={240} 
-          height={240}
-          className="object-contain"
-          priority
+      {/* Logo - LotusSphere in idle state */}
+      <div className="p-3 border-b border-[#333] flex justify-center bg-black">
+        <LotusSphere 
+          state="default"
+          size={160}
+          isActive={true}
         />
       </div>
       

@@ -3,13 +3,14 @@
 import React, { useEffect, useRef, memo, useMemo } from 'react';
 
 /**
- * LOTUS SPHERE - Nicole Edition v7
+ * LOTUS SPHERE - Nicole Edition v5 (Exact Match)
  * 
- * Refined crystal aesthetic with purple border for depth
- * - Clear glass sphere with subtle purple rim
- * - Luminous petal glow
- * - Elegant, polished appearance
- * - Purple stroke makes it look rounder/more defined
+ * Features:
+ * - Dark purple petals with glowing edges
+ * - Glass sphere with rim gradient
+ * - Smokey heavenly glow center
+ * - Energy bursts flow inward during processing
+ * - Purple/violet color scheme throughout
  */
 
 export type ThinkingState = 'default' | 'searching' | 'thinking' | 'processing' | 'speaking';
@@ -35,8 +36,7 @@ const drawPetal = (
   outerRadius: number,
   width: number,
   isOuter: boolean,
-  glowIntensity: number,
-  scale: number
+  glowIntensity: number
 ) => {
   ctx.save();
   ctx.translate(cx, cy);
@@ -52,11 +52,11 @@ const drawPetal = (
     ctx.moveTo(innerRadius, 0);
     ctx.bezierCurveTo(
       innerRadius + (outerRadius - innerRadius) * 0.3, -baseWidth * 0.8,
-      outerRadius - 20 * scale, -baseWidth * 0.4,
+      outerRadius - 20, -baseWidth * 0.4,
       tipX, tipY
     );
     ctx.bezierCurveTo(
-      outerRadius - 20 * scale, baseWidth * 0.4,
+      outerRadius - 20, baseWidth * 0.4,
       innerRadius + (outerRadius - innerRadius) * 0.3, baseWidth * 0.8,
       innerRadius, 0
     );
@@ -64,11 +64,11 @@ const drawPetal = (
     ctx.moveTo(innerRadius, 0);
     ctx.bezierCurveTo(
       innerRadius + (outerRadius - innerRadius) * 0.4, -baseWidth * 0.6,
-      outerRadius - 10 * scale, -baseWidth * 0.15,
+      outerRadius - 10, -baseWidth * 0.15,
       tipX, tipY
     );
     ctx.bezierCurveTo(
-      outerRadius - 10 * scale, baseWidth * 0.15,
+      outerRadius - 10, baseWidth * 0.15,
       innerRadius + (outerRadius - innerRadius) * 0.4, baseWidth * 0.6,
       innerRadius, 0
     );
@@ -76,20 +76,21 @@ const drawPetal = (
   
   ctx.closePath();
   
-  // Rich purple gradient - more vibrant
+  // Deep purple gradient fill (v5 exact)
   const fillGrad = ctx.createLinearGradient(innerRadius, 0, outerRadius, 0);
-  fillGrad.addColorStop(0, `rgba(90, 50, 150, ${0.85 * glowIntensity})`);
-  fillGrad.addColorStop(0.4, `rgba(120, 70, 180, ${0.75 * glowIntensity})`);
-  fillGrad.addColorStop(0.7, `rgba(150, 100, 210, ${0.65 * glowIntensity})`);
-  fillGrad.addColorStop(1, `rgba(180, 130, 235, ${0.55 * glowIntensity})`);
+  fillGrad.addColorStop(0, 'rgba(45, 20, 80, 0.95)');
+  fillGrad.addColorStop(0.4, 'rgba(70, 35, 120, 0.9)');
+  fillGrad.addColorStop(0.7, 'rgba(100, 50, 160, 0.85)');
+  fillGrad.addColorStop(1, 'rgba(130, 70, 190, 0.8)');
   ctx.fillStyle = fillGrad;
   ctx.fill();
   
-  // Bright edge glow
+  // Purple edge glow (v5 exact)
   const glowColors = [
-    { width: Math.max(1, 5 * scale), color: `rgba(200, 170, 255, ${0.2 * glowIntensity})` },
-    { width: Math.max(0.5, 2.5 * scale), color: `rgba(220, 195, 255, ${0.4 * glowIntensity})` },
-    { width: Math.max(0.5, 1.2 * scale), color: `rgba(240, 225, 255, ${0.7 * glowIntensity})` },
+    { width: 10, color: `rgba(150, 100, 255, ${0.12 * glowIntensity})` },
+    { width: 6, color: `rgba(180, 130, 255, ${0.25 * glowIntensity})` },
+    { width: 3, color: `rgba(200, 160, 255, ${0.5 * glowIntensity})` },
+    { width: 1.5, color: `rgba(230, 200, 255, ${0.8 * glowIntensity})` },
   ];
   
   glowColors.forEach(g => {
@@ -100,10 +101,10 @@ const drawPetal = (
   
   // Inner vein
   ctx.beginPath();
-  ctx.moveTo(innerRadius + 8 * scale, 0);
-  ctx.lineTo(outerRadius - 12 * scale, 0);
-  ctx.strokeStyle = `rgba(230, 210, 255, ${0.25 * glowIntensity})`;
-  ctx.lineWidth = Math.max(0.5, 0.8 * scale);
+  ctx.moveTo(innerRadius + 10, 0);
+  ctx.lineTo(outerRadius - 15, 0);
+  ctx.strokeStyle = `rgba(180, 140, 220, ${0.25 * glowIntensity})`;
+  ctx.lineWidth = 1;
   ctx.stroke();
   
   ctx.restore();
@@ -123,6 +124,7 @@ export const LotusSphere = memo(function LotusSphere({
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
     : false;
   
+  // Energy bursts for processing mode
   const energyBursts = useMemo(() => 
     Array.from({ length: 8 }, (_, i) => ({
       angle: (i / 8) * Math.PI * 2 + Math.random() * 0.3,
@@ -147,10 +149,11 @@ export const LotusSphere = memo(function LotusSphere({
     canvas.style.height = `${size}px`;
     ctx.scale(dpr, dpr);
     
+    // Scale factor from base 500px design
+    const scale = size / 500;
     const cx = size / 2;
     const cy = size / 2;
-    const sphereRadius = size * 0.42;
-    const scale = size / 500;
+    const sphereRadius = 180 * scale;
     
     const animate = () => {
       if (!isActive && !prefersReducedMotion) {
@@ -161,82 +164,80 @@ export const LotusSphere = memo(function LotusSphere({
       
       const time = timeRef.current;
       
+      // Mode parameters (v5 exact)
       let rotationSpeed: number, glowPulse: number, centerSize: number;
       let glowColor = { r: 255, g: 255, b: 255 };
       
       if (state === 'default' || prefersReducedMotion) {
-        rotationSpeed = prefersReducedMotion ? 0 : 0.06;
-        glowPulse = 0.92 + (prefersReducedMotion ? 0 : Math.sin(time * 0.8) * 0.08);
-        centerSize = (18 + (prefersReducedMotion ? 0 : Math.sin(time * 1.0) * 5)) * scale;
+        rotationSpeed = prefersReducedMotion ? 0 : 0.1;
+        glowPulse = 0.85 + (prefersReducedMotion ? 0 : Math.sin(time * 1) * 0.15);
+        centerSize = (25 + (prefersReducedMotion ? 0 : Math.sin(time * 1.2) * 8)) * scale;
       } else if (state === 'searching') {
-        rotationSpeed = 0.15;
-        glowPulse = 0.9 + Math.sin(time * 2) * 0.1;
-        centerSize = (16 + Math.sin(time * 2.5) * 12) * scale;
-        glowColor = { r: 255, g: 240, b: 200 }; // Warm yellow for searching
-      } else if (state === 'thinking') {
-        rotationSpeed = 0.6;
-        glowPulse = 0.95 + Math.sin(time * 2.5) * 0.05;
-        centerSize = (18 + Math.sin(time * 3) * 8) * scale;
-        glowColor = { r: 200, g: 255, b: 200 }; // Green for thinking
-      } else if (state === 'processing') {
         rotationSpeed = 0.1;
-        glowPulse = 0.85 + Math.sin(time * 4) * 0.15;
-        centerSize = (20 + Math.sin(time * 4) * 10) * scale;
-        glowColor = { r: 255, g: 200, b: 150 }; // Orange for processing
+        glowPulse = 0.9;
+        centerSize = (20 + Math.sin(time * 2.5) * 18) * scale;
+      } else if (state === 'thinking') {
+        rotationSpeed = 1.0;
+        glowPulse = 0.9 + Math.sin(time * 2) * 0.1;
+        centerSize = (22 + Math.sin(time * 3) * 10) * scale;
+        glowColor = { r: 200, g: 255, b: 200 }; // Green tint
+      } else if (state === 'processing') {
+        rotationSpeed = 0.15;
+        glowPulse = 0.7 + Math.sin(time * 4) * 0.3;
+        centerSize = (25 + Math.sin(time * 4) * 12) * scale;
       } else if (state === 'speaking') {
-        rotationSpeed = 0.04;
-        glowPulse = 0.98 + Math.sin(time * 3) * 0.02;
-        centerSize = (22 + Math.sin(time * 2) * 4) * scale;
-        glowColor = { r: 180, g: 220, b: 255 }; // Blue for speaking
+        rotationSpeed = 0.08;
+        glowPulse = 0.95 + Math.sin(time * 3) * 0.05;
+        centerSize = (28 + Math.sin(time * 2) * 5) * scale;
+        glowColor = { r: 180, g: 220, b: 255 }; // Blue tint
       } else {
-        rotationSpeed = 0.06;
-        glowPulse = 0.92;
-        centerSize = 18 * scale;
+        rotationSpeed = 0.1;
+        glowPulse = 0.85;
+        centerSize = 25 * scale;
       }
       
-      ctx.clearRect(0, 0, size, size);
+      // Clear with black background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, size, size);
       
-      // Outer purple glow ring - creates depth
-      const outerGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.85, cx, cy, sphereRadius * 1.15);
-      outerGlow.addColorStop(0, 'rgba(160, 130, 200, 0)');
-      outerGlow.addColorStop(0.5, 'rgba(150, 120, 190, 0.12)');
-      outerGlow.addColorStop(0.8, 'rgba(140, 110, 180, 0.08)');
-      outerGlow.addColorStop(1, 'rgba(130, 100, 170, 0)');
-      ctx.fillStyle = outerGlow;
-      ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius * 1.15, 0, Math.PI * 2);
-      ctx.fill();
+      // Ambient glow (v5 exact)
+      const ambientGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.8, cx, cy, sphereRadius * 1.5);
+      ambientGlow.addColorStop(0, 'rgba(130, 80, 200, 0.12)');
+      ambientGlow.addColorStop(0.5, 'rgba(80, 40, 150, 0.06)');
+      ambientGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = ambientGlow;
+      ctx.fillRect(0, 0, size, size);
       
-      // Glass sphere - subtle lavender tint for visibility
+      // Glass sphere background (v5 exact)
       ctx.beginPath();
       ctx.arc(cx, cy, sphereRadius, 0, Math.PI * 2);
       
-      const glassGrad = ctx.createRadialGradient(
-        cx - sphereRadius * 0.25, cy - sphereRadius * 0.25, 0,
+      const rimGrad = ctx.createRadialGradient(
+        cx - sphereRadius * 0.3, cy - sphereRadius * 0.3, sphereRadius * 0.5,
         cx, cy, sphereRadius
       );
-      glassGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-      glassGrad.addColorStop(0.3, 'rgba(245, 240, 255, 0.12)');
-      glassGrad.addColorStop(0.6, 'rgba(230, 220, 250, 0.15)');
-      glassGrad.addColorStop(0.85, 'rgba(210, 195, 240, 0.2)');
-      glassGrad.addColorStop(1, 'rgba(190, 170, 225, 0.3)');
-      ctx.fillStyle = glassGrad;
+      rimGrad.addColorStop(0, 'rgba(30, 15, 50, 0.3)');
+      rimGrad.addColorStop(0.7, 'rgba(50, 25, 80, 0.4)');
+      rimGrad.addColorStop(0.9, 'rgba(150, 80, 180, 0.3)');
+      rimGrad.addColorStop(1, 'rgba(180, 130, 210, 0.5)');
+      ctx.fillStyle = rimGrad;
       ctx.fill();
       
       const rotation = time * rotationSpeed;
       
-      // Center glow
-      const centerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, sphereRadius * 0.35);
-      centerGlow.addColorStop(0, 'rgba(200, 175, 240, 0.3)');
-      centerGlow.addColorStop(0.5, 'rgba(180, 155, 220, 0.15)');
-      centerGlow.addColorStop(1, 'rgba(160, 135, 200, 0)');
+      // Purple center background glow (v5 exact)
+      const purpleBackGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80 * scale);
+      purpleBackGlow.addColorStop(0, 'rgba(100, 60, 160, 0.5)');
+      purpleBackGlow.addColorStop(0.4, 'rgba(80, 45, 140, 0.35)');
+      purpleBackGlow.addColorStop(0.7, 'rgba(60, 30, 100, 0.15)');
+      purpleBackGlow.addColorStop(1, 'rgba(40, 20, 70, 0)');
       
       ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius * 0.35, 0, Math.PI * 2);
-      ctx.fillStyle = centerGlow;
+      ctx.arc(cx, cy, 80 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = purpleBackGlow;
       ctx.fill();
       
-      // Processing energy bursts
+      // PROCESSING: Energy bursts from perimeter INTO center (v5 exact)
       if (state === 'processing' && !prefersReducedMotion) {
         ctx.save();
         ctx.beginPath();
@@ -245,8 +246,8 @@ export const LotusSphere = memo(function LotusSphere({
         
         energyBursts.forEach((burst) => {
           const progress = ((time * burst.speed + burst.offset) % 1.5) / 1.5;
-          const startRadius = sphereRadius - 8 * scale;
-          const endRadius = 12 * scale;
+          const startRadius = sphereRadius - 10 * scale;
+          const endRadius = 20 * scale;
           const currentRadius = startRadius - (startRadius - endRadius) * progress;
           
           const burstX = cx + Math.cos(burst.angle) * currentRadius;
@@ -257,85 +258,101 @@ export const LotusSphere = memo(function LotusSphere({
           const opacity = fadeIn * fadeOut;
           
           if (opacity > 0.05) {
-            const burstGrad = ctx.createRadialGradient(
+            // Outer glow
+            const outerGlowGrad = ctx.createRadialGradient(
               burstX, burstY, 0,
-              burstX, burstY, 12 * scale
+              burstX, burstY, 20 * scale
             );
-            burstGrad.addColorStop(0, `rgba(255, 230, 180, ${0.5 * opacity})`);
-            burstGrad.addColorStop(0.5, `rgba(255, 210, 140, ${0.25 * opacity})`);
-            burstGrad.addColorStop(1, 'rgba(255, 190, 100, 0)');
+            outerGlowGrad.addColorStop(0, `rgba(255, 230, 150, ${0.35 * opacity})`);
+            outerGlowGrad.addColorStop(0.5, `rgba(255, 210, 100, ${0.15 * opacity})`);
+            outerGlowGrad.addColorStop(1, 'rgba(255, 200, 80, 0)');
             
             ctx.beginPath();
-            ctx.arc(burstX, burstY, 12 * scale, 0, Math.PI * 2);
+            ctx.arc(burstX, burstY, 20 * scale, 0, Math.PI * 2);
+            ctx.fillStyle = outerGlowGrad;
+            ctx.fill();
+            
+            // Main burst elongated toward center
+            ctx.save();
+            ctx.translate(burstX, burstY);
+            ctx.rotate(burst.angle);
+            
+            const burstLength = burst.length * scale * (0.5 + (1 - progress) * 0.5);
+            
+            const burstGrad = ctx.createLinearGradient(-burstLength / 2, 0, burstLength / 2, 0);
+            burstGrad.addColorStop(0, `rgba(255, 240, 180, ${0.1 * opacity})`);
+            burstGrad.addColorStop(0.3, `rgba(255, 245, 200, ${0.5 * opacity})`);
+            burstGrad.addColorStop(0.6, `rgba(255, 250, 220, ${0.7 * opacity})`);
+            burstGrad.addColorStop(1, `rgba(255, 255, 240, ${0.3 * opacity})`);
+            
+            ctx.beginPath();
+            ctx.ellipse(0, 0, burstLength / 2, 4 * scale, 0, 0, Math.PI * 2);
             ctx.fillStyle = burstGrad;
             ctx.fill();
+            
+            // Bright leading edge
+            ctx.beginPath();
+            ctx.ellipse(burstLength / 4, 0, burstLength / 6, 2.5 * scale, 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 240, ${0.6 * opacity})`;
+            ctx.fill();
+            
+            ctx.restore();
           }
         });
         
         ctx.restore();
       }
       
-      // Outer petals
-      const outerPetalInner = sphereRadius * 0.24;
-      const outerPetalOuter = sphereRadius * 0.82;
-      const outerPetalWidth = sphereRadius * 0.20;
-      
+      // Outer petals (v5 exact dimensions scaled)
       for (let i = 0; i < 8; i++) {
         const angle = (i / 8) * Math.PI * 2 + rotation + Math.PI / 8;
-        drawPetal(ctx, cx, cy, angle, outerPetalInner, outerPetalOuter, outerPetalWidth, true, glowPulse, scale);
+        drawPetal(ctx, cx, cy, angle, 50 * scale, 140 * scale, 45 * scale, true, glowPulse);
       }
       
-      // Inner petals
-      const innerPetalInner = sphereRadius * 0.14;
-      const innerPetalOuter = sphereRadius * 0.56;
-      const innerPetalWidth = sphereRadius * 0.15;
-      
+      // Inner petals (v5 exact)
       for (let i = 0; i < 8; i++) {
         const angle = (i / 8) * Math.PI * 2 + rotation;
-        drawPetal(ctx, cx, cy, angle, innerPetalInner, innerPetalOuter, innerPetalWidth, false, glowPulse, scale);
+        drawPetal(ctx, cx, cy, angle, 30 * scale, 110 * scale, 35 * scale, false, glowPulse);
       }
       
-      // Center radiating lines
+      // Center radiating lines (v5 exact)
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(rotation);
       
-      const lineInner = sphereRadius * 0.05;
-      const lineOuter = sphereRadius * 0.18;
-      
       for (let i = 0; i < 16; i++) {
         const angle = (i / 16) * Math.PI * 2;
         ctx.beginPath();
-        ctx.moveTo(Math.cos(angle) * lineInner, Math.sin(angle) * lineInner);
-        ctx.lineTo(Math.cos(angle) * lineOuter, Math.sin(angle) * lineOuter);
-        ctx.strokeStyle = `rgba(220, 200, 255, ${0.35 * glowPulse})`;
-        ctx.lineWidth = Math.max(0.5, 0.8 * scale);
+        ctx.moveTo(Math.cos(angle) * 12 * scale, Math.sin(angle) * 12 * scale);
+        ctx.lineTo(Math.cos(angle) * 40 * scale, Math.sin(angle) * 40 * scale);
+        ctx.strokeStyle = `rgba(200, 180, 255, ${0.25 * glowPulse})`;
+        ctx.lineWidth = 1 * scale;
         ctx.stroke();
       }
       
       ctx.restore();
       
-      // Luminous center
+      // SMOKEY HEAVENLY GLOW CENTER (v5 exact)
       const { r, g, b } = glowColor;
       
-      // Ethereal smoke layers
-      const smokeLayers = 3;
+      // Smoke layers
+      const smokeLayers = 5;
       for (let layer = 0; layer < smokeLayers; layer++) {
         const noiseVal = noise(layer * 50, time * 100, time * 2);
-        const offsetX = noiseVal * 4 * scale;
-        const offsetY = noise(layer * 30 + 100, time * 80, time * 1.5) * 4 * scale;
-        const sizeVariation = 1 + noise(layer * 20, time * 60, time) * 0.08;
+        const offsetX = noiseVal * 8 * scale;
+        const offsetY = noise(layer * 30 + 100, time * 80, time * 1.5) * 8 * scale;
+        const sizeVariation = 1 + noise(layer * 20, time * 60, time) * 0.15;
         
-        const layerSize = centerSize * sizeVariation * (1 + layer * 0.2);
+        const layerSize = centerSize * sizeVariation * (1 + layer * 0.3);
         const layerOpacity = 0.15 / (layer + 1);
         
         const smokeGrad = ctx.createRadialGradient(
           cx + offsetX, cy + offsetY, 0,
           cx + offsetX, cy + offsetY, layerSize
         );
-        smokeGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${layerOpacity * 2.5})`);
-        smokeGrad.addColorStop(0.6, `rgba(${Math.floor(r * 0.95)}, ${Math.floor(g * 0.95)}, ${Math.floor(b * 0.97)}, ${layerOpacity})`);
-        smokeGrad.addColorStop(1, `rgba(${Math.floor(r * 0.9)}, ${Math.floor(g * 0.9)}, ${Math.floor(b * 0.95)}, 0)`);
+        smokeGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${layerOpacity * 2})`);
+        smokeGrad.addColorStop(0.5, `rgba(${Math.floor(r * 0.9)}, ${Math.floor(g * 0.9)}, ${Math.floor(b * 0.95)}, ${layerOpacity})`);
+        smokeGrad.addColorStop(1, `rgba(${Math.floor(r * 0.8)}, ${Math.floor(g * 0.8)}, ${Math.floor(b * 0.9)}, 0)`);
         
         ctx.beginPath();
         ctx.arc(cx + offsetX, cy + offsetY, layerSize, 0, Math.PI * 2);
@@ -343,105 +360,104 @@ export const LotusSphere = memo(function LotusSphere({
         ctx.fill();
       }
       
-      // Outer halo
-      const haloWobble = noise(0, 0, time * 2) * 2 * scale;
-      const haloSize = centerSize * 1.8 + haloWobble;
+      // Outer halo (v5 exact)
+      const haloWobble = noise(0, 0, time * 2) * 5 * scale;
+      const haloSize = centerSize * 2.5 + haloWobble;
       const haloGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloSize);
-      haloGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.22)`);
-      haloGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.1)`);
-      haloGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      haloGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.2)`);
+      haloGrad.addColorStop(0.4, `rgba(${Math.floor(r * 0.95)}, ${Math.floor(g * 0.95)}, ${Math.floor(b * 0.98)}, 0.12)`);
+      haloGrad.addColorStop(0.7, `rgba(${Math.floor(r * 0.85)}, ${Math.floor(g * 0.85)}, ${Math.floor(b * 0.9)}, 0.06)`);
+      haloGrad.addColorStop(1, `rgba(${Math.floor(r * 0.7)}, ${Math.floor(g * 0.7)}, ${Math.floor(b * 0.8)}, 0)`);
       
       ctx.beginPath();
       ctx.arc(cx, cy, haloSize, 0, Math.PI * 2);
       ctx.fillStyle = haloGrad;
       ctx.fill();
       
-      // PURE LIGHT CENTER - no visible shape, just radiant glow
-      // Larger, softer core glow
-      const coreSize = centerSize * 1.2;
-      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreSize);
-      coreGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
-      coreGrad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, 0.5)`);
-      coreGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.25)`);
-      coreGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      // Middle glow (v5 exact)
+      const midOffset = noise(100, 50, time * 1.5) * 3 * scale;
+      const midSize = centerSize * 1.6;
+      const midGrad = ctx.createRadialGradient(cx + midOffset, cy, 0, cx + midOffset, cy, midSize);
+      midGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.5)`);
+      midGrad.addColorStop(0.5, `rgba(${Math.floor(r * 0.95)}, ${Math.floor(g * 0.98)}, ${Math.floor(b * 0.98)}, 0.3)`);
+      midGrad.addColorStop(1, `rgba(${Math.floor(r * 0.9)}, ${Math.floor(g * 0.92)}, ${Math.floor(b * 0.95)}, 0)`);
       
       ctx.beginPath();
-      ctx.arc(cx, cy, coreSize, 0, Math.PI * 2);
+      ctx.arc(cx + midOffset, cy, midSize, 0, Math.PI * 2);
+      ctx.fillStyle = midGrad;
+      ctx.fill();
+      
+      // Inner core (v5 exact)
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, centerSize * 0.8);
+      coreGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.95)`);
+      coreGrad.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, 0.7)`);
+      coreGrad.addColorStop(0.7, `rgba(${Math.floor(r * 0.95)}, ${Math.floor(g * 0.97)}, ${Math.floor(b * 0.98)}, 0.4)`);
+      coreGrad.addColorStop(1, `rgba(${Math.floor(r * 0.9)}, ${Math.floor(g * 0.93)}, ${Math.floor(b * 0.95)}, 0)`);
+      
+      ctx.beginPath();
+      ctx.arc(cx, cy, centerSize * 0.8, 0, Math.PI * 2);
       ctx.fillStyle = coreGrad;
       ctx.fill();
       
-      // Inner bright bloom - pure light, no hard edges
-      const bloomSize = centerSize * 0.5;
-      const bloomGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, bloomSize);
-      bloomGrad.addColorStop(0, `rgba(255, 255, 255, 0.9)`);
-      bloomGrad.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, 0.6)`);
-      bloomGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      // Center point - LIGHT not shape (v5 exact)
+      const dotGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 5 * scale);
+      dotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
+      dotGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.7)`);
+      dotGrad.addColorStop(1, `rgba(${Math.floor(r * 0.95)}, ${Math.floor(g * 0.97)}, ${Math.floor(b * 0.98)}, 0)`);
       
       ctx.beginPath();
-      ctx.arc(cx, cy, bloomSize, 0, Math.PI * 2);
-      ctx.fillStyle = bloomGrad;
+      ctx.arc(cx, cy, 5 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = dotGrad;
       ctx.fill();
       
-      // PURPLE BORDER/STROKE - makes sphere look rounder
-      const borderWidth = Math.max(1.5, 2.5 * scale);
+      // Glass rim - segmented with color variation (v5 exact)
+      const rimSegments = 36;
+      for (let i = 0; i < rimSegments; i++) {
+        const startAngle = (i / rimSegments) * Math.PI * 2;
+        const endAngle = ((i + 1) / rimSegments) * Math.PI * 2;
+        
+        const hue = (i / rimSegments) * 40 + 270;
+        const saturation = 65 + Math.sin(i * 0.5 + time) * 15;
+        const lightness = 55 + Math.sin(i * 0.3) * 12;
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy, sphereRadius, startAngle, endAngle);
+        ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.55)`;
+        ctx.lineWidth = 3 * scale;
+        ctx.stroke();
+      }
       
-      // Outer glow for border
+      // Top highlight (v5 exact)
       ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(160, 130, 200, 0.25)';
-      ctx.lineWidth = borderWidth + 3 * scale;
-      ctx.stroke();
-      
-      // Main purple border
-      ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius, 0, Math.PI * 2);
-      const borderGrad = ctx.createLinearGradient(
-        cx - sphereRadius, cy - sphereRadius,
-        cx + sphereRadius, cy + sphereRadius
+      ctx.ellipse(
+        cx - sphereRadius * 0.45, 
+        cy - sphereRadius * 0.45, 
+        sphereRadius * 0.25, 
+        sphereRadius * 0.12,
+        -Math.PI / 4,
+        0, Math.PI * 2
       );
-      borderGrad.addColorStop(0, 'rgba(200, 175, 235, 0.7)');
-      borderGrad.addColorStop(0.25, 'rgba(175, 150, 215, 0.6)');
-      borderGrad.addColorStop(0.5, 'rgba(160, 135, 200, 0.65)');
-      borderGrad.addColorStop(0.75, 'rgba(175, 150, 215, 0.6)');
-      borderGrad.addColorStop(1, 'rgba(200, 175, 235, 0.7)');
-      ctx.strokeStyle = borderGrad;
-      ctx.lineWidth = borderWidth;
-      ctx.stroke();
-      
-      // Inner highlight line
-      ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius - borderWidth * 0.5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(240, 230, 255, 0.25)';
-      ctx.lineWidth = Math.max(0.5, 0.8 * scale);
-      ctx.stroke();
-      
-      // Top highlight - crisp glass reflection
-      const highlightX = cx - sphereRadius * 0.32;
-      const highlightY = cy - sphereRadius * 0.32;
-      const highlightW = sphereRadius * 0.18;
-      const highlightH = sphereRadius * 0.07;
-      
-      ctx.beginPath();
-      ctx.ellipse(highlightX, highlightY, highlightW, highlightH, -Math.PI / 4, 0, Math.PI * 2);
-      const highlight = ctx.createRadialGradient(highlightX, highlightY, 0, highlightX, highlightY, highlightW);
-      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-      highlight.addColorStop(0.5, 'rgba(255, 255, 255, 0.25)');
+      const highlight = ctx.createRadialGradient(
+        cx - sphereRadius * 0.45, cy - sphereRadius * 0.45, 0,
+        cx - sphereRadius * 0.45, cy - sphereRadius * 0.45, sphereRadius * 0.25
+      );
+      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
       highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = highlight;
       ctx.fill();
       
-      // Secondary small highlight
-      const highlight2X = cx - sphereRadius * 0.12;
-      const highlight2Y = cy - sphereRadius * 0.48;
-      const highlight2R = sphereRadius * 0.05;
+      // Bottom rim glow (v5 exact)
+      ctx.beginPath();
+      ctx.arc(cx, cy + sphereRadius * 0.1, sphereRadius * 0.95, Math.PI * 0.6, Math.PI * 0.9);
+      ctx.strokeStyle = 'rgba(150, 100, 220, 0.25)';
+      ctx.lineWidth = 12 * scale;
+      ctx.stroke();
       
       ctx.beginPath();
-      ctx.arc(highlight2X, highlight2Y, highlight2R, 0, Math.PI * 2);
-      const highlight2 = ctx.createRadialGradient(highlight2X, highlight2Y, 0, highlight2X, highlight2Y, highlight2R);
-      highlight2.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
-      highlight2.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = highlight2;
-      ctx.fill();
+      ctx.arc(cx, cy + sphereRadius * 0.1, sphereRadius * 0.95, Math.PI * 0.1, Math.PI * 0.4);
+      ctx.strokeStyle = 'rgba(150, 100, 220, 0.25)';
+      ctx.lineWidth = 12 * scale;
+      ctx.stroke();
       
       if (isActive && !prefersReducedMotion) {
         animationRef.current = requestAnimationFrame(animate);
@@ -462,7 +478,7 @@ export const LotusSphere = memo(function LotusSphere({
       ref={canvasRef}
       className={className}
       style={{
-        filter: isActive ? 'drop-shadow(0 2px 8px rgba(150, 120, 190, 0.35))' : 'none',
+        filter: isActive ? 'drop-shadow(0 0 50px rgba(120, 60, 180, 0.4))' : 'none',
         display: 'block',
       }}
       aria-label="Nicole thinking indicator"
