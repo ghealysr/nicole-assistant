@@ -12,6 +12,14 @@ Central orchestration service that wires together:
 This is the integration layer that connects all agent architecture
 components to the chat router.
 
+ADVANCED TOOL USE (Nov 2025):
+This module now implements Anthropic's Advanced Tool Use pattern:
+- Core tools always loaded (~2K tokens)
+- MCP tools deferred until discovered via tool_search (~0 tokens)
+- ~95% reduction in tool-related token usage
+
+Reference: https://www.anthropic.com/engineering/advanced-tool-use
+
 Author: Nicole V7 Architecture
 """
 
@@ -30,6 +38,7 @@ from app.skills.skill_memory import get_skill_memory_manager
 from app.services.skill_run_service import skill_run_service
 from app.skills.adapters.base import SkillExecutionError
 from app.services.alphawave_claude_skills_service import claude_skills_service
+from app.services.advanced_tool_manager import advanced_tool_manager
 
 # MCP imports
 from app.mcp import (
@@ -40,6 +49,9 @@ from app.mcp import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Feature flag for new deferred tool loading
+USE_DEFERRED_TOOLS = True  # Set to False to revert to loading all tools upfront
 
 
 class AgentOrchestrator:
@@ -66,6 +78,9 @@ class AgentOrchestrator:
         
         Call this during application startup.
         
+        This also registers all MCP tools with the advanced_tool_manager
+        with defer_loading=True for token efficiency.
+        
         Returns:
             Dict mapping server names to connection success
         """
@@ -76,6 +91,14 @@ class AgentOrchestrator:
             results = await mcp_manager.connect_enabled_servers()
             self._mcp_initialized = True
             logger.info(f"[ORCHESTRATOR] MCP initialized: {results}")
+            
+            # Register all MCP tools with advanced_tool_manager (deferred loading)
+            if USE_DEFERRED_TOOLS:
+                mcp_tools = get_mcp_tools()
+                if mcp_tools:
+                    count = advanced_tool_manager.register_mcp_tools(mcp_tools)
+                    logger.info(f"[ORCHESTRATOR] Registered {count} MCP tools as deferred (token-efficient)")
+            
             return results
         
         logger.info("[ORCHESTRATOR] MCP not available (using fallback)")
@@ -179,16 +202,38 @@ class AgentOrchestrator:
         """
         Get the core tools that are always available to Nicole.
         
-        These tools are loaded for every request:
+        ADVANCED TOOL USE PATTERN (Nov 2025):
+        - Only 8 core tools are loaded upfront (~2K tokens)
+        - MCP tools (50+) are NOT loaded - they're deferred
+        - Claude discovers them via tool_search when needed
+        - ~95% reduction in tool-related token usage
+        
+        Core tools loaded for every request:
         - think: Explicit reasoning
-        - search_tools: Dynamic tool discovery
+        - tool_search: Dynamic tool discovery (finds deferred MCP tools)
         - memory_search: Search memories
         - memory_store: Store memories
         - document_search: Search documents
+        - dashboard_status: System health
+        - mcp_status: Show available integrations
+        - skills_library: Find specialized skills
         
         Returns:
-            List of tool definitions with examples injected
+            List of tool definitions (minimal for token efficiency)
         """
+        if USE_DEFERRED_TOOLS:
+            # Use the advanced tool manager's optimized tool list
+            tools = advanced_tool_manager.get_tools_for_claude()
+            
+            # Log token savings
+            deferred_count = advanced_tool_manager.get_deferred_count()
+            logger.info(
+                f"[ORCHESTRATOR] Token-efficient mode: {len(tools)} core tools loaded, "
+                f"{deferred_count} MCP tools deferred (discoverable via tool_search)"
+            )
+            return tools
+        
+        # Fallback: Original behavior (loads all tools)
         core_tools = [
             # Think Tool
             tool_examples_service.enhance_tool_schema(THINK_TOOL_DEFINITION),
@@ -353,6 +398,7 @@ class AgentOrchestrator:
         core_tools.extend(self._get_skill_tools())
         
         # Add MCP tools (Google, Notion, Telegram, Filesystem, Playwright)
+        # WARNING: This loads all 50+ tools and can exceed token limits
         core_tools.extend(self._get_mcp_tools())
         
         return core_tools
@@ -519,22 +565,37 @@ class AgentOrchestrator:
                 
                 return {"status": "recorded", "message": "Thinking recorded."}
             
-            # Tool Search
-            elif tool_name == "search_tools":
+            # Tool Search - Now uses advanced_tool_manager for deferred MCP tools
+            elif tool_name in ("search_tools", "tool_search"):
                 query = tool_input.get("query", "")
                 category = tool_input.get("category")
-                limit = tool_input.get("limit", 5)
+                limit = tool_input.get("limit", 10)
                 
-                results = tool_search_service.search_tools(
-                    query=query,
-                    category=category,
-                    limit=limit
-                )
-                
-                return {
-                    "tools_found": len(results),
-                    "tools": results
-                }
+                if USE_DEFERRED_TOOLS:
+                    # Use advanced_tool_manager which includes all deferred MCP tools
+                    results = advanced_tool_manager.search_tools(
+                        query=query,
+                        category=category,
+                        limit=limit
+                    )
+                    
+                    return {
+                        "tools_found": len(results),
+                        "tools": results,
+                        "hint": "Use any of these tools by their name. They are now available for this request."
+                    }
+                else:
+                    # Legacy: Use old tool_search_service
+                    results = tool_search_service.search_tools(
+                        query=query,
+                        category=category,
+                        limit=limit
+                    )
+                    
+                    return {
+                        "tools_found": len(results),
+                        "tools": results
+                    }
             
             # Memory Search
             elif tool_name == "memory_search":
