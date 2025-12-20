@@ -632,7 +632,7 @@ My action: puppeteer_screenshot(url="https://google.com", fullPage=false)
 System automatically:
 1. Takes screenshot via Puppeteer
 2. Uploads to Cloudinary
-3. Returns: {"screenshot_url": "https://res.cloudinary.com/...", "width": 1280, "height": 800}
+3. Returns: {{"screenshot_url": "https://res.cloudinary.com/...", "width": 1280, "height": 800}}
 
 My response to user:
 "Here's a screenshot of Google: https://res.cloudinary.com/..."
