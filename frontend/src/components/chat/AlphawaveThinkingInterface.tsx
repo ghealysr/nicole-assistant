@@ -31,7 +31,7 @@ export function AlphawaveThinkingInterface({ steps, state = 'thinking' }: Alphaw
       {/* Nicole's LotusSphere animation */}
       <LotusSphere 
         state={state}
-        size={48}
+        size={96}
         isActive={hasActiveStep}
       />
 
