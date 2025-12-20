@@ -206,9 +206,9 @@ export const LotusSphere = memo(function LotusSphere({
       }
       
       // DEBUG: Log to confirm this code is running
-      if (typeof window !== 'undefined' && !window.__lotusSphereLogged) {
+      if (typeof window !== 'undefined' && !(window as Window & { __lotusSphereLogged?: boolean }).__lotusSphereLogged) {
         console.log('[LotusSphere] withBackground:', withBackground);
-        window.__lotusSphereLogged = true;
+        (window as Window & { __lotusSphereLogged?: boolean }).__lotusSphereLogged = true;
       }
       
       // Outer ambient glow - contained within canvas bounds
