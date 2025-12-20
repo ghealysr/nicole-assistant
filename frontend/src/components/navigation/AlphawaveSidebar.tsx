@@ -51,11 +51,12 @@ export function AlphawaveSidebar({
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
       {/* Logo - LotusSphere in idle state */}
-      <div className="p-3 border-b border-[#333] flex justify-center bg-black">
+      <div className="p-3 border-b border-[#333] flex justify-center">
         <LotusSphere 
           state="default"
           size={160}
           isActive={true}
+          withBackground={true}
         />
       </div>
       

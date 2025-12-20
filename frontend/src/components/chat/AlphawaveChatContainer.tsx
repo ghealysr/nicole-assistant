@@ -33,10 +33,10 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
   return (
     <div className="empty-state">
       <div className="text-center">
-        <div className="w-28 h-28 rounded-full bg-black flex items-center justify-center mx-auto mb-4 overflow-hidden">
+        <div className="flex items-center justify-center mx-auto mb-4">
           <LotusSphere 
             state="default"
-            size={112}
+            size={120}
             isActive={true}
           />
         </div>
@@ -457,13 +457,11 @@ export function AlphawaveChatContainer() {
               {/* SINGLE PERSISTENT LOTUS SPHERE - left aligned under response */}
               <div className="px-6 pt-2 pb-4">
                 <div className="max-w-[800px] mx-auto pl-11">
-                  <div className="w-[72px] h-[72px] rounded-full bg-black flex items-center justify-center overflow-hidden">
-                    <LotusSphere 
-                      state={getLotusSphereState()}
-                      size={72}
-                      isActive={true}
-                    />
-                  </div>
+                  <LotusSphere 
+                    state={getLotusSphereState()}
+                    size={72}
+                    isActive={true}
+                  />
                 </div>
               </div>
               
