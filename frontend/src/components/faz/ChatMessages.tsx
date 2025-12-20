@@ -2,20 +2,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Bot, User, CheckCircle2, XCircle, Loader2, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
+import { Bot, User, CheckCircle2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFazStore } from '@/lib/faz/store';
 import { fazWS } from '@/lib/faz/websocket';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface InlineApprovalButtonProps {
-  messageIndex: number;
   onApprove: () => void;
-  onDismiss: () => void;
   isSubmitting: boolean;
 }
 
-function InlineApprovalButton({ messageIndex, onApprove, onDismiss, isSubmitting }: InlineApprovalButtonProps) {
+function InlineApprovalButton({ onApprove, isSubmitting }: InlineApprovalButtonProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -84,7 +82,7 @@ function ArtifactPreview({ content, title, isExpanded, onToggle }: ArtifactPrevi
 }
 
 export function ChatMessages() {
-  const { messages, currentProject, currentGate } = useFazStore();
+  const { messages, currentGate } = useFazStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pendingApprovalIndex, setPendingApprovalIndex] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -124,10 +122,6 @@ export function ChatMessages() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleDismissApproval = () => {
-    setPendingApprovalIndex(null);
   };
 
   const toggleArtifact = (key: string) => {
@@ -247,9 +241,7 @@ export function ChatMessages() {
                 <AnimatePresence>
                   {showApprovalButton && (
                     <InlineApprovalButton
-                      messageIndex={idx}
                       onApprove={handleApprove}
-                      onDismiss={handleDismissApproval}
                       isSubmitting={isSubmitting}
                     />
                   )}

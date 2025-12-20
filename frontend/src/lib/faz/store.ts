@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FazProject, FazFile, FazActivity, ChatMessage, FazProjectArtifact, PipelineMode } from '@/types/faz';
+import { FazProject, FazFile, FazActivity, ChatMessage, PipelineMode } from '@/types/faz';
 
 /**
  * Artifact for approval gate display

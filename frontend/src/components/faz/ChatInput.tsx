@@ -4,7 +4,6 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, Image as ImageIcon, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFazStore } from '@/lib/faz/store';
-import { fazWS } from '@/lib/faz/websocket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ChatInputProps {
@@ -22,7 +21,7 @@ interface UploadedImage {
 export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -126,6 +125,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     return () => {
       uploadedImages.forEach(img => URL.revokeObjectURL(img.preview));
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

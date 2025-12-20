@@ -20,12 +20,11 @@ import {
   Palette,
   ClipboardCheck,
   Star,
-  Send,
   Loader2
 } from 'lucide-react';
 import { useFazStore } from '@/lib/faz/store';
 import { fazWS } from '@/lib/faz/websocket';
-import type { FazProjectArtifact, ArtifactType } from '@/types/faz';
+import type { ArtifactType } from '@/types/faz';
 
 interface ApprovalPanelProps {
   onApprove?: (feedback?: string) => void;

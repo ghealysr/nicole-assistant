@@ -38,7 +38,7 @@ interface LivePreviewProps {
 }
 
 export function LivePreview({ className = '', externalUrl }: LivePreviewProps) {
-  const { currentProject, isLoading: storeLoading } = useFazStore();
+  const { currentProject } = useFazStore();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   
   const [viewport, setViewport] = useState<ViewportSize>('desktop');
