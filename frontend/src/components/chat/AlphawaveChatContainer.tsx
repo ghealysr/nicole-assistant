@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlphawaveChatInput, type FileAttachment } from './AlphawaveChatInput';
 import { AlphawaveDashPanel } from './AlphawaveDashPanel';
 import { AlphawaveHeader } from '../navigation/AlphawaveHeader';
@@ -10,9 +10,7 @@ import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
-import { LotusSphere } from './LotusSphere';
-// ThinkingIndicator & useThinkingState available for future use
-// import { ThinkingIndicator, useThinkingState, type ThinkingState } from './ThinkingIndicator';
+import { LotusSphere, type ThinkingState } from './LotusSphere';
 import type { ThinkingStep, ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
 interface Message {
@@ -35,10 +33,10 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
   return (
     <div className="empty-state">
       <div className="text-center">
-        <div className="w-24 h-24 flex items-center justify-center mx-auto mb-5">
+        <div className="w-20 h-20 flex items-center justify-center mx-auto mb-4">
           <LotusSphere 
             state="default"
-            size={120}
+            size={80}
             isActive={true}
           />
         </div>
@@ -117,8 +115,6 @@ function cleanMessageContent(content: string): string {
   return cleaned;
 }
 
-// Markdown parsing is now handled by NicoleMessageRenderer
-
 /**
  * ThinkingBox - Shows saved thinking steps in message history
  * Collapsible view of Nicole's reasoning process after completion
@@ -193,10 +189,8 @@ function ThinkingBox({
 }
 
 /**
- * Message bubble component - Claude style with attachment chips
- * Uses NicoleMessageRenderer for assistant messages with rich formatting
- * 
- * For assistant messages, can show real-time thinking block INSIDE the message area
+ * Message bubble component - Clean, minimal design
+ * NO avatar or name for Nicole - just clean content
  */
 interface MessageBubbleProps {
   message: Message;
@@ -229,92 +223,85 @@ function MessageBubble({ message, activityStatus, showThinking = false }: Messag
   );
   
   return (
-    <div className={`py-4 px-6 message ${isUser ? 'message-user' : 'message-assistant'} animate-fade-in-up`}>
-      <div className="max-w-[800px] mx-auto flex gap-3">
-        {/* Avatar */}
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold ${
-          isUser ? 'bg-[#7A9B93] text-white' : 'bg-lavender text-white'
-        }`}>
-          {isUser ? 'G' : 'N'}
-        </div>
-        
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">
-            {isUser ? 'Glen' : 'Nicole'}
-          </div>
-          
-          {isUser ? (
-            <div className="text-[15px] leading-relaxed text-[#374151]">
-              {/* Attachment chips - Claude style */}
-              {hasAttachments && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {message.attachments!.map(attachment => (
-                    <AttachmentChip key={attachment.id} attachment={attachment} />
-                  ))}
-                </div>
-              )}
-              
-              {/* User's text message (clean, no metadata) */}
-              {displayContent && (
-                <span className="message-text">{displayContent}</span>
-              )}
+    <div className={`py-3 px-6 message ${isUser ? 'message-user' : 'message-assistant'} animate-fade-in-up`}>
+      <div className="max-w-[800px] mx-auto">
+        {isUser ? (
+          // User message - keep avatar and name
+          <div className="flex gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-[#7A9B93] text-white">
+              G
             </div>
-          ) : (
-            <>
-              {/* Real-time thinking block - INSIDE Nicole's message area */}
-              {shouldShowThinking && activityStatus && (
-                <div className="mb-3">
-                  <NicoleActivityStatus status={activityStatus} />
-                </div>
-              )}
-              
-              {/* Saved thinking steps from history */}
-              {message.thinkingSteps && message.thinkingSteps.length > 0 && !shouldShowThinking && (
-                <ThinkingBox 
-                  steps={message.thinkingSteps} 
-                  summary={message.thinkingSummary}
-                  defaultExpanded={false}
-                />
-              )}
-              
-              {/* Nicole's response with rich formatting */}
-              <NicoleMessageRenderer content={displayContent} />
-            </>
-          )}
-          
-          {/* Action buttons for assistant messages */}
-          {!isUser && displayContent && (
-            <div className="message-actions mt-3 flex gap-1">
-              <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Good response">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
-                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
-                </svg>
-              </button>
-              <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Bad response">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
-                  <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
-                </svg>
-              </button>
-              <button 
-                className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" 
-                title={copied ? "Copied!" : "Copy"}
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#7A9B93]">
-                    <path d="M5 13l4 4L19 7"/>
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Glen</div>
+              <div className="text-[15px] leading-relaxed text-[#374151]">
+                {hasAttachments && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {message.attachments!.map(attachment => (
+                      <AttachmentChip key={attachment.id} attachment={attachment} />
+                    ))}
+                  </div>
                 )}
-              </button>
+                {displayContent && (
+                  <span className="message-text">{displayContent}</span>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          // Nicole message - NO avatar, NO name, just clean content
+          <div className="pl-11"> {/* Indent to align with user content */}
+            {/* Real-time thinking block */}
+            {shouldShowThinking && activityStatus && (
+              <div className="mb-3">
+                <NicoleActivityStatus status={activityStatus} />
+              </div>
+            )}
+            
+            {/* Saved thinking steps from history */}
+            {message.thinkingSteps && message.thinkingSteps.length > 0 && !shouldShowThinking && (
+              <ThinkingBox 
+                steps={message.thinkingSteps} 
+                summary={message.thinkingSummary}
+                defaultExpanded={false}
+              />
+            )}
+            
+            {/* Nicole's response with rich formatting */}
+            <NicoleMessageRenderer content={displayContent} />
+            
+            {/* Action buttons */}
+            {displayContent && (
+              <div className="message-actions mt-3 flex gap-1">
+                <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Good response">
+                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
+                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                  </svg>
+                </button>
+                <button className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" title="Bad response">
+                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
+                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                  </svg>
+                </button>
+                <button 
+                  className="action-btn p-1.5 border-0 bg-transparent rounded-md cursor-pointer hover:bg-black/5" 
+                  title={copied ? "Copied!" : "Copy"}
+                  onClick={handleCopy}
+                >
+                  {copied ? (
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#7A9B93]">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} className="w-3.5 h-3.5 stroke-[#6b7280]">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -322,12 +309,12 @@ function MessageBubble({ message, activityStatus, showThinking = false }: Messag
 
 /**
  * Main chat container component for Nicole V7.
- * Claude-style file uploads with invisible AI processing.
- * Integrates with conversation context for cross-component state management.
+ * Features a SINGLE persistent LotusSphere indicator at the bottom.
  */
 export function AlphawaveChatContainer() {
   const { showToast } = useToast();
   const { currentConversationId, setCurrentConversationId } = useConversation();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { 
     messages, 
@@ -387,7 +374,33 @@ export function AlphawaveChatContainer() {
     }
   }, [currentConversationId, messages.length]);
 
-  const hasMessages = messages.length > 0 || isPendingAssistant;
+  // Auto-scroll to bottom when messages change or when pending
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isPendingAssistant, activityStatus]);
+
+  const hasMessages = messages.length > 0;
+
+  // Calculate LotusSphere state based on activity
+  const getLotusSphereState = (): ThinkingState => {
+    if (!hasMessages && !isPendingAssistant) return 'default';
+    
+    if (isPendingAssistant) {
+      // Check for specific tool activity
+      if (activityStatus?.toolUses?.some(t => t.isActive)) {
+        const activeTool = activityStatus.toolUses.find(t => t.isActive);
+        if (activeTool?.name?.toLowerCase().includes('search')) return 'searching';
+        return 'processing';
+      }
+      if (activityStatus?.extendedThinking?.isThinking) return 'thinking';
+      if (activityStatus?.extendedThinking?.isStreaming) return 'thinking';
+      return 'searching'; // Default "waiting" state
+    }
+    
+    return 'default'; // Idle
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -401,13 +414,12 @@ export function AlphawaveChatContainer() {
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-[400px] transition-all duration-300 bg-[#F5F4ED]">
           {/* Messages area */}
-          {hasMessages ? (
+          {hasMessages || isPendingAssistant ? (
             <div className="flex-1 overflow-y-auto py-4">
+              {/* All messages */}
               {messages.map((message, index) => {
                 const isLastMessage = index === messages.length - 1;
                 const isAssistantMessage = message.role === 'assistant';
-                
-                // For the last assistant message, pass activityStatus to show thinking INSIDE the bubble
                 const shouldShowThinking = isLastMessage && isAssistantMessage;
                 
                 return (
@@ -420,34 +432,32 @@ export function AlphawaveChatContainer() {
                 );
               })}
               
-              {/* Claude-style inline thinking indicator - shows when awaiting response */}
-              {isPendingAssistant && (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && (
-                <div className="py-4 px-6 animate-fade-in-up">
-                  <div className="max-w-[800px] mx-auto flex gap-3">
-                    {/* Avatar */}
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-lavender text-white">
-                      N
-                    </div>
-                    {/* Content area with thinking indicator */}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Nicole</div>
-                      <div className="inline-flex items-center gap-3">
-                        <LotusSphere 
-                          state={activityStatus?.toolUses?.some(t => t.isActive) ? 'processing' : 'thinking'}
-                          size={64}
-                          isActive={true}
-                        />
-                      </div>
-                    </div>
+              {/* Thinking box when awaiting response (before first assistant message) */}
+              {isPendingAssistant && (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && activityStatus && (
+                <div className="py-3 px-6 animate-fade-in-up">
+                  <div className="max-w-[800px] mx-auto pl-11">
+                    <NicoleActivityStatus status={activityStatus} />
                   </div>
                 </div>
               )}
+              
+              {/* SINGLE PERSISTENT LOTUS SPHERE - always at bottom */}
+              <div className="flex justify-center py-6">
+                <LotusSphere 
+                  state={getLotusSphereState()}
+                  size={56}
+                  isActive={true}
+                />
+              </div>
+              
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />
           )}
           
-          {/* Input area - now passes attachments */}
+          {/* Input area */}
           <AlphawaveChatInput 
             onSendMessage={sendMessage} 
             isLoading={isLoading} 
