@@ -38,7 +38,7 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
         <div className="w-24 h-24 flex items-center justify-center mx-auto mb-5">
           <LotusSphere 
             state="default"
-            size={96}
+            size={192}
             isActive={true}
           />
         </div>
@@ -434,7 +434,7 @@ export function AlphawaveChatContainer() {
                       <div className="inline-flex items-center gap-3">
                         <LotusSphere 
                           state={activityStatus?.toolUses?.some(t => t.isActive) ? 'processing' : 'thinking'}
-                          size={32}
+                          size={64}
                           isActive={true}
                         />
                       </div>

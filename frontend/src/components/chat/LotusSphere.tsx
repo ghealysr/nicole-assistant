@@ -1,17 +1,16 @@
 'use client';
 
-import React, { useEffect, useRef, memo } from 'react';
+import React, { useEffect, useRef, memo, useMemo } from 'react';
 
 /**
- * LOTUS SPHERE - Nicole Edition
+ * LOTUS SPHERE - Nicole Edition v5
  * 
  * Premium canvas-based thinking animation featuring:
  * - Glowing purple lotus/mandala pattern inside glass sphere
- * - State-based behaviors (default, searching, thinking, processing)
+ * - State-based behaviors (default, searching, thinking, processing, speaking)
  * - Smokey/organic glow texture
+ * - Energy bursts that flow from perimeter INTO center (processing state)
  * - Reduced motion support
- * 
- * Based on lotus-sphere-v4.jsx
  */
 
 export type ThinkingState = 'default' | 'searching' | 'thinking' | 'processing' | 'speaking';
@@ -119,7 +118,7 @@ const drawPetal = (
 
 export const LotusSphere = memo(function LotusSphere({
   state = 'default',
-  size = 48,
+  size = 96, // Default size doubled from 48 to 96
   className = '',
   isActive = true,
 }: LotusSphereProps) {
@@ -132,25 +131,15 @@ export const LotusSphere = memo(function LotusSphere({
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
     : false;
   
-  // Energy bursts for processing state
-  const energyBurstsRef = useRef<Array<{
-    y: number;
-    speed: number;
-    length: number;
-    offset: number;
-    direction: number;
-  }>>([]);
-  
-  useEffect(() => {
-    // Initialize energy bursts
-    energyBurstsRef.current = Array.from({ length: 6 }, () => ({
-      y: (Math.random() - 0.5) * size * 0.7,
-      speed: 1.2 + Math.random() * 0.8,
-      length: (size / 500) * (40 + Math.random() * 60),
+  // Energy bursts for processing state - distributed around the perimeter, flow INWARD
+  const energyBursts = useMemo(() => 
+    Array.from({ length: 8 }, (_, i) => ({
+      angle: (i / 8) * Math.PI * 2 + Math.random() * 0.3, // Distributed around circle
+      speed: 0.8 + Math.random() * 0.4,
+      length: 35 + Math.random() * 25,
       offset: Math.random() * Math.PI * 2,
-      direction: Math.random() > 0.5 ? 1 : -1,
-    }));
-  }, [size]);
+    })), []
+  );
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -216,8 +205,9 @@ export const LotusSphere = memo(function LotusSphere({
         centerSize = 25 * scaleFactor;
       }
       
-      // Clear
-      ctx.clearRect(0, 0, size, size);
+      // Clear with black background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, size, size);
       
       // Ambient glow
       const ambientGlow = ctx.createRadialGradient(cx, cy, sphereRadius * 0.8, cx, cy, sphereRadius * 1.5);
@@ -225,9 +215,7 @@ export const LotusSphere = memo(function LotusSphere({
       ambientGlow.addColorStop(0.5, 'rgba(80, 40, 150, 0.06)');
       ambientGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = ambientGlow;
-      ctx.beginPath();
-      ctx.arc(cx, cy, sphereRadius * 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(0, 0, size, size);
       
       // Glass sphere back
       ctx.beginPath();
@@ -258,6 +246,79 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.arc(cx, cy, 80 * scaleFactor, 0, Math.PI * 2);
       ctx.fillStyle = purpleBackGlow;
       ctx.fill();
+      
+      // PROCESSING: Energy bursts from perimeter INTO center (v5 update)
+      if (state === 'processing' && !prefersReducedMotion) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, sphereRadius - 2, 0, Math.PI * 2);
+        ctx.clip();
+        
+        energyBursts.forEach((burst) => {
+          // Progress from 0 (at perimeter) to 1 (at center)
+          const progress = ((time * burst.speed + burst.offset) % 1.5) / 1.5;
+          
+          // Start at perimeter, end at center
+          const startRadius = sphereRadius - 10 * scaleFactor;
+          const endRadius = 20 * scaleFactor; // Near center light
+          const currentRadius = startRadius - (startRadius - endRadius) * progress;
+          
+          // Position along the angle
+          const burstX = cx + Math.cos(burst.angle) * currentRadius;
+          const burstY = cy + Math.sin(burst.angle) * currentRadius;
+          
+          // Fade out as approaching center (disappear into light)
+          const fadeOut = progress > 0.7 ? 1 - ((progress - 0.7) / 0.3) : 1;
+          // Also fade in at start
+          const fadeIn = progress < 0.15 ? progress / 0.15 : 1;
+          const opacity = fadeIn * fadeOut;
+          
+          if (opacity > 0.05) {
+            // Outer glow
+            const outerGlowGrad = ctx.createRadialGradient(
+              burstX, burstY, 0,
+              burstX, burstY, 20 * scaleFactor
+            );
+            outerGlowGrad.addColorStop(0, `rgba(255, 230, 150, ${0.35 * opacity})`);
+            outerGlowGrad.addColorStop(0.5, `rgba(255, 210, 100, ${0.15 * opacity})`);
+            outerGlowGrad.addColorStop(1, 'rgba(255, 200, 80, 0)');
+            
+            ctx.beginPath();
+            ctx.arc(burstX, burstY, 20 * scaleFactor, 0, Math.PI * 2);
+            ctx.fillStyle = outerGlowGrad;
+            ctx.fill();
+            
+            // Main burst - elongated toward center
+            ctx.save();
+            ctx.translate(burstX, burstY);
+            ctx.rotate(burst.angle); // Align with direction to center
+            
+            // Burst gets shorter as it approaches center
+            const burstLength = burst.length * scaleFactor * (0.5 + (1 - progress) * 0.5);
+            
+            const burstGrad = ctx.createLinearGradient(-burstLength / 2, 0, burstLength / 2, 0);
+            burstGrad.addColorStop(0, `rgba(255, 240, 180, ${0.1 * opacity})`);
+            burstGrad.addColorStop(0.3, `rgba(255, 245, 200, ${0.5 * opacity})`);
+            burstGrad.addColorStop(0.6, `rgba(255, 250, 220, ${0.7 * opacity})`);
+            burstGrad.addColorStop(1, `rgba(255, 255, 240, ${0.3 * opacity})`);
+            
+            ctx.beginPath();
+            ctx.ellipse(0, 0, burstLength / 2, 4 * scaleFactor, 0, 0, Math.PI * 2);
+            ctx.fillStyle = burstGrad;
+            ctx.fill();
+            
+            // Bright leading edge (toward center)
+            ctx.beginPath();
+            ctx.ellipse(burstLength / 4, 0, burstLength / 6, 2.5 * scaleFactor, 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 240, ${0.6 * opacity})`;
+            ctx.fill();
+            
+            ctx.restore();
+          }
+        });
+        
+        ctx.restore();
+      }
       
       // Outer petals
       for (let i = 0; i < 8; i++) {
@@ -291,7 +352,7 @@ export const LotusSphere = memo(function LotusSphere({
       // SMOKEY HEAVENLY GLOW CENTER
       const { r, g, b } = glowColor;
       
-      // Draw multiple offset circles for smokey/organic effect
+      // Smoke layers
       const smokeLayers = 5;
       for (let layer = 0; layer < smokeLayers; layer++) {
         const noiseVal = noise(layer * 50, time * 100, time * 2);
@@ -316,7 +377,7 @@ export const LotusSphere = memo(function LotusSphere({
         ctx.fill();
       }
       
-      // Outer ethereal halo
+      // Outer halo
       const haloWobble = noise(0, 0, time * 2) * 5 * scaleFactor;
       const haloSize = centerSize * 2.5 + haloWobble;
       const haloGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloSize);
@@ -343,7 +404,7 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = midGrad;
       ctx.fill();
       
-      // Inner bright core
+      // Inner core
       const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, centerSize * 0.8);
       coreGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.95)`);
       coreGrad.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, 0.7)`);
@@ -355,7 +416,7 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = coreGrad;
       ctx.fill();
       
-      // Tiny bright center point
+      // Center point
       const dotGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 5 * scaleFactor);
       dotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
       dotGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.7)`);
@@ -365,70 +426,6 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.arc(cx, cy, 5 * scaleFactor, 0, Math.PI * 2);
       ctx.fillStyle = dotGrad;
       ctx.fill();
-      
-      // PROCESSING: Yellow energy bursts
-      if (state === 'processing' && !prefersReducedMotion) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, sphereRadius - 2, 0, Math.PI * 2);
-        ctx.clip();
-        
-        energyBurstsRef.current.forEach((burst) => {
-          const progress = ((time * burst.speed + burst.offset) % 3.5) - 1;
-          const burstX = cx + progress * burst.direction * sphereRadius * 1.5;
-          const burstY = cy + burst.y;
-          
-          const distFromCenter = Math.sqrt(Math.pow(burstX - cx, 2) + Math.pow(burstY - cy, 2));
-          if (distFromCenter < sphereRadius + burst.length) {
-            // Outer glow (yellow/gold)
-            const outerGlowGrad = ctx.createRadialGradient(
-              burstX, burstY, 0,
-              burstX, burstY, 25 * scaleFactor
-            );
-            outerGlowGrad.addColorStop(0, 'rgba(255, 230, 150, 0.3)');
-            outerGlowGrad.addColorStop(0.5, 'rgba(255, 210, 100, 0.15)');
-            outerGlowGrad.addColorStop(1, 'rgba(255, 200, 80, 0)');
-            
-            ctx.beginPath();
-            ctx.ellipse(burstX, burstY, 25 * scaleFactor, 12 * scaleFactor, 0, 0, Math.PI * 2);
-            ctx.fillStyle = outerGlowGrad;
-            ctx.fill();
-            
-            // Main burst gradient
-            const burstGrad = ctx.createLinearGradient(
-              burstX - burst.length / 2, burstY,
-              burstX + burst.length / 2, burstY
-            );
-            
-            if (burst.direction > 0) {
-              burstGrad.addColorStop(0, 'rgba(255, 220, 120, 0)');
-              burstGrad.addColorStop(0.2, 'rgba(255, 230, 150, 0.4)');
-              burstGrad.addColorStop(0.5, 'rgba(255, 245, 200, 0.7)');
-              burstGrad.addColorStop(0.8, 'rgba(255, 250, 220, 0.5)');
-              burstGrad.addColorStop(1, 'rgba(255, 240, 180, 0)');
-            } else {
-              burstGrad.addColorStop(0, 'rgba(255, 240, 180, 0)');
-              burstGrad.addColorStop(0.2, 'rgba(255, 250, 220, 0.5)');
-              burstGrad.addColorStop(0.5, 'rgba(255, 245, 200, 0.7)');
-              burstGrad.addColorStop(0.8, 'rgba(255, 230, 150, 0.4)');
-              burstGrad.addColorStop(1, 'rgba(255, 220, 120, 0)');
-            }
-            
-            ctx.beginPath();
-            ctx.ellipse(burstX, burstY, burst.length / 2, 5 * scaleFactor, 0, 0, Math.PI * 2);
-            ctx.fillStyle = burstGrad;
-            ctx.fill();
-            
-            // Bright core
-            ctx.beginPath();
-            ctx.ellipse(burstX, burstY, burst.length / 5, 2.5 * scaleFactor, 0, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 230, 0.6)';
-            ctx.fill();
-          }
-        });
-        
-        ctx.restore();
-      }
       
       // Glass rim
       const rimSegments = 36;
@@ -466,6 +463,19 @@ export const LotusSphere = memo(function LotusSphere({
       ctx.fillStyle = highlight;
       ctx.fill();
       
+      // Bottom rim glow
+      ctx.beginPath();
+      ctx.arc(cx, cy + sphereRadius * 0.1, sphereRadius * 0.95, Math.PI * 0.6, Math.PI * 0.9);
+      ctx.strokeStyle = 'rgba(150, 100, 220, 0.25)';
+      ctx.lineWidth = 12 * scaleFactor;
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(cx, cy + sphereRadius * 0.1, sphereRadius * 0.95, Math.PI * 0.1, Math.PI * 0.4);
+      ctx.strokeStyle = 'rgba(150, 100, 220, 0.25)';
+      ctx.lineWidth = 12 * scaleFactor;
+      ctx.stroke();
+      
       // Continue animation if active
       if (isActive && !prefersReducedMotion) {
         animationRef.current = requestAnimationFrame(animate);
@@ -479,14 +489,14 @@ export const LotusSphere = memo(function LotusSphere({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [size, state, isActive, prefersReducedMotion]);
+  }, [size, state, isActive, prefersReducedMotion, energyBursts]);
   
   return (
     <canvas 
       ref={canvasRef}
       className={className}
       style={{
-        filter: isActive ? 'drop-shadow(0 0 8px rgba(120, 60, 180, 0.4))' : 'none',
+        filter: isActive ? 'drop-shadow(0 0 10px rgba(120, 60, 180, 0.4))' : 'none',
       }}
       aria-label="Nicole is thinking"
       role="status"
@@ -496,4 +506,3 @@ export const LotusSphere = memo(function LotusSphere({
 });
 
 export default LotusSphere;
-

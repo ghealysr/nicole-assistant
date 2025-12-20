@@ -51,7 +51,7 @@ export const ThinkingIndicator = memo(function ThinkingIndicator({
     >
       <LotusSphere 
         state={state} 
-        size={size} 
+        size={size * 2} 
         isActive={true}
       />
       {/* Optional state label for accessibility */}
