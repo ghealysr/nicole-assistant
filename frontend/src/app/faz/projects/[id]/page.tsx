@@ -429,7 +429,7 @@ export default function ProjectWorkspacePage() {
           <span>Files</span>
           <span className="text-[#94A3B8]">{files.length}</span>
         </div>
-        <FileTree files={Array.from(files.keys())} />
+        <FileTree files={files.map(f => f.path)} />
       </div>
       
       {currentProject && (
