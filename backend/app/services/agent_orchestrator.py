@@ -1285,41 +1285,65 @@ class AgentOrchestrator:
             from app.services.alphawave_cloudinary_service import cloudinary_service
             from datetime import datetime
             
-            logger.debug(f"[ORCHESTRATOR] Screenshot result type: {type(result)}, preview: {str(result)[:200]}")
+            # Log the full result for debugging
+            result_str = str(result)[:500] if result else "None"
+            logger.info(f"[ORCHESTRATOR] Screenshot result type: {type(result).__name__}, preview: {result_str}")
             
-            # Extract base64 data from result - handle MCP bridge format
+            # Extract base64 data from result - handle multiple MCP bridge formats
             base64_data = None
             parsed_data = None
             
-            # MCP bridge returns: [{"type": "text", "text": "{...json...}"}]
-            if isinstance(result, list) and len(result) > 0:
+            # Format 1: Docker MCP Gateway returns string directly (most common)
+            # The puppeteer_screenshot returns the base64 data as a plain string
+            if isinstance(result, str):
+                # Check if it's a JSON string that needs parsing
+                if result.startswith('{') or result.startswith('['):
+                    try:
+                        parsed = json.loads(result)
+                        if isinstance(parsed, dict):
+                            base64_data = parsed.get("data") or parsed.get("screenshot") or parsed.get("image")
+                        logger.info(f"[ORCHESTRATOR] Parsed JSON string, found data: {bool(base64_data)}")
+                    except json.JSONDecodeError:
+                        pass
+                # If it's a long string (likely base64), use it directly
+                if not base64_data and len(result) > 1000:
+                    # Check if it looks like base64 (alphanumeric + /+=)
+                    if result.replace('+', '').replace('/', '').replace('=', '').isalnum() or result.startswith('data:image'):
+                        base64_data = result
+                        logger.info(f"[ORCHESTRATOR] Using string as direct base64 data ({len(result)} chars)")
+            
+            # Format 2: MCP bridge returns: [{"type": "text", "text": "base64data or json"}]
+            if not base64_data and isinstance(result, list) and len(result) > 0:
                 first_item = result[0]
                 if isinstance(first_item, dict) and first_item.get("type") == "text":
                     text_content = first_item.get("text", "")
+                    # Try parsing as JSON first
                     try:
                         parsed_data = json.loads(text_content)
-                        base64_data = parsed_data.get("data")
-                        logger.debug(f"[ORCHESTRATOR] Parsed MCP response, found data: {bool(base64_data)}")
+                        base64_data = parsed_data.get("data") or parsed_data.get("screenshot")
+                        logger.info(f"[ORCHESTRATOR] Parsed MCP list->JSON, found data: {bool(base64_data)}")
                     except json.JSONDecodeError:
-                        logger.warning("[ORCHESTRATOR] Failed to parse MCP text content as JSON")
+                        # Not JSON, might be direct base64
+                        if len(text_content) > 1000:
+                            base64_data = text_content
+                            logger.info(f"[ORCHESTRATOR] Using MCP list->text as base64 ({len(text_content)} chars)")
             
-            # Also handle dict format (direct result)
+            # Format 3: Dict format (direct result from some MCP servers)
             if not base64_data and isinstance(result, dict):
                 # Try common keys where screenshot data might be
                 base64_data = (
                     result.get("data") or 
                     result.get("screenshot") or 
                     result.get("image") or
+                    result.get("content") or
                     (result.get("result", {}).get("data") if isinstance(result.get("result"), dict) else None)
                 )
                 parsed_data = result
-            
-            # Direct base64 string
-            if not base64_data and isinstance(result, str) and len(result) > 100:
-                base64_data = result
+                if base64_data:
+                    logger.info(f"[ORCHESTRATOR] Found data in dict result ({len(str(base64_data))} chars)")
             
             if not base64_data:
-                logger.warning("[ORCHESTRATOR] No base64 data found in screenshot result")
+                logger.warning(f"[ORCHESTRATOR] No base64 data found in screenshot result. Type: {type(result).__name__}, Content: {result_str}")
                 return None
             
             # Clean base64 data (remove data URI prefix if present)

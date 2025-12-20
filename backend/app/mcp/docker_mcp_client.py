@@ -112,6 +112,15 @@ class DockerMCPClient:
 
             content = data.get("result", {}).get("content", [])
             if isinstance(content, list):
+                # First check for image type (for screenshots)
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "image":
+                        # Return the image data directly
+                        image_data = item.get("data", "")
+                        logger.info(f"[MCP] Found image content ({len(image_data)} chars)")
+                        return MCPToolResult(content=image_data)
+                
+                # Then check for text parts
                 text_parts = [
                     i.get("text", "")
                     for i in content
