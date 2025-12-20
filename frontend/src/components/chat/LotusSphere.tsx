@@ -195,13 +195,20 @@ export const LotusSphere = memo(function LotusSphere({
         centerSize = 25 * scale;
       }
       
-      // Clear
+      // Clear canvas to transparent
       ctx.clearRect(0, 0, size, size);
       
-      // Background for sidebar only
-      if (withBackground) {
+      // Only draw black background if explicitly requested (sidebar logo)
+      // withBackground is false by default
+      if (withBackground === true) {
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, size, size);
+      }
+      
+      // DEBUG: Log to confirm this code is running
+      if (typeof window !== 'undefined' && !window.__lotusSphereLogged) {
+        console.log('[LotusSphere] withBackground:', withBackground);
+        window.__lotusSphereLogged = true;
       }
       
       // Outer ambient glow - contained within canvas bounds
