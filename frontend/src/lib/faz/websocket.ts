@@ -70,21 +70,32 @@ function normalizeRole(value: unknown): ChatRole {
   }
 }
 
-type ProjectStatus = 
-  | 'intake' | 'planning' | 'researching' | 'designing' | 'building'
-  | 'processing' | 'qa' | 'review' | 'approved' | 'deploying'
-  | 'deployed' | 'failed' | 'paused' | 'archived';
+import type { ProjectStatus, ArtifactType, FazProjectArtifact, PipelineMode } from '@/types/faz';
 
 function normalizeProjectStatus(value: unknown): ProjectStatus {
   const validStatuses: ProjectStatus[] = [
     'intake', 'planning', 'researching', 'designing', 'building',
     'processing', 'qa', 'review', 'approved', 'deploying',
-    'deployed', 'failed', 'paused', 'archived'
+    'deployed', 'failed', 'paused', 'archived', 'cancelled',
+    // Interactive gate statuses
+    'awaiting_confirm', 'awaiting_research_review', 'awaiting_plan_approval',
+    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_final_approval'
   ];
   if (typeof value === 'string' && validStatuses.includes(value as ProjectStatus)) {
     return value as ProjectStatus;
   }
   return 'intake';
+}
+
+function normalizeArtifactType(value: unknown): ArtifactType {
+  const validTypes: ArtifactType[] = [
+    'project_brief', 'research', 'architecture', 'design_system',
+    'qa_report', 'review_summary', 'custom'
+  ];
+  if (typeof value === 'string' && validTypes.includes(value as ArtifactType)) {
+    return value as ArtifactType;
+  }
+  return 'custom';
 }
 
 type FileType = 'component' | 'page' | 'config' | 'style' | 'asset' | 'unknown';
@@ -229,8 +240,27 @@ class FazWebSocket {
   /**
    * Run pipeline
    */
-  runPipeline(startAgent: string = 'nicole') {
-    this.send({ type: 'run', start_agent: startAgent });
+  runPipeline(startAgent: string = 'nicole', mode: PipelineMode = 'interactive') {
+    this.send({ type: 'run', start_agent: startAgent, mode });
+  }
+  
+  /**
+   * Approve or reject at a gate
+   */
+  approveGate(approved: boolean = true, feedback?: string, modifications?: Record<string, unknown>) {
+    this.send({ 
+      type: 'approve', 
+      approved, 
+      feedback,
+      modifications
+    });
+  }
+  
+  /**
+   * Reject at a gate with feedback
+   */
+  rejectGate(feedback: string) {
+    this.approveGate(false, feedback);
   }
   
   /**
@@ -335,10 +365,72 @@ class FazWebSocket {
         // Agent routing decision
         console.log('[Faz WS] Routing to:', data.next_agent, 'Intent:', data.intent);
         break;
+      
+      case 'gate':
+        // Pipeline stopped at approval gate
+        console.log('[Faz WS] At gate:', data.gate);
+        if (store.currentProject) {
+          store.setCurrentProject({
+            ...store.currentProject,
+            status: normalizeProjectStatus(data.gate),
+            awaiting_approval_for: data.gate as string,
+            current_agent: data.current_agent as string | null,
+            last_gate_reached_at: data.reached_at as string,
+          });
+        }
+        // Add gate message to chat
+        store.addMessage({
+          role: 'assistant',
+          content: data.message as string || `Ready for review at ${data.gate}`,
+          agent_name: 'nicole',
+          created_at: data.timestamp as string,
+        });
+        // Clear loading state - we're waiting for user
+        store.setLoading(false);
+        break;
+      
+      case 'artifact':
+        // New artifact ready for review
+        console.log('[Faz WS] Artifact received:', data.artifact_type);
+        if (store.currentProject) {
+          const artifact: FazProjectArtifact = {
+            artifact_id: (data.artifact_id as number) || 0,
+            project_id: store.currentProject.project_id,
+            artifact_type: normalizeArtifactType(data.artifact_type),
+            title: (data.title as string) || `${data.artifact_type} Output`,
+            content: data.content as string,
+            content_format: 'markdown',
+            version: 1,
+            is_approved: false,
+            created_at: data.timestamp as string,
+            updated_at: data.timestamp as string,
+          };
+          
+          // Add to project artifacts
+          const existingArtifacts = store.currentProject.artifacts || [];
+          const existingIndex = existingArtifacts.findIndex(
+            a => a.artifact_type === artifact.artifact_type
+          );
+          
+          let updatedArtifacts: FazProjectArtifact[];
+          if (existingIndex >= 0) {
+            updatedArtifacts = [...existingArtifacts];
+            updatedArtifacts[existingIndex] = artifact;
+          } else {
+            updatedArtifacts = [...existingArtifacts, artifact];
+          }
+          
+          store.setCurrentProject({
+            ...store.currentProject,
+            artifacts: updatedArtifacts,
+          });
+        }
+        break;
         
       case 'error':
         console.error('[Faz WS] Server error:', data.message);
         store.setError(data.message as string);
+        store.setLoading(false);
         break;
         
       case 'pong':

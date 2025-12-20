@@ -133,6 +133,13 @@ class ChatRequest(BaseModel):
     run_pipeline: bool = False  # If True, runs the agent pipeline
 
 
+class ApprovalRequest(BaseModel):
+    """Request to approve or reject at a gate."""
+    approved: bool = True
+    feedback: Optional[str] = None
+    modifications: Optional[Dict[str, Any]] = None
+
+
 class ChatResponse(BaseModel):
     """Chat response."""
     message_id: int
@@ -147,33 +154,113 @@ class ChatResponse(BaseModel):
 # WEBSOCKET CONNECTION MANAGER
 # =============================================================================
 
+class ConnectionInfo:
+    """Tracks metadata about a WebSocket connection."""
+    
+    def __init__(self, websocket: WebSocket, user_id: int, user_email: str):
+        self.websocket = websocket
+        self.user_id = user_id
+        self.user_email = user_email
+        self.connected_at = datetime.utcnow()
+        self.last_ping = datetime.utcnow()
+        self.message_count = 0
+        self.is_alive = True
+
+
 class ConnectionManager:
-    """Manages WebSocket connections per project."""
+    """
+    Manages WebSocket connections per project with enhanced reliability.
+    
+    Features:
+    - Connection metadata tracking
+    - Heartbeat monitoring
+    - Graceful disconnection handling
+    - Per-user connection limiting
+    """
+    
+    MAX_CONNECTIONS_PER_PROJECT = 10
+    MAX_CONNECTIONS_PER_USER = 3
     
     def __init__(self):
-        # project_id -> list of WebSocket connections
-        self.active_connections: Dict[int, List[WebSocket]] = {}
+        # project_id -> list of ConnectionInfo
+        self.active_connections: Dict[int, List[ConnectionInfo]] = {}
+        # user_id -> count of connections
+        self.user_connection_counts: Dict[int, int] = {}
     
-    async def connect(self, websocket: WebSocket, project_id: int):
-        """Accept and track connection."""
+    async def connect(
+        self,
+        websocket: WebSocket,
+        project_id: int,
+        user_id: int,
+        user_email: str = "unknown",
+    ) -> bool:
+        """
+        Accept and track connection with rate limiting.
+        
+        Returns:
+            True if connection accepted, False if rejected
+        """
+        # Check user connection limit
+        user_count = self.user_connection_counts.get(user_id, 0)
+        if user_count >= self.MAX_CONNECTIONS_PER_USER:
+            logger.warning(f"[Faz WS] User {user_id} exceeded connection limit")
+            await websocket.close(code=4029, reason="Too many connections")
+            return False
+        
+        # Check project connection limit
+        project_connections = self.active_connections.get(project_id, [])
+        if len(project_connections) >= self.MAX_CONNECTIONS_PER_PROJECT:
+            logger.warning(f"[Faz WS] Project {project_id} exceeded connection limit")
+            await websocket.close(code=4029, reason="Project has too many connections")
+            return False
+        
         await websocket.accept()
+        
+        # Track connection
+        conn_info = ConnectionInfo(websocket, user_id, user_email)
         
         if project_id not in self.active_connections:
             self.active_connections[project_id] = []
         
-        self.active_connections[project_id].append(websocket)
-        logger.info(f"[Faz WS] Client connected to project {project_id}")
+        self.active_connections[project_id].append(conn_info)
+        self.user_connection_counts[user_id] = user_count + 1
+        
+        logger.info(f"[Faz WS] {user_email} connected to project {project_id} (total: {len(self.active_connections[project_id])})")
+        return True
     
     def disconnect(self, websocket: WebSocket, project_id: int):
-        """Remove connection."""
-        if project_id in self.active_connections:
-            if websocket in self.active_connections[project_id]:
-                self.active_connections[project_id].remove(websocket)
-            
-            if not self.active_connections[project_id]:
-                del self.active_connections[project_id]
+        """Remove connection and update counts."""
+        if project_id not in self.active_connections:
+            return
         
-        logger.info(f"[Faz WS] Client disconnected from project {project_id}")
+        conn_to_remove = None
+        for conn in self.active_connections[project_id]:
+            if conn.websocket is websocket:
+                conn_to_remove = conn
+                break
+        
+        if conn_to_remove:
+            self.active_connections[project_id].remove(conn_to_remove)
+            
+            # Update user count
+            user_count = self.user_connection_counts.get(conn_to_remove.user_id, 1)
+            self.user_connection_counts[conn_to_remove.user_id] = max(0, user_count - 1)
+            
+            logger.info(f"[Faz WS] {conn_to_remove.user_email} disconnected from project {project_id}")
+        
+        # Clean up empty project
+        if not self.active_connections[project_id]:
+            del self.active_connections[project_id]
+    
+    def update_heartbeat(self, websocket: WebSocket, project_id: int):
+        """Update last ping time for connection."""
+        if project_id not in self.active_connections:
+            return
+        
+        for conn in self.active_connections[project_id]:
+            if conn.websocket is websocket:
+                conn.last_ping = datetime.utcnow()
+                break
     
     async def broadcast_to_project(self, project_id: int, message: Dict[str, Any]):
         """Broadcast message to all connections for a project."""
@@ -182,11 +269,13 @@ class ConnectionManager:
         
         dead_connections = []
         
-        for connection in self.active_connections[project_id]:
+        for conn in self.active_connections[project_id]:
             try:
-                await connection.send_json(message)
+                await conn.websocket.send_json(message)
+                conn.message_count += 1
             except Exception:
-                dead_connections.append(connection)
+                conn.is_alive = False
+                dead_connections.append(conn.websocket)
         
         # Clean up dead connections
         for dead in dead_connections:
@@ -198,6 +287,26 @@ class ConnectionManager:
             await websocket.send_json(message)
         except Exception as e:
             logger.error(f"[Faz WS] Failed to send: {e}")
+    
+    def get_connection_count(self, project_id: int) -> int:
+        """Get number of active connections for a project."""
+        return len(self.active_connections.get(project_id, []))
+    
+    def get_project_stats(self, project_id: int) -> Dict[str, Any]:
+        """Get statistics about project connections."""
+        connections = self.active_connections.get(project_id, [])
+        
+        return {
+            "connection_count": len(connections),
+            "users": [
+                {
+                    "email": c.user_email,
+                    "connected_at": c.connected_at.isoformat(),
+                    "messages": c.message_count,
+                }
+                for c in connections
+            ],
+        }
 
 
 # Global connection manager
@@ -222,14 +331,17 @@ async def websocket_endpoint(
     
     Receives:
     - {"type": "chat", "message": "user message"} - Send chat message
-    - {"type": "run", "start_agent": "nicole"} - Run pipeline
+    - {"type": "run", "start_agent": "nicole", "mode": "interactive"} - Run pipeline
+    - {"type": "approve", "approved": true, "feedback": "..."} - Approve at gate
     - {"type": "ping"} - Keep-alive
     
     Sends:
     - {"type": "activity", ...} - Agent activity updates
     - {"type": "chat", ...} - Chat messages
     - {"type": "status", ...} - Project status changes
+    - {"type": "gate", ...} - Approval gate reached
     - {"type": "file", ...} - File generation events
+    - {"type": "artifact", ...} - Artifact ready for review
     - {"type": "error", ...} - Error messages
     """
     # =========================================================================
@@ -260,7 +372,16 @@ async def websocket_endpoint(
     # CONNECTION SETUP
     # =========================================================================
     
-    await manager.connect(websocket, project_id)
+    # Connect with user info for tracking
+    connected = await manager.connect(
+        websocket,
+        project_id,
+        user_id=user_id,
+        user_email=user_info.get("email", "unknown"),
+    )
+    
+    if not connected:
+        return  # Connection was rejected (rate limit)
     
     # Start activity watcher
     activity_task = asyncio.create_task(watch_activities(websocket, project_id))
@@ -302,7 +423,8 @@ async def websocket_endpoint(
                 msg_type = data.get("type")
                 
                 if msg_type == "ping":
-                    await manager.send_personal(websocket, {"type": "pong"})
+                    manager.update_heartbeat(websocket, project_id)
+                    await manager.send_personal(websocket, {"type": "pong", "timestamp": datetime.utcnow().isoformat()})
                     
                 elif msg_type == "chat":
                     # Handle chat message
@@ -313,7 +435,17 @@ async def websocket_endpoint(
                 elif msg_type == "run":
                     # Start pipeline
                     start_agent = data.get("start_agent", "nicole")
-                    await handle_run_pipeline(websocket, project_id, start_agent, ws_user_id)
+                    mode = data.get("mode", "auto")  # "auto" or "interactive"
+                    await handle_run_pipeline(websocket, project_id, start_agent, ws_user_id, mode)
+                
+                elif msg_type == "approve":
+                    # Handle approval at gate
+                    approved = data.get("approved", True)
+                    feedback = data.get("feedback")
+                    modifications = data.get("modifications")
+                    await handle_gate_approval(
+                        websocket, project_id, approved, feedback, modifications, ws_user_id
+                    )
                 
                 else:
                     await manager.send_personal(websocket, {
@@ -482,7 +614,13 @@ async def handle_chat_message(websocket: WebSocket, project_id: int, message: st
         })
 
 
-async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent: str, user_id: int = None):
+async def handle_run_pipeline(
+    websocket: WebSocket,
+    project_id: int,
+    start_agent: str,
+    user_id: int = None,
+    mode: str = "auto"
+):
     """Handle pipeline run request via WebSocket."""
     try:
         # Get project (with ownership check if user_id provided)
@@ -505,48 +643,79 @@ async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent
             })
             return
         
-        # Update status
+        # Update status and mode
         await db.execute(
-            "UPDATE faz_projects SET status = 'planning', updated_at = NOW() WHERE project_id = $1",
+            """UPDATE faz_projects 
+               SET status = 'planning', pipeline_mode = $2, updated_at = NOW() 
+               WHERE project_id = $1""",
             project_id,
+            mode,
         )
         
         await manager.broadcast_to_project(project_id, {
             "type": "status",
             "status": "processing",
             "current_agent": start_agent,
+            "pipeline_mode": mode,
             "timestamp": datetime.utcnow().isoformat(),
         })
         
-        # Run pipeline
-        from app.services.faz_orchestrator import FazOrchestrator
+        # Import orchestrator with mode support
+        from app.services.faz_orchestrator import FazOrchestrator, PipelineMode
         
-        orchestrator = FazOrchestrator(project_id, project["user_id"])
+        # Determine pipeline mode
+        pipeline_mode = PipelineMode.INTERACTIVE if mode == "interactive" else PipelineMode.AUTO
+        
+        orchestrator = FazOrchestrator(project_id, project["user_id"], pipeline_mode)
         
         # Set callback for real-time updates
         async def activity_callback(activity: Dict[str, Any]):
+            msg_type = activity.get("type", "activity")
             await manager.broadcast_to_project(project_id, {
-                "type": "activity",
+                "type": msg_type,
                 **activity,
             })
         
         orchestrator.set_activity_callback(activity_callback)
         
-        # Run
+        # Run pipeline (may stop at gates in interactive mode)
         final_state = await orchestrator.run(
             project["original_prompt"],
             start_agent,
         )
         
-        # Broadcast completion
-        await manager.broadcast_to_project(project_id, {
-            "type": "complete",
-            "status": final_state.get("status", "completed"),
-            "file_count": len(final_state.get("files", {})),
-            "total_tokens": final_state.get("total_tokens", 0),
-            "total_cost_cents": final_state.get("total_cost_cents", 0),
-            "timestamp": datetime.utcnow().isoformat(),
-        })
+        # Check if stopped at a gate
+        if orchestrator.is_at_gate():
+            gate_info = orchestrator.get_gate_status()
+            
+            await manager.broadcast_to_project(project_id, {
+                "type": "gate",
+                "gate": gate_info.get("gate"),
+                "current_agent": gate_info.get("current_agent"),
+                "artifacts": gate_info.get("artifacts", {}),
+                "reached_at": gate_info.get("reached_at"),
+                "message": f"Waiting for approval at {gate_info.get('gate')}",
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            
+            # Send artifacts for review
+            for artifact_type, content in gate_info.get("artifacts", {}).items():
+                await manager.broadcast_to_project(project_id, {
+                    "type": "artifact",
+                    "artifact_type": artifact_type,
+                    "content": content,
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+        else:
+            # Pipeline complete
+            await manager.broadcast_to_project(project_id, {
+                "type": "complete",
+                "status": final_state.get("status", "completed"),
+                "file_count": len(final_state.get("files", {})),
+                "total_tokens": final_state.get("total_tokens", 0),
+                "total_cost_cents": final_state.get("total_cost_cents", 0),
+                "timestamp": datetime.utcnow().isoformat(),
+            })
         
     except Exception as e:
         logger.exception(f"[Faz WS] Pipeline error: {e}")
@@ -559,6 +728,110 @@ async def handle_run_pipeline(websocket: WebSocket, project_id: int, start_agent
         await manager.broadcast_to_project(project_id, {
             "type": "error",
             "message": f"Pipeline failed: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+
+async def handle_gate_approval(
+    websocket: WebSocket,
+    project_id: int,
+    approved: bool,
+    feedback: Optional[str],
+    modifications: Optional[Dict[str, Any]],
+    user_id: int = None
+):
+    """Handle approval/rejection at an interactive gate."""
+    try:
+        # Get existing orchestrator
+        from app.services.faz_orchestrator import get_running_orchestrator, resume_orchestrator
+        
+        orchestrator = get_running_orchestrator(project_id)
+        
+        # If no running orchestrator, try to resume from database
+        if not orchestrator:
+            orchestrator = await resume_orchestrator(project_id)
+        
+        if not orchestrator:
+            await manager.send_personal(websocket, {
+                "type": "error",
+                "message": "No pipeline waiting for approval",
+            })
+            return
+        
+        if not orchestrator.is_at_gate():
+            await manager.send_personal(websocket, {
+                "type": "error",
+                "message": "Pipeline is not at an approval gate",
+            })
+            return
+        
+        # Log the approval action
+        gate = orchestrator.state.get("awaiting_approval_for")
+        action = "approved" if approved else "rejected"
+        
+        await manager.broadcast_to_project(project_id, {
+            "type": "status",
+            "status": "processing",
+            "message": f"User {action} at {gate}",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        
+        # Set callback for real-time updates
+        async def activity_callback(activity: Dict[str, Any]):
+            msg_type = activity.get("type", "activity")
+            await manager.broadcast_to_project(project_id, {
+                "type": msg_type,
+                **activity,
+            })
+        
+        orchestrator.set_activity_callback(activity_callback)
+        
+        # Proceed from gate
+        final_state = await orchestrator.proceed_from_gate(
+            approved=approved,
+            feedback=feedback,
+            modifications=modifications
+        )
+        
+        # Check if hit another gate
+        if orchestrator.is_at_gate():
+            gate_info = orchestrator.get_gate_status()
+            
+            await manager.broadcast_to_project(project_id, {
+                "type": "gate",
+                "gate": gate_info.get("gate"),
+                "current_agent": gate_info.get("current_agent"),
+                "artifacts": gate_info.get("artifacts", {}),
+                "reached_at": gate_info.get("reached_at"),
+                "message": f"Waiting for approval at {gate_info.get('gate')}",
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            
+            # Send artifacts
+            for artifact_type, content in gate_info.get("artifacts", {}).items():
+                await manager.broadcast_to_project(project_id, {
+                    "type": "artifact",
+                    "artifact_type": artifact_type,
+                    "content": content,
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+        else:
+            # Pipeline complete
+            await manager.broadcast_to_project(project_id, {
+                "type": "complete",
+                "status": final_state.get("status", "completed"),
+                "file_count": len(final_state.get("files", {})),
+                "total_tokens": final_state.get("total_tokens", 0),
+                "total_cost_cents": final_state.get("total_cost_cents", 0),
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+        
+    except Exception as e:
+        logger.exception(f"[Faz WS] Gate approval error: {e}")
+        
+        await manager.broadcast_to_project(project_id, {
+            "type": "error",
+            "message": f"Approval processing failed: {str(e)}",
             "timestamp": datetime.utcnow().isoformat(),
         })
 
@@ -613,6 +886,127 @@ async def get_chat_history(
         raise
     except Exception as e:
         logger.exception(f"[Faz] Failed to get chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/projects/{project_id}/approve")
+async def approve_gate(
+    project_id: int,
+    request: ApprovalRequest,
+    user = Depends(get_current_user),
+):
+    """
+    Approve or reject at an interactive pipeline gate.
+    
+    This is a fallback for when WebSocket is not available.
+    """
+    try:
+        # Verify access
+        project = await db.fetchrow(
+            "SELECT * FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Check if project is at a gate
+        if not project["awaiting_approval_for"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Project is not waiting for approval"
+            )
+        
+        # Get or resume orchestrator
+        from app.services.faz_orchestrator import get_running_orchestrator, resume_orchestrator
+        
+        orchestrator = get_running_orchestrator(project_id)
+        
+        if not orchestrator:
+            orchestrator = await resume_orchestrator(project_id)
+        
+        if not orchestrator:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not resume pipeline"
+            )
+        
+        # Proceed from gate
+        final_state = await orchestrator.proceed_from_gate(
+            approved=request.approved,
+            feedback=request.feedback,
+            modifications=request.modifications
+        )
+        
+        # Return current state
+        return {
+            "success": True,
+            "status": final_state.get("status"),
+            "at_gate": orchestrator.is_at_gate(),
+            "gate": final_state.get("awaiting_approval_for"),
+            "file_count": len(final_state.get("files", {})),
+            "total_tokens": final_state.get("total_tokens", 0),
+            "total_cost_cents": final_state.get("total_cost_cents", 0),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Gate approval failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/gate")
+async def get_gate_status(
+    project_id: int,
+    user = Depends(get_current_user),
+):
+    """Get current gate status for a project."""
+    try:
+        project = await db.fetchrow(
+            """SELECT project_id, status, awaiting_approval_for, current_agent, 
+                      last_gate_reached_at
+               FROM faz_projects 
+               WHERE project_id = $1 AND user_id = $2""",
+            project_id,
+            user.user_id,
+        )
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get artifacts for this gate
+        artifacts = await db.fetch(
+            """SELECT artifact_type, title, content, is_approved, user_feedback
+               FROM faz_project_artifacts
+               WHERE project_id = $1
+               ORDER BY created_at DESC""",
+            project_id,
+        )
+        
+        return {
+            "at_gate": project["awaiting_approval_for"] is not None,
+            "gate": project["awaiting_approval_for"],
+            "status": project["status"],
+            "current_agent": project["current_agent"],
+            "reached_at": project["last_gate_reached_at"].isoformat() if project["last_gate_reached_at"] else None,
+            "artifacts": [
+                {
+                    "type": a["artifact_type"],
+                    "title": a["title"],
+                    "content": a["content"],
+                    "is_approved": a["is_approved"],
+                    "feedback": a["user_feedback"],
+                }
+                for a in artifacts
+            ],
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to get gate status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -684,4 +1078,76 @@ async def send_chat_message(
     except Exception as e:
         logger.exception(f"[Faz] Failed to send chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# HEALTH CHECK & DIAGNOSTICS
+# =============================================================================
+
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Faz Code system.
+    
+    Returns status of WebSocket connections, database, and agent availability.
+    """
+    try:
+        # Check database
+        db_ok = False
+        try:
+            result = await db.fetchval("SELECT 1")
+            db_ok = result == 1
+        except Exception:
+            pass
+        
+        # Get WebSocket stats
+        total_connections = sum(
+            len(conns) for conns in manager.active_connections.values()
+        )
+        active_projects = len(manager.active_connections)
+        
+        # Check agent availability
+        agents_available = True
+        try:
+            from app.services.faz_agents.nicole import NicoleAgent
+            from app.services.faz_agents.coding import CodingAgent
+            agents_available = True
+        except ImportError:
+            agents_available = False
+        
+        return {
+            "status": "healthy" if db_ok else "degraded",
+            "timestamp": datetime.utcnow().isoformat(),
+            "components": {
+                "database": "ok" if db_ok else "error",
+                "websocket": "ok",
+                "agents": "ok" if agents_available else "unavailable",
+            },
+            "metrics": {
+                "active_websocket_connections": total_connections,
+                "active_projects": active_projects,
+            },
+        }
+        
+    except Exception as e:
+        logger.exception(f"[Faz] Health check error: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+
+@router.get("/projects/{project_id}/ws/stats")
+async def get_ws_stats(
+    project_id: int,
+    user = Depends(get_current_user),
+):
+    """Get WebSocket connection stats for a project."""
+    # Verify access
+    has_access = await verify_project_access(user.user_id, project_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return manager.get_project_stats(project_id)
 

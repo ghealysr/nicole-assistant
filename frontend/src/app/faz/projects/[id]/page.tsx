@@ -239,10 +239,11 @@ export default function ProjectWorkspacePage() {
     );
   }
 
-  const selectedContent = selectedFile ? files.get(selectedFile) || '' : '// Select a file to view';
+  const selectedFileData = selectedFile ? files.find(f => f.path === selectedFile) : null;
+  const selectedContent = selectedFileData?.content || '// Select a file to view';
   const selectedLang = selectedFile ? getLanguage(selectedFile) : 'plaintext';
   const isProcessing = currentProject?.status === 'processing' || isLoading;
-  const canDeploy = currentProject?.status === 'approved' || (files.size > 0 && !isProcessing);
+  const canDeploy = currentProject?.status === 'approved' || (files.length > 0 && !isProcessing);
 
   // Toolbar component
   const Toolbar = () => (
@@ -426,9 +427,9 @@ export default function ProjectWorkspacePage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider flex items-center justify-between">
           <span>Files</span>
-          <span className="text-[#94A3B8]">{files.size}</span>
+          <span className="text-[#94A3B8]">{files.length}</span>
         </div>
-        <FileTree files={Array.from(files.keys())} />
+        <FileTree files={files.map(f => f.path)} />
       </div>
       
       {currentProject && (
@@ -447,7 +448,7 @@ export default function ProjectWorkspacePage() {
             )}
             <div className="flex justify-between">
               <span className="text-[#64748B]">Files</span>
-              <span className="text-[#F1F5F9]">{currentProject.file_count || files.size}</span>
+              <span className="text-[#F1F5F9]">{currentProject.file_count || files.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[#64748B]">Tokens</span>

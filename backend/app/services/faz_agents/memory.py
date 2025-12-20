@@ -2,7 +2,7 @@
 Memory Agent - Faz Code Learning System
 
 Extracts learnings from projects and stores for future use.
-Uses GPT-5 Codex for pattern extraction.
+Uses GPT-4o for pattern extraction and learning consolidation.
 """
 
 from typing import Any, Dict, List
@@ -29,7 +29,7 @@ class MemoryAgent(BaseAgent):
     agent_name = "Memory Agent"
     agent_role = "Learning - Extracts and stores learnings for future projects"
     model_provider = "openai"
-    model_name = "gpt-5-codex"
+    model_name = "gpt-4o"  # Using GPT-4o for reliable pattern extraction
     temperature = 0.5
     max_tokens = 4096
     

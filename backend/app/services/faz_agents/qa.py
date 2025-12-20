@@ -3,15 +3,24 @@ QA Agent - Faz Code Tester
 
 Reviews generated code for quality, accessibility, and performance.
 Uses Claude Sonnet 4.5 for systematic code review.
+Captures screenshots for visual verification.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
 import logging
+import asyncio
 
 from .base_agent import BaseAgent, AgentResult
 
 logger = logging.getLogger(__name__)
+
+# Try to import screenshot service
+try:
+    from app.services.faz_screenshot_service import screenshot_service, PLAYWRIGHT_AVAILABLE
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    screenshot_service = None
 
 
 class QAAgent(BaseAgent):
@@ -30,7 +39,7 @@ class QAAgent(BaseAgent):
     agent_name = "QA Agent"
     agent_role = "Tester - Reviews code quality and accessibility"
     model_provider = "anthropic"
-    model_name = "claude-sonnet-4-5-20250929"
+    model_name = "claude-opus-4-5-20251101"
     temperature = 0.3  # Low for consistent analysis
     max_tokens = 8192
     
@@ -220,4 +229,84 @@ Output your complete review as JSON with scores and detailed issues.""")
                 data={"passed": True, "score": 75},
                 next_agent="review",
             )
+    
+    async def capture_screenshots(
+        self,
+        preview_url: str,
+        project_id: Optional[int] = None,
+        viewports: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Capture screenshots of the preview URL for visual QA.
+        
+        Args:
+            preview_url: URL of the preview deployment
+            project_id: Optional project ID to store screenshots
+            viewports: Viewports to capture (default: desktop, mobile)
+            
+        Returns:
+            Dict with screenshot results
+        """
+        if not PLAYWRIGHT_AVAILABLE or not screenshot_service:
+            logger.warning("[QA] Screenshot capture not available - Playwright not installed")
+            return {
+                "success": False,
+                "error": "Screenshot service not available",
+                "available": False,
+            }
+        
+        viewports = viewports or ["desktop", "mobile"]
+        
+        try:
+            results = await screenshot_service.capture_multi_viewport(
+                preview_url,
+                viewports,
+            )
+            
+            # Store in database if project_id provided
+            if project_id and results.get("success"):
+                from app.services.faz_screenshot_service import capture_project_screenshots
+                await capture_project_screenshots(project_id, preview_url, viewports)
+            
+            logger.info(f"[QA] Captured {len(viewports)} screenshots for {preview_url}")
+            
+            return results
+            
+        except Exception as e:
+            logger.exception(f"[QA] Screenshot capture error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+    
+    async def run_with_screenshots(
+        self,
+        state: Dict[str, Any],
+        preview_url: Optional[str] = None,
+    ) -> AgentResult:
+        """
+        Run QA agent with screenshot capture.
+        
+        Extends the standard run() with visual verification.
+        """
+        # Run standard QA review first
+        result = await self.run(state)
+        
+        # Capture screenshots if URL available
+        if preview_url and PLAYWRIGHT_AVAILABLE:
+            screenshot_results = await self.capture_screenshots(
+                preview_url,
+                project_id=state.get("project_id"),
+            )
+            
+            # Add screenshots to result data
+            if result.data:
+                result.data["screenshots"] = screenshot_results
+            
+            # Add screenshot info to message
+            if screenshot_results.get("success"):
+                viewports_captured = list(screenshot_results.get("screenshots", {}).keys())
+                result.message += f" Screenshots captured: {', '.join(viewports_captured)}"
+        
+        return result
 

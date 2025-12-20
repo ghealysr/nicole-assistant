@@ -69,10 +69,27 @@ class PipelineStatus(str, Enum):
     """Pipeline execution status."""
     IDLE = "idle"
     RUNNING = "running"
-    WAITING = "waiting"
+    WAITING = "waiting"            # Waiting at a gate for user approval
     COMPLETED = "completed"
     FAILED = "failed"
     PAUSED = "paused"
+
+
+class PipelineMode(str, Enum):
+    """Pipeline execution mode."""
+    AUTO = "auto"                  # Run without stopping for approval
+    INTERACTIVE = "interactive"   # Pause at gates for user review
+
+
+# Define which agents require approval in interactive mode
+INTERACTIVE_GATES = {
+    "nicole": "awaiting_confirm",           # Confirm understanding
+    "research": "awaiting_research_review", # Review research findings
+    "planning": "awaiting_plan_approval",   # Approve architecture
+    "design": "awaiting_design_approval",   # Approve design tokens
+    "qa": "awaiting_qa_approval",           # Review QA results
+    "review": "awaiting_final_approval",    # Final approval before deploy
+}
 
 
 class ProjectState(TypedDict, total=False):
@@ -88,12 +105,21 @@ class ProjectState(TypedDict, total=False):
     # Status
     status: str
     pipeline_status: PipelineStatus
+    pipeline_mode: PipelineMode
+    
+    # Interactive mode tracking
+    current_phase: str
+    awaiting_approval_for: Optional[str]
+    last_gate_reached_at: Optional[str]
+    gate_artifacts: Dict[str, str]  # artifact_type -> content
     
     # Agent tracking
     current_agent: str
     agent_history: List[str]
     iteration_count: int
     max_iterations: int
+    qa_iteration_count: int      # Track coding↔qa cycles
+    max_qa_iterations: int       # Max loops before forcing review
     
     # Data from agents
     architecture: Dict[str, Any]
@@ -132,10 +158,18 @@ class FazOrchestrator:
     the flow, state, and persistence.
     """
     
-    def __init__(self, project_id: int, user_id: int):
-        """Initialize orchestrator for a project."""
+    def __init__(self, project_id: int, user_id: int, mode: PipelineMode = PipelineMode.AUTO):
+        """
+        Initialize orchestrator for a project.
+        
+        Args:
+            project_id: The project ID
+            user_id: The user ID
+            mode: Pipeline mode (AUTO or INTERACTIVE)
+        """
         self.project_id = project_id
         self.user_id = user_id
+        self.mode = mode
         
         # Agent instances
         self._agents = {}
@@ -145,16 +179,24 @@ class FazOrchestrator:
         self._cancelled = False
         self._current_task: Optional[asyncio.Task] = None
         
+        # For interactive mode - store state at gate for resumption
+        self._gate_state: Optional[ProjectState] = None
+        self._pending_next_agent: Optional[str] = None
+        
         # State
         self.state: ProjectState = {
             "project_id": project_id,
             "user_id": user_id,
             "status": "intake",
             "pipeline_status": PipelineStatus.IDLE,
+            "pipeline_mode": mode,
             "agent_history": [],
             "iteration_count": 0,
-            "max_iterations": 5,
+            "max_iterations": 10,  # Increased for interactive mode
+            "qa_iteration_count": 0,  # Track coding↔qa cycles specifically
+            "max_qa_iterations": 3,   # Max coding↔qa loops before forcing approval
             "files": {},
+            "gate_artifacts": {},
             "total_tokens": 0,
             "total_cost_cents": 0.0,
             "error_history": [],
@@ -163,7 +205,7 @@ class FazOrchestrator:
         # Register in global registry
         _running_orchestrators[project_id] = self
         
-        logger.info(f"[Orchestrator] Initialized for project {project_id}")
+        logger.info(f"[Orchestrator] Initialized for project {project_id} in {mode.value} mode")
     
     def set_activity_callback(self, callback):
         """Set callback for activity logging."""
@@ -199,6 +241,448 @@ class FazOrchestrator:
     def is_cancelled(self) -> bool:
         """Check if pipeline has been cancelled."""
         return self._cancelled
+    
+    def is_at_gate(self) -> bool:
+        """Check if pipeline is waiting at an approval gate."""
+        return self.state.get("pipeline_status") == PipelineStatus.WAITING
+    
+    def get_gate_status(self) -> Optional[Dict[str, Any]]:
+        """Get current gate status for frontend display."""
+        if not self.is_at_gate():
+            return None
+        
+        return {
+            "gate": self.state.get("awaiting_approval_for"),
+            "current_agent": self.state.get("current_agent"),
+            "artifacts": self.state.get("gate_artifacts", {}),
+            "reached_at": self.state.get("last_gate_reached_at"),
+        }
+    
+    async def run_to_gate(self, prompt: str, start_agent: str = "nicole") -> ProjectState:
+        """
+        Run pipeline until it hits an approval gate (INTERACTIVE mode).
+        
+        This runs agents sequentially until one completes that requires approval.
+        The pipeline then pauses and waits for proceed_from_gate() to continue.
+        
+        Args:
+            prompt: User's request
+            start_agent: Which agent to start with
+            
+        Returns:
+            Current state (may be at a gate waiting for approval)
+        """
+        self.state["original_prompt"] = prompt
+        self.state["current_prompt"] = prompt
+        self.state["pipeline_status"] = PipelineStatus.RUNNING
+        self.state["status"] = "planning"
+        
+        # Load context from memory
+        await self._load_memory_context()
+        
+        # Update project status
+        await self._update_project_status("planning")
+        
+        # Run until we hit a gate or complete
+        return await self._run_pipeline_segment(start_agent)
+    
+    async def proceed_from_gate(
+        self,
+        approved: bool = True,
+        feedback: Optional[str] = None,
+        modifications: Optional[Dict[str, Any]] = None
+    ) -> ProjectState:
+        """
+        Continue pipeline execution after user approves at a gate.
+        
+        Args:
+            approved: Whether the user approved
+            feedback: Optional user feedback
+            modifications: Optional changes to apply before continuing
+            
+        Returns:
+            Updated state (may hit another gate or complete)
+        """
+        if not self.is_at_gate():
+            logger.warning(f"[Orchestrator] proceed_from_gate called but not at a gate")
+            return self.state
+        
+        gate = self.state.get("awaiting_approval_for")
+        
+        # Log the approval/rejection
+        await self._log_activity(
+            "user", "approve" if approved else "reject",
+            f"User {'approved' if approved else 'rejected'} at {gate}",
+            {"feedback": feedback, "modifications": modifications},
+            content_type="status"
+        )
+        
+        # Store feedback in artifact if provided
+        if feedback and gate:
+            await self._store_gate_feedback(gate, approved, feedback)
+        
+        if not approved:
+            # User rejected - determine what to do
+            if self._pending_next_agent:
+                # Go back to previous agent with feedback
+                self.state["current_prompt"] = f"{self.state['original_prompt']}\n\nUser feedback: {feedback}"
+                
+                # Log phase transition
+                await self._log_phase_transition(
+                    from_phase=gate,
+                    to_phase=self.state.get("current_agent"),
+                    trigger="reject"
+                )
+            
+            self.state["pipeline_status"] = PipelineStatus.RUNNING
+            self.state["awaiting_approval_for"] = None
+            
+            # Re-run current agent with feedback
+            return await self._run_pipeline_segment(self.state.get("current_agent", "nicole"))
+        
+        # User approved - apply any modifications
+        if modifications:
+            for key, value in modifications.items():
+                if key in self.state:
+                    self.state[key] = value
+        
+        # Clear gate status
+        self.state["pipeline_status"] = PipelineStatus.RUNNING
+        self.state["awaiting_approval_for"] = None
+        
+        # Log phase transition
+        await self._log_phase_transition(
+            from_phase=gate,
+            to_phase=self._pending_next_agent,
+            trigger="approve"
+        )
+        
+        # Continue with next agent
+        if self._pending_next_agent:
+            return await self._run_pipeline_segment(self._pending_next_agent)
+        else:
+            # No next agent - pipeline complete
+            return await self._finalize_pipeline()
+    
+    async def _run_pipeline_segment(self, start_agent: str) -> ProjectState:
+        """
+        Run pipeline from a given agent until completion or gate.
+        
+        In INTERACTIVE mode, stops at gates. In AUTO mode, runs to completion.
+        """
+        current_agent = start_agent
+        
+        while current_agent:
+            # Check for cancellation
+            if self._cancelled:
+                logger.info(f"[Orchestrator] Pipeline cancelled at {current_agent}")
+                await self._log_activity(
+                    "orchestrator", "cancel",
+                    f"Pipeline cancelled at {current_agent} agent",
+                    content_type="status"
+                )
+                break
+            
+            # Check iteration limit
+            if self.state["iteration_count"] >= self.state["max_iterations"]:
+                logger.warning(f"[Orchestrator] Max iterations ({self.state['max_iterations']}) reached")
+                await self._log_activity(
+                    "orchestrator", "error",
+                    f"Max iterations reached. Stopping at {current_agent}."
+                )
+                break
+            
+            self.state["iteration_count"] += 1
+            self.state["current_agent"] = current_agent
+            self.state["current_phase"] = current_agent
+            self.state["agent_history"].append(current_agent)
+            
+            # Log start
+            await self._log_activity(
+                current_agent, "route",
+                f"Starting {current_agent} agent",
+                {"iteration": self.state["iteration_count"]}
+            )
+            
+            try:
+                # Run agent
+                agent = self._get_agent(current_agent)
+                result = await agent.run(self.state)
+                
+                # Update state with result
+                self.state["total_tokens"] += result.input_tokens + result.output_tokens
+                self.state["total_cost_cents"] += result.cost_cents
+                
+                if result.files:
+                    self.state["files"].update(result.files)
+                    
+                    # Persist files immediately for real-time updates
+                    if current_agent == "coding":
+                        await self._persist_files_incremental(result.files)
+                
+                if result.data:
+                    # Merge data into state
+                    for key, value in result.data.items():
+                        if key not in ["files"]:
+                            self.state[key] = value
+                
+                # Log completion
+                await self._log_activity(
+                    current_agent, "complete",
+                    result.message,
+                    {
+                        "success": result.success,
+                        "tokens": result.input_tokens + result.output_tokens,
+                        "cost_cents": result.cost_cents,
+                        "files_generated": len(result.files),
+                        "next_agent": result.next_agent,
+                    },
+                    content_type="response"
+                )
+                
+                if not result.success:
+                    # Handle error
+                    self.state["error"] = result.error
+                    self.state["error_history"].append({
+                        "agent": current_agent,
+                        "error": result.error,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    
+                    await self._log_activity(
+                        current_agent, "error",
+                        f"Error: {result.error}",
+                        content_type="error"
+                    )
+                    
+                    # Try to recover or stop
+                    if self.state["iteration_count"] < 3:
+                        continue
+                    else:
+                        break
+                
+                # Store artifact for this agent (for review at gate)
+                await self._store_agent_artifact(current_agent, result)
+                
+                # Check if we need to stop at a gate (INTERACTIVE mode)
+                if (self.mode == PipelineMode.INTERACTIVE and 
+                    current_agent in INTERACTIVE_GATES):
+                    
+                    gate_status = INTERACTIVE_GATES[current_agent]
+                    self._pending_next_agent = result.next_agent
+                    
+                    # Set gate state
+                    self.state["pipeline_status"] = PipelineStatus.WAITING
+                    self.state["awaiting_approval_for"] = gate_status
+                    self.state["last_gate_reached_at"] = datetime.utcnow().isoformat()
+                    
+                    # Update project with gate status
+                    await self._update_project_status(gate_status)
+                    
+                    # Log gate reached
+                    await self._log_activity(
+                        "orchestrator", "gate",
+                        f"Waiting for approval at {gate_status}",
+                        {
+                            "gate": gate_status,
+                            "next_agent": result.next_agent,
+                            "artifacts": list(self.state.get("gate_artifacts", {}).keys()),
+                        },
+                        content_type="status"
+                    )
+                    
+                    # Return - pipeline paused at gate
+                    logger.info(f"[Orchestrator] Paused at gate: {gate_status}")
+                    return self.state
+                
+                # Determine next agent
+                next_agent = result.next_agent
+                
+                # Track coding↔qa iterations to prevent infinite loops
+                if current_agent == "qa" and next_agent == "coding":
+                    self.state["qa_iteration_count"] = self.state.get("qa_iteration_count", 0) + 1
+                    max_qa = self.state.get("max_qa_iterations", 3)
+                    
+                    if self.state["qa_iteration_count"] >= max_qa:
+                        # Force proceed to review after max iterations
+                        logger.warning(
+                            f"[Orchestrator] Max QA iterations ({max_qa}) reached. "
+                            f"Forcing proceed to review."
+                        )
+                        await self._log_activity(
+                            "orchestrator", "escalate",
+                            f"Max QA iterations reached ({max_qa}). Escalating to review.",
+                            {"qa_iterations": self.state["qa_iteration_count"]},
+                            content_type="status"
+                        )
+                        next_agent = "review"
+                
+                current_agent = next_agent
+                
+                # Update status based on agent
+                await self._update_status_from_agent(current_agent)
+                
+            except Exception as e:
+                logger.exception(f"[Orchestrator] Agent {current_agent} failed: {e}")
+                
+                await self._log_activity(
+                    current_agent, "error",
+                    f"Agent crashed: {str(e)}",
+                    {"exception": str(e)},
+                    content_type="error"
+                )
+                
+                self.state["error"] = str(e)
+                break
+        
+        # Pipeline segment complete - finalize if no more agents
+        if not current_agent and not self._cancelled:
+            return await self._finalize_pipeline()
+        
+        return self.state
+    
+    async def _finalize_pipeline(self) -> ProjectState:
+        """Finalize the pipeline after all agents complete."""
+        self.state["pipeline_status"] = PipelineStatus.COMPLETED
+        
+        # Run memory agent to extract learnings
+        if self.state.get("files"):
+            try:
+                memory_agent = self._get_agent("memory")
+                memory_result = await memory_agent.run(self.state)
+                
+                if memory_result.success and memory_result.data:
+                    await self._store_learnings(memory_result.data)
+            except Exception as e:
+                logger.error(f"[Orchestrator] Memory extraction failed: {e}")
+        
+        # Final status update
+        final_status = "approved" if not self.state.get("error") else "failed"
+        await self._update_project_status(final_status)
+        
+        # Store files to database
+        if self.state.get("files"):
+            await self._persist_files()
+        
+        logger.info(
+            f"[Orchestrator] Pipeline complete: {len(self.state.get('files', {}))} files, "
+            f"{self.state['total_tokens']} tokens, ${self.state['total_cost_cents']/100:.2f}"
+        )
+        
+        return self.state
+    
+    async def _store_agent_artifact(self, agent_name: str, result):
+        """Store agent output as an artifact for user review."""
+        try:
+            artifact_type_map = {
+                "nicole": "project_brief",
+                "research": "research",
+                "planning": "architecture",
+                "design": "design_system",
+                "qa": "qa_report",
+                "review": "review_summary",
+            }
+            
+            artifact_type = artifact_type_map.get(agent_name)
+            if not artifact_type:
+                return
+            
+            # Generate content based on agent
+            if agent_name == "nicole":
+                content = f"# Project Understanding\n\n{result.message}\n\n## Analysis\n{json.dumps(result.data, indent=2)}"
+            elif agent_name == "research":
+                content = f"# Research Findings\n\n{json.dumps(result.data.get('research_results', result.data), indent=2)}"
+            elif agent_name == "planning":
+                content = f"# Architecture Plan\n\n```json\n{json.dumps(result.data.get('architecture', result.data), indent=2)}\n```"
+            elif agent_name == "design":
+                content = f"# Design System\n\n```json\n{json.dumps(result.data.get('design_tokens', result.data), indent=2)}\n```"
+            elif agent_name == "qa":
+                content = f"# QA Report\n\n{json.dumps(result.data.get('qa_review', result.data), indent=2)}"
+            elif agent_name == "review":
+                content = f"# Review Summary\n\n{json.dumps(result.data.get('review_result', result.data), indent=2)}"
+            else:
+                content = json.dumps(result.data, indent=2)
+            
+            # Store in gate_artifacts for immediate access
+            self.state["gate_artifacts"][artifact_type] = content
+            
+            # Persist to database
+            await db.execute(
+                """
+                INSERT INTO faz_project_artifacts
+                    (project_id, artifact_type, title, content, content_format, generated_by)
+                VALUES ($1, $2, $3, $4, 'markdown', $5)
+                ON CONFLICT (project_id, artifact_type, version)
+                DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
+                """,
+                self.project_id,
+                artifact_type,
+                f"{agent_name.title()} Output",
+                content,
+                agent_name,
+            )
+            
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to store artifact for {agent_name}: {e}")
+    
+    async def _store_gate_feedback(self, gate: str, approved: bool, feedback: str):
+        """Store user feedback for a gate."""
+        try:
+            artifact_type_map = {
+                "awaiting_confirm": "project_brief",
+                "awaiting_research_review": "research",
+                "awaiting_plan_approval": "architecture",
+                "awaiting_design_approval": "design_system",
+                "awaiting_qa_approval": "qa_report",
+                "awaiting_final_approval": "review_summary",
+            }
+            
+            artifact_type = artifact_type_map.get(gate)
+            if artifact_type:
+                await db.execute(
+                    """
+                    UPDATE faz_project_artifacts
+                    SET is_approved = $1,
+                        approved_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
+                        user_feedback = $2,
+                        updated_at = NOW()
+                    WHERE project_id = $3 AND artifact_type = $4
+                    """,
+                    approved,
+                    feedback,
+                    self.project_id,
+                    artifact_type,
+                )
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to store gate feedback: {e}")
+    
+    async def _log_phase_transition(
+        self,
+        from_phase: Optional[str],
+        to_phase: Optional[str],
+        trigger: str = "auto"
+    ):
+        """Log a phase transition for audit trail."""
+        try:
+            await db.execute(
+                """
+                INSERT INTO faz_phase_history
+                    (project_id, from_phase, to_phase, from_status, to_status,
+                     triggered_by, trigger_action, tokens_used, cost_cents)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """,
+                self.project_id,
+                from_phase,
+                to_phase,
+                self.state.get("status"),
+                to_phase or "completed",
+                "user" if trigger in ["approve", "reject"] else "system",
+                trigger,
+                self.state.get("total_tokens", 0),
+                self.state.get("total_cost_cents", 0),
+            )
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to log phase transition: {e}")
     
     async def _log_activity(
         self,
@@ -270,6 +754,9 @@ class FazOrchestrator:
         """
         Run the pipeline from a user prompt.
         
+        In AUTO mode, runs to completion.
+        In INTERACTIVE mode, use run_to_gate() instead.
+        
         Args:
             prompt: User's request
             start_agent: Which agent to start with (default: nicole for routing)
@@ -277,6 +764,11 @@ class FazOrchestrator:
         Returns:
             Final state with all generated data
         """
+        # If in interactive mode, delegate to run_to_gate
+        if self.mode == PipelineMode.INTERACTIVE:
+            return await self.run_to_gate(prompt, start_agent)
+        
+        # AUTO mode - run to completion
         self.state["original_prompt"] = prompt
         self.state["current_prompt"] = prompt
         self.state["pipeline_status"] = PipelineStatus.RUNNING
@@ -288,147 +780,8 @@ class FazOrchestrator:
         # Update project status
         await self._update_project_status("planning")
         
-        current_agent = start_agent
-        
-        while current_agent:
-            # Check for cancellation
-            if self._cancelled:
-                logger.info(f"[Orchestrator] Pipeline cancelled at {current_agent}")
-                await self._log_activity(
-                    "orchestrator", "cancel",
-                    f"Pipeline cancelled at {current_agent} agent",
-                    content_type="status"
-                )
-                break
-            
-            # Check iteration limit
-            if self.state["iteration_count"] >= self.state["max_iterations"]:
-                logger.warning(f"[Orchestrator] Max iterations ({self.state['max_iterations']}) reached")
-                await self._log_activity(
-                    "orchestrator", "error", 
-                    f"Max iterations reached. Stopping at {current_agent}."
-                )
-                break
-            
-            self.state["iteration_count"] += 1
-            self.state["current_agent"] = current_agent
-            self.state["agent_history"].append(current_agent)
-            
-            # Log start
-            await self._log_activity(
-                current_agent, "route",
-                f"Starting {current_agent} agent",
-                {"iteration": self.state["iteration_count"]}
-            )
-            
-            try:
-                # Run agent
-                agent = self._get_agent(current_agent)
-                result = await agent.run(self.state)
-                
-                # Update state with result
-                self.state["total_tokens"] += result.input_tokens + result.output_tokens
-                self.state["total_cost_cents"] += result.cost_cents
-                
-                if result.files:
-                    self.state["files"].update(result.files)
-                    
-                    # Persist files immediately for real-time updates
-                    # (especially important for coding agent)
-                    if current_agent == "coding":
-                        await self._persist_files_incremental(result.files)
-                
-                if result.data:
-                    # Merge data into state
-                    for key, value in result.data.items():
-                        if key not in ["files"]:  # Files handled above
-                            self.state[key] = value
-                
-                # Log completion
-                await self._log_activity(
-                    current_agent, "complete",
-                    result.message,
-                    {
-                        "success": result.success,
-                        "tokens": result.input_tokens + result.output_tokens,
-                        "cost_cents": result.cost_cents,
-                        "files_generated": len(result.files),
-                        "next_agent": result.next_agent,
-                    },
-                    content_type="response"
-                )
-                
-                if not result.success:
-                    # Handle error
-                    self.state["error"] = result.error
-                    self.state["error_history"].append({
-                        "agent": current_agent,
-                        "error": result.error,
-                        "timestamp": datetime.utcnow().isoformat(),
-                    })
-                    
-                    await self._log_activity(
-                        current_agent, "error",
-                        f"Error: {result.error}",
-                        content_type="error"
-                    )
-                    
-                    # Try to recover or stop
-                    if self.state["iteration_count"] < 3:
-                        # Early failure - try again
-                        current_agent = current_agent
-                        continue
-                    else:
-                        # Too many failures
-                        break
-                
-                # Determine next agent
-                current_agent = result.next_agent
-                
-                # Update status based on agent
-                await self._update_status_from_agent(current_agent)
-                
-            except Exception as e:
-                logger.exception(f"[Orchestrator] Agent {current_agent} failed: {e}")
-                
-                await self._log_activity(
-                    current_agent, "error",
-                    f"Agent crashed: {str(e)}",
-                    {"exception": str(e)},
-                    content_type="error"
-                )
-                
-                self.state["error"] = str(e)
-                break
-        
-        # Pipeline complete
-        self.state["pipeline_status"] = PipelineStatus.COMPLETED
-        
-        # Run memory agent to extract learnings
-        if self.state.get("files"):
-            try:
-                memory_agent = self._get_agent("memory")
-                memory_result = await memory_agent.run(self.state)
-                
-                if memory_result.success and memory_result.data:
-                    await self._store_learnings(memory_result.data)
-            except Exception as e:
-                logger.error(f"[Orchestrator] Memory extraction failed: {e}")
-        
-        # Final status update
-        final_status = "approved" if not self.state.get("error") else "failed"
-        await self._update_project_status(final_status)
-        
-        # Store files to database
-        if self.state.get("files"):
-            await self._persist_files()
-        
-        logger.info(
-            f"[Orchestrator] Pipeline complete: {len(self.state.get('files', {}))} files, "
-            f"{self.state['total_tokens']} tokens, ${self.state['total_cost_cents']/100:.2f}"
-        )
-        
-        return self.state
+        # Run the full pipeline
+        return await self._run_pipeline_segment(start_agent)
     
     async def _load_memory_context(self):
         """Load relevant context from memory system."""
@@ -734,10 +1087,95 @@ class FazOrchestrator:
 
 
 # =============================================================================
-# FACTORY FUNCTION
+# FACTORY FUNCTIONS
 # =============================================================================
 
-async def create_orchestrator(project_id: int, user_id: int) -> FazOrchestrator:
-    """Create and return an orchestrator instance."""
-    return FazOrchestrator(project_id, user_id)
+async def create_orchestrator(
+    project_id: int,
+    user_id: int,
+    mode: Optional[PipelineMode] = None
+) -> FazOrchestrator:
+    """
+    Create and return an orchestrator instance.
+    
+    Args:
+        project_id: The project ID
+        user_id: The user ID
+        mode: Pipeline mode (if None, reads from project settings)
+    """
+    # If mode not specified, try to get from project
+    if mode is None:
+        project_mode = await db.fetchval(
+            "SELECT pipeline_mode FROM faz_projects WHERE project_id = $1",
+            project_id
+        )
+        mode = PipelineMode(project_mode) if project_mode else PipelineMode.AUTO
+    
+    return FazOrchestrator(project_id, user_id, mode)
+
+
+async def create_interactive_orchestrator(project_id: int, user_id: int) -> FazOrchestrator:
+    """Create an orchestrator in INTERACTIVE mode."""
+    return FazOrchestrator(project_id, user_id, PipelineMode.INTERACTIVE)
+
+
+async def resume_orchestrator(project_id: int) -> Optional[FazOrchestrator]:
+    """
+    Resume an existing orchestrator from database state.
+    
+    Used when the server restarts while a project is at a gate.
+    """
+    try:
+        project = await db.fetchrow(
+            """
+            SELECT project_id, user_id, pipeline_mode, status, current_agent,
+                   awaiting_approval_for, original_prompt, architecture,
+                   design_tokens, total_tokens_used, total_cost_cents
+            FROM faz_projects
+            WHERE project_id = $1
+            """,
+            project_id
+        )
+        
+        if not project:
+            return None
+        
+        mode = PipelineMode(project["pipeline_mode"]) if project["pipeline_mode"] else PipelineMode.AUTO
+        orchestrator = FazOrchestrator(project["project_id"], project["user_id"], mode)
+        
+        # Restore state
+        orchestrator.state["original_prompt"] = project["original_prompt"] or ""
+        orchestrator.state["current_prompt"] = project["original_prompt"] or ""
+        orchestrator.state["status"] = project["status"]
+        orchestrator.state["current_agent"] = project["current_agent"]
+        orchestrator.state["awaiting_approval_for"] = project["awaiting_approval_for"]
+        orchestrator.state["architecture"] = json.loads(project["architecture"]) if project["architecture"] else {}
+        orchestrator.state["design_tokens"] = json.loads(project["design_tokens"]) if project["design_tokens"] else {}
+        orchestrator.state["total_tokens"] = project["total_tokens_used"] or 0
+        orchestrator.state["total_cost_cents"] = project["total_cost_cents"] or 0
+        
+        # Set pipeline status based on awaiting_approval_for
+        if project["awaiting_approval_for"]:
+            orchestrator.state["pipeline_status"] = PipelineStatus.WAITING
+        
+        # Load files
+        files = await db.fetch(
+            "SELECT path, content FROM faz_files WHERE project_id = $1",
+            project_id
+        )
+        orchestrator.state["files"] = {f["path"]: f["content"] for f in files}
+        
+        # Load artifacts
+        artifacts = await db.fetch(
+            "SELECT artifact_type, content FROM faz_project_artifacts WHERE project_id = $1",
+            project_id
+        )
+        orchestrator.state["gate_artifacts"] = {a["artifact_type"]: a["content"] for a in artifacts}
+        
+        logger.info(f"[Orchestrator] Resumed orchestrator for project {project_id}")
+        return orchestrator
+        
+    except Exception as e:
+        logger.error(f"[Orchestrator] Failed to resume orchestrator: {e}")
+        return None
 

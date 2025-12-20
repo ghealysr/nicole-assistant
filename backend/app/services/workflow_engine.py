@@ -709,6 +709,84 @@ WorkflowRegistry.register(
 
 
 # ============================================================================
+# SINGLETON INSTANCE
+# ============================================================================
+
+# Create a singleton workflow engine instance that combines Registry + Executor
+class WorkflowEngine:
+    """
+    Combined workflow engine providing both registry and execution capabilities.
+    
+    This is the main interface for interacting with workflows.
+    """
+    
+    def __init__(self):
+        self._registry = WorkflowRegistry()
+        self._tool_handlers: Dict[str, Any] = {}
+        self._agent_handlers: Dict[str, Any] = {}
+        self._workflows: Dict[str, Any] = {}
+        # Create executor with a default tool executor that routes to registered handlers
+        self._executor = WorkflowExecutor(self._default_tool_executor)
+    
+    async def _default_tool_executor(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
+        """Default tool executor that routes to registered handlers."""
+        if tool_name in self._tool_handlers:
+            handler = self._tool_handlers[tool_name]
+            if asyncio.iscoroutinefunction(handler):
+                return await handler(**tool_args)
+            return handler(**tool_args)
+        raise ValueError(f"No handler registered for tool: {tool_name}")
+    
+    def register_tool_handler(self, name: str, handler: Any) -> None:
+        """Register a tool handler."""
+        self._tool_handlers[name] = handler
+    
+    def register_agent_handler(self, name: str, handler: Any) -> None:
+        """Register an agent handler."""
+        self._agent_handlers[name] = handler
+    
+    def load_workflow_file(self, path: str) -> None:
+        """Load a workflow definition from a YAML file."""
+        import yaml
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f)
+        
+        if data:
+            workflow_name = data.get("name", Path(path).stem)
+            self._workflows[workflow_name] = data
+            logger.info(f"[WORKFLOW ENGINE] Loaded workflow: {workflow_name}")
+    
+    async def execute(
+        self,
+        workflow_name: str,
+        user_id: int,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> WorkflowState:
+        """Execute a workflow by name."""
+        workflow_def = self._workflows.get(workflow_name)
+        if not workflow_def:
+            raise ValueError(f"Workflow not found: {workflow_name}")
+        
+        return await self._executor.execute(
+            workflow=workflow_def,
+            user_id=user_id,
+            context=context or {},
+        )
+    
+    def get_execution(self, execution_id: str) -> Optional[WorkflowState]:
+        """Get a workflow execution by ID."""
+        return self._executor._active_workflows.get(execution_id)
+    
+    def list_workflows(self) -> List[str]:
+        """List all registered workflows."""
+        return list(self._workflows.keys())
+
+
+# Create singleton instance
+workflow_engine = WorkflowEngine()
+
+
+# ============================================================================
 # EXPORTS
 # ============================================================================
 
@@ -721,4 +799,6 @@ __all__ = [
     "StepStatus",
     "WorkflowExecutor",
     "WorkflowRegistry",
+    "WorkflowEngine",
+    "workflow_engine",
 ]
