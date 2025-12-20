@@ -21,7 +21,7 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.services.workflow_engine import workflow_engine, WorkflowExecution
+from app.services.workflow_engine import WorkflowRegistry, WorkflowExecutor, WorkflowDefinition, WorkflowState
 from app.services.alphawave_memory_service import memory_service
 from app.services.alphawave_document_service import document_service
 from app.integrations.alphawave_claude import claude_client
@@ -272,7 +272,7 @@ Be concise, accurate, and actionable. Format your response appropriately for the
         workflow_name: str,
         user_id: int,
         context: Optional[Dict[str, Any]] = None
-    ) -> WorkflowExecution:
+    ) -> WorkflowState:
         """
         Manually execute a workflow.
         
@@ -282,7 +282,7 @@ Be concise, accurate, and actionable. Format your response appropriately for the
             context: Additional context variables
             
         Returns:
-            WorkflowExecution result
+            WorkflowState result
         """
         if not self._initialized:
             await self.initialize()

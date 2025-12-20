@@ -18,7 +18,7 @@ import logging
 
 from app.middleware.alphawave_auth import get_current_tiger_user_id
 from app.services.workflow_scheduler import workflow_scheduler
-from app.services.workflow_engine import workflow_engine
+from app.services.workflow_engine import WorkflowRegistry, WorkflowExecutor
 
 logger = logging.getLogger(__name__)
 
