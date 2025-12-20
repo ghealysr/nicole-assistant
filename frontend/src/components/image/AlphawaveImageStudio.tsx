@@ -632,19 +632,37 @@ export default function AlphawaveImageStudio({
                             <div className={`relative w-full h-full bg-gradient-to-br ${colorClass}`}>
                               {/* Sparkle/bubble animation overlay */}
                               <div className="absolute inset-0 overflow-hidden">
-                                {/* CSS-based sparkle animation */}
+                                {/* CSS-based sparkle animation - 60 multicolored particles */}
                                 <div className="absolute inset-0">
-                                  {isGenerating && Array.from({ length: 20 }).map((_, i) => {
-                                    const leftPos = 5 + (i * 4.5); // Spread evenly
-                                    const delay = (i % 5) * 0.4;
-                                    const duration = 1.5 + (i % 3) * 0.5;
+                                  {isGenerating && Array.from({ length: 60 }).map((_, i) => {
+                                    const leftPos = (i * 1.7) % 100; // Spread across width
+                                    const delay = (i % 8) * 0.15; // Staggered starts
+                                    const duration = 0.8 + (i % 4) * 0.2; // Faster: 0.8-1.4s
+                                    const size = 2 + (i % 3); // Varying sizes 2-4px
+                                    
+                                    // Multicolored sparkles
+                                    const colors = [
+                                      'rgba(168, 85, 247, 0.8)',   // Purple
+                                      'rgba(236, 72, 153, 0.8)',   // Pink
+                                      'rgba(59, 130, 246, 0.8)',   // Blue
+                                      'rgba(34, 211, 238, 0.8)',   // Cyan
+                                      'rgba(250, 204, 21, 0.8)',   // Yellow
+                                      'rgba(255, 255, 255, 0.9)',  // White
+                                    ];
+                                    const color = colors[i % colors.length];
+                                    const glowColor = color.replace('0.8', '0.6').replace('0.9', '0.7');
+                                    
                                     return (
                                       <div
                                         key={i}
-                                        className="absolute w-1 h-1 bg-white/40 rounded-full"
+                                        className="absolute rounded-full"
                                         style={{
                                           left: `${leftPos}%`,
                                           bottom: '-4px',
+                                          width: `${size}px`,
+                                          height: `${size}px`,
+                                          backgroundColor: color,
+                                          boxShadow: `0 0 ${size * 2}px ${glowColor}, 0 0 ${size * 4}px ${glowColor}`,
                                           animation: `sparkleRise ${duration}s linear ${delay}s infinite`,
                                         }}
                                       />
@@ -698,18 +716,19 @@ export default function AlphawaveImageStudio({
                 <style dangerouslySetInnerHTML={{ __html: `
                   @keyframes sparkleRise {
                     0% {
-                      transform: translateY(0) scale(0.5);
+                      transform: translateY(0) scale(0.3);
                       opacity: 0;
                     }
-                    10% {
-                      opacity: 0.8;
-                      transform: translateY(-20px) scale(1);
+                    5% {
+                      opacity: 1;
+                      transform: translateY(-10px) scale(1);
                     }
-                    90% {
-                      opacity: 0.6;
+                    50% {
+                      opacity: 0.9;
+                      transform: translateY(-120px) scale(0.8);
                     }
                     100% {
-                      transform: translateY(-200px) scale(0.3);
+                      transform: translateY(-250px) scale(0.2);
                       opacity: 0;
                     }
                   }
