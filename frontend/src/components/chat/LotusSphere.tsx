@@ -205,11 +205,8 @@ export const LotusSphere = memo(function LotusSphere({
         ctx.fillRect(0, 0, size, size);
       }
       
-      // DEBUG: Log to confirm this code is running
-      if (typeof window !== 'undefined' && !(window as Window & { __lotusSphereLogged?: boolean }).__lotusSphereLogged) {
-        console.log('[LotusSphere] withBackground:', withBackground);
-        (window as Window & { __lotusSphereLogged?: boolean }).__lotusSphereLogged = true;
-      }
+      // DEBUG: Log each instance with size to identify which is which
+      console.log(`[LotusSphere] size=${size} withBackground=${withBackground}`);
       
       // Outer ambient glow - contained within canvas bounds
       const maxGlowRadius = Math.min(cx, cy) * 0.98; // Stay within canvas
