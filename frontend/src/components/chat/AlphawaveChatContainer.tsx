@@ -428,8 +428,8 @@ export function AlphawaveChatContainer() {
         <div className="flex-1 flex flex-col min-w-[400px] transition-all duration-300 bg-[#F5F4ED]">
           {/* Messages area */}
           {hasMessages || isPendingAssistant ? (
-            <div className="flex-1 overflow-y-auto pt-6 pb-4">
-              {/* All messages */}
+            <div className="flex-1 overflow-y-auto pt-8 pb-4">
+              {/* All messages - first message gets extra top margin for header clearance */}
               {messages.map((message, index) => {
                 const isLastMessage = index === messages.length - 1;
                 const isAssistantMessage = message.role === 'assistant';
@@ -437,7 +437,7 @@ export function AlphawaveChatContainer() {
                 const isFirstMessage = index === 0;
                 
                 return (
-                  <div key={message.id} className={isFirstMessage ? 'mt-2' : ''}>
+                  <div key={message.id} className={isFirstMessage ? 'mt-4' : ''}>
                     <MessageBubble 
                       message={message as Message}
                       activityStatus={shouldShowThinking ? activityStatus : undefined}
