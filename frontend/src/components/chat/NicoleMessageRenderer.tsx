@@ -416,10 +416,25 @@ function parseMarkdown(text: string): string {
   
   // Line breaks within paragraphs
   html = html.replace(/\n/g, '<br/>');
+  
+  // Clean up <br/> around list elements
   html = html.replace(/<\/li><br\/>/g, '</li>');
   html = html.replace(/<br\/><li>/g, '<li>');
   html = html.replace(/<br\/><\/ul>/g, '</ul>');
   html = html.replace(/<br\/><\/ol>/g, '</ol>');
+  
+  // Clean up <br/> after headings (prevents spacing issues)
+  html = html.replace(/<\/h1><br\/>/g, '</h1>');
+  html = html.replace(/<\/h2><br\/>/g, '</h2>');
+  html = html.replace(/<\/h3><br\/>/g, '</h3>');
+  html = html.replace(/<\/h4><br\/>/g, '</h4>');
+  
+  // Clean up <br/> before lists (prevents double spacing after headings)
+  html = html.replace(/<br\/><ul/g, '<ul');
+  html = html.replace(/<br\/><ol/g, '<ol');
+  
+  // Clean up multiple consecutive <br/> tags
+  html = html.replace(/(<br\/>){2,}/g, '<br/>');
   
   return html;
 }

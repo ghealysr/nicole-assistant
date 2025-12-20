@@ -238,19 +238,21 @@ button:focus {
   outline: none;
 }
 
-/* Nicole's message styling - prose formatting like Claude */
+/* Nicole's message styling - elegant Georgia serif */
 .nicole-message {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  line-height: 1.7;
-  font-size: 15px;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  line-height: 1.75;
+  font-size: 16px;
   color: #374151;
+  letter-spacing: 0.01em;
 }
 
 .nicole-message-text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  line-height: 1.7;
-  font-size: 15px;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  line-height: 1.75;
+  font-size: 16px;
   color: #374151;
+  letter-spacing: 0.01em;
 }
 
 /* Nicole's inline code styling */
@@ -283,26 +285,41 @@ button:focus {
   font-weight: 500;
 }
 
-/* Nicole's headers */
+/* Nicole's headers - Georgia serif with tighter spacing */
 .nicole-h1 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
   font-size: 1.5em;
-  font-weight: 600;
+  font-weight: 700;
   color: #1f2937;
-  margin: 1em 0 0.5em;
+  margin: 1.25em 0 0.35em;
+  line-height: 1.3;
 }
 
 .nicole-h2 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
   font-size: 1.25em;
-  font-weight: 600;
+  font-weight: 700;
   color: #1f2937;
-  margin: 1em 0 0.5em;
+  margin: 1em 0 0.3em;
+  line-height: 1.3;
 }
 
 .nicole-h3 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
   font-size: 1.1em;
-  font-weight: 600;
+  font-weight: 700;
   color: #1f2937;
-  margin: 0.75em 0 0.5em;
+  margin: 0.85em 0 0.25em;
+  line-height: 1.3;
+}
+
+.nicole-h4 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 1em;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0.75em 0 0.2em;
+  line-height: 1.3;
 }
 
 /* Lavender background color class */
@@ -332,7 +349,7 @@ button:focus {
 
 .nicole-message ul,
 .nicole-message ol {
-  margin: 0.75em 0;
+  margin: 0.4em 0 0.75em 0;
   padding-left: 1.5em;
 }
 
@@ -392,15 +409,16 @@ button:focus {
 .nicole-message h2,
 .nicole-message h3,
 .nicole-message h4 {
-  font-weight: 600;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-weight: 700;
   color: #1f2937;
-  margin: 1.25em 0 0.5em;
+  line-height: 1.3;
 }
 
-.nicole-message h1 { font-size: 1.5em; }
-.nicole-message h2 { font-size: 1.25em; }
-.nicole-message h3 { font-size: 1.125em; }
-.nicole-message h4 { font-size: 1em; }
+.nicole-message h1 { font-size: 1.5em; margin: 1.25em 0 0.35em; }
+.nicole-message h2 { font-size: 1.25em; margin: 1em 0 0.3em; }
+.nicole-message h3 { font-size: 1.125em; margin: 0.85em 0 0.25em; }
+.nicole-message h4 { font-size: 1em; margin: 0.75em 0 0.2em; }
 
 .nicole-message a {
   color: #9B8AB8;
