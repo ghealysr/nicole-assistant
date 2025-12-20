@@ -1,6 +1,6 @@
 'use client';
 
-import { NicoleOrbAnimation } from './NicoleOrbAnimation';
+import { LotusSphere, type ThinkingState } from './LotusSphere';
 
 /**
  * Interface for thinking step objects.
@@ -16,23 +16,23 @@ interface ThinkingStep {
  */
 interface AlphawaveThinkingInterfaceProps {
   steps: ThinkingStep[];
+  state?: ThinkingState;
 }
 
 /**
  * Thinking interface component for Nicole V7.
- * Displays stunning glowing orb animation with thinking steps.
+ * Displays stunning LotusSphere animation with thinking steps.
  */
-export function AlphawaveThinkingInterface({ steps }: AlphawaveThinkingInterfaceProps) {
+export function AlphawaveThinkingInterface({ steps, state = 'thinking' }: AlphawaveThinkingInterfaceProps) {
   const hasActiveStep = steps.some(s => s.active);
   
   return (
     <div className="flex items-center space-x-4 p-4">
-      {/* Nicole's orb animation */}
-      <NicoleOrbAnimation 
+      {/* Nicole's LotusSphere animation */}
+      <LotusSphere 
+        state={state}
+        size={48}
         isActive={hasActiveStep}
-        size="medium"
-        variant="single"
-        showParticles={true}
       />
 
       {/* Steps */}

@@ -10,7 +10,8 @@ import { useConversation } from '@/lib/context/ConversationContext';
 import { getDynamicGreeting, getFormattedDate } from '@/lib/greetings';
 import { NicoleMessageRenderer } from './NicoleMessageRenderer';
 import { NicoleActivityStatus } from './NicoleActivityStatus';
-import { NicoleOrbAnimation } from './NicoleOrbAnimation';
+import { LotusSphere } from './LotusSphere';
+import { ThinkingIndicator, useThinkingState, type ThinkingState } from './ThinkingIndicator';
 import type { ThinkingStep, ActivityStatus } from '@/lib/hooks/alphawave_use_chat';
 
 interface Message {
@@ -34,11 +35,10 @@ function EmptyState({ greeting, date }: { greeting: string; date: string }) {
     <div className="empty-state">
       <div className="text-center">
         <div className="w-24 h-24 flex items-center justify-center mx-auto mb-5">
-          <NicoleOrbAnimation 
+          <LotusSphere 
+            state="default"
+            size={96}
             isActive={true}
-            size="large"
-            variant="single"
-            showParticles={true}
           />
         </div>
         <h2 className="empty-title">{greeting || 'Hey Glen. What can I help you with?'}</h2>
@@ -418,6 +418,29 @@ export function AlphawaveChatContainer() {
                   />
                 );
               })}
+              
+              {/* Claude-style inline thinking indicator - shows when awaiting response */}
+              {isPendingAssistant && (messages.length === 0 || messages[messages.length - 1]?.role === 'user') && (
+                <div className="py-4 px-6 animate-fade-in-up">
+                  <div className="max-w-[800px] mx-auto flex gap-3">
+                    {/* Avatar */}
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-lavender text-white">
+                      N
+                    </div>
+                    {/* Content area with thinking indicator */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm mb-1.5 text-[#1f2937]">Nicole</div>
+                      <div className="inline-flex items-center gap-3">
+                        <LotusSphere 
+                          state={activityStatus?.toolUses?.some(t => t.isActive) ? 'processing' : 'thinking'}
+                          size={32}
+                          isActive={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <EmptyState greeting={greeting} date={formattedDate} />

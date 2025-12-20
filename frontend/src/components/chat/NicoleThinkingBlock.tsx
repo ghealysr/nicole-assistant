@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { NicoleOrbAnimation } from './NicoleOrbAnimation';
+import { GlowingIndicator } from './ThinkingIndicator';
 
 // Subtle color palette - blends with tan background
 const colors = {
@@ -205,12 +205,11 @@ export function NicoleThinkingBlock({
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/[0.02] transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          {/* Nicole's orb animation - glowing while processing */}
-          <NicoleOrbAnimation 
+          {/* Small glowing indicator - replaces spinning orb */}
+          <GlowingIndicator 
             isActive={shouldSpin}
-            size="small"
-            variant="single"
-            showParticles={false}
+            color={activeToolUse ? 'amber' : isThinking ? 'green' : 'purple'}
+            size={10}
           />
           
           {/* Label */}
