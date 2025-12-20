@@ -36,8 +36,10 @@ from app.services.workflow_engine import (
     WorkflowExecutor,
     WorkflowDefinition,
     WorkflowState,
-    WorkflowStepDefinition,
-    WorkflowStepState,
+    WorkflowStep,
+    StepResult,
+    WorkflowStatus,
+    StepStatus,
 )
 
 # Agent Orchestration (Integration Layer)
@@ -76,8 +78,10 @@ __all__ = [
     "WorkflowExecutor",
     "WorkflowDefinition",
     "WorkflowState",
-    "WorkflowStepDefinition",
-    "WorkflowStepState",
+    "WorkflowStep",
+    "StepResult",
+    "WorkflowStatus",
+    "StepStatus",
     
     # Orchestration
     "agent_orchestrator",
