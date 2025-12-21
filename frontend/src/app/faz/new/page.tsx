@@ -81,22 +81,11 @@ export default function CreateProjectPage() {
         inspiration_images: inspirationData
       });
 
-      // Upload inspiration images if any
+      // Upload inspiration images if any (notes are included in inspirationData above)
       if (inspirationImages.length > 0) {
         try {
           const files = inspirationImages.map(img => img.file);
           await fazApi.uploadReferenceImages(project.project_id, files);
-          
-          // Add inspiration image notes to project
-          for (let i = 0; i < inspirationImages.length; i++) {
-            if (inspirationImages[i].notes) {
-              await fazApi.addInspirationNote(
-                project.project_id, 
-                i, 
-                inspirationImages[i].notes
-              );
-            }
-          }
         } catch (uploadError) {
           console.error('Failed to upload images:', uploadError);
           // Continue anyway - project is created
