@@ -30,7 +30,7 @@ class NicoleAgent(BaseAgent):
     agent_name = "Nicole"
     agent_role = "Orchestrator - Routes requests and manages the agent pipeline"
     model_provider = "anthropic"
-    model_name = "claude-sonnet-4-20250514"
+    model_name = "claude-opus-4-5-20251101"
     temperature = 0.7
     max_tokens = 2048
     

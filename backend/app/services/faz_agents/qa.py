@@ -30,7 +30,7 @@ class QAAgent(BaseAgent):
     agent_name = "QA Agent"
     agent_role = "Tester - Reviews code quality and accessibility"
     model_provider = "anthropic"
-    model_name = "claude-sonnet-4-20250514"
+    model_name = "claude-sonnet-4-5-20250929"
     temperature = 0.3  # Low for consistent analysis
     max_tokens = 8192
     

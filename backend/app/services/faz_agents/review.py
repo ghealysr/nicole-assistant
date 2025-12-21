@@ -29,7 +29,7 @@ class ReviewAgent(BaseAgent):
     agent_name = "Review Agent"
     agent_role = "Reviewer - Final approval gate before deployment"
     model_provider = "anthropic"
-    model_name = "claude-sonnet-4-20250514"
+    model_name = "claude-opus-4-5-20251101"
     temperature = 0.5
     max_tokens = 4096
     
