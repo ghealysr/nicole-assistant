@@ -8,6 +8,7 @@ import { CodeViewer } from '@/components/faz/CodeViewer';
 import { AgentActivityFeed } from '@/components/faz/AgentActivityFeed';
 import { ChatMessages } from '@/components/faz/ChatMessages';
 import { ChatInput } from '@/components/faz/ChatInput';
+import { ProjectSetupStatus } from '@/components/faz/ProjectSetupStatus';
 import { fazApi } from '@/lib/faz/api';
 import { fazWS } from '@/lib/faz/websocket';
 import { useFazStore } from '@/lib/faz/store';
@@ -446,30 +447,41 @@ export default function ProjectWorkspacePage() {
       </div>
       
       {currentProject && (
-        <div className="p-4 border-t border-[#1E1E2E] bg-[#12121A]">
-          <div className="text-xs text-[#64748B] mb-2">PROJECT INFO</div>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-[#64748B]">Status</span>
-              <span className="text-[#F1F5F9] capitalize">{currentProject.status}</span>
-            </div>
-            {currentProject.current_agent && (
+        <div className="border-t border-[#1E1E2E] bg-[#12121A]">
+          {/* GitHub/Vercel Connection Status */}
+          <ProjectSetupStatus
+            githubRepo={currentProject.github_repo}
+            productionUrl={currentProject.production_url}
+            vercelProjectId={currentProject.vercel_project_id}
+            className="p-4 border-b border-[#1E1E2E]"
+          />
+          
+          {/* Project Stats */}
+          <div className="p-4">
+            <div className="text-xs text-[#64748B] mb-2">PROJECT INFO</div>
+            <div className="space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-[#64748B]">Agent</span>
-                <span className="text-[#6366F1]">{currentProject.current_agent}</span>
+                <span className="text-[#64748B]">Status</span>
+                <span className="text-[#F1F5F9] capitalize">{currentProject.status}</span>
               </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-[#64748B]">Files</span>
-              <span className="text-[#F1F5F9]">{currentProject.file_count || files.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#64748B]">Tokens</span>
-              <span className="text-[#F1F5F9]">{currentProject.total_tokens_used?.toLocaleString() || 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#64748B]">Cost</span>
-              <span className="text-[#F1F5F9]">${((currentProject.total_cost_cents || 0) / 100).toFixed(2)}</span>
+              {currentProject.current_agent && (
+                <div className="flex justify-between">
+                  <span className="text-[#64748B]">Agent</span>
+                  <span className="text-[#6366F1]">{currentProject.current_agent}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-[#64748B]">Files</span>
+                <span className="text-[#F1F5F9]">{currentProject.file_count || files.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#64748B]">Tokens</span>
+                <span className="text-[#F1F5F9]">{currentProject.total_tokens_used?.toLocaleString() || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#64748B]">Cost</span>
+                <span className="text-[#F1F5F9]">${((currentProject.total_cost_cents || 0) / 100).toFixed(2)}</span>
+              </div>
             </div>
           </div>
         </div>
