@@ -10,12 +10,16 @@ echo "FAZ CODE DATABASE MIGRATION"
 echo "=========================================="
 echo ""
 
-# Load environment variables
+# Load environment variables properly
 if [ -f /opt/nicole/.env ]; then
-    export $(grep -v '^#' /opt/nicole/.env | xargs)
+    set -a  # Automatically export all variables
+    source /opt/nicole/.env
+    set +a
     echo "✓ Loaded environment from /opt/nicole/.env"
 elif [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    source .env
+    set +a
     echo "✓ Loaded environment from .env"
 else
     echo "❌ ERROR: No .env file found"
@@ -25,10 +29,18 @@ fi
 # Check if TIGER_DATABASE_URL is set
 if [ -z "$TIGER_DATABASE_URL" ]; then
     echo "❌ ERROR: TIGER_DATABASE_URL not set in environment"
-    exit 1
+    echo "Checking for DATABASE_URL as fallback..."
+    if [ -z "$DATABASE_URL" ]; then
+        echo "❌ ERROR: Neither TIGER_DATABASE_URL nor DATABASE_URL is set"
+        exit 1
+    else
+        echo "✓ Using DATABASE_URL"
+        DB_URL="$DATABASE_URL"
+    fi
+else
+    echo "✓ TigerDB connection found"
+    DB_URL="$TIGER_DATABASE_URL"
 fi
-
-echo "✓ TigerDB connection found"
 echo ""
 
 # Migration files
@@ -56,7 +68,7 @@ for migration in "${MIGRATIONS[@]}"; do
     echo "=========================================="
     
     # Apply migration with error handling
-    if psql "$TIGER_DATABASE_URL" -f "$migration_path" 2>&1 | tee /tmp/migration_$migration.log; then
+    if psql "$DB_URL" -f "$migration_path" 2>&1 | tee /tmp/migration_$migration.log; then
         echo "✓ Migration $migration applied successfully"
         echo ""
     else
@@ -72,7 +84,7 @@ echo "=========================================="
 
 # Verify tables were created
 echo "Checking for Faz Code tables..."
-psql "$TIGER_DATABASE_URL" -c "
+psql "$DB_URL" -c "
 SELECT table_name 
 FROM information_schema.tables 
 WHERE table_schema = 'public' 
@@ -99,4 +111,3 @@ echo "Next steps:"
 echo "1. Restart services: supervisorctl restart nicole-api nicole-worker"
 echo "2. Test Faz Code pipeline in the dashboard"
 echo ""
-
