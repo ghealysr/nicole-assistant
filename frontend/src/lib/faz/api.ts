@@ -113,6 +113,24 @@ export const fazApi = {
     return handleResponse(res);
   },
 
+  async updateFile(projectId: number, fileId: number, content: string): Promise<FazFile> {
+    const res = await fetch(`${FAZ_API_URL}/projects/${projectId}/files/${fileId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ content }),
+    });
+    return handleResponse(res);
+  },
+
+  async updateFileByPath(projectId: number, path: string, content: string): Promise<{ success: boolean; file_id: number; path: string; version: number }> {
+    const res = await fetch(`${FAZ_API_URL}/projects/${projectId}/files/by-path?path=${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ content }),
+    });
+    return handleResponse(res);
+  },
+
   // Activities
   async getActivities(id: number, limit = 50, afterId?: number): Promise<FazActivity[]> {
     let url = `${FAZ_API_URL}/projects/${id}/activities?limit=${limit}`;

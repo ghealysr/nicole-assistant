@@ -28,26 +28,11 @@ router = APIRouter(prefix="/faz", tags=["Faz Code"])
 # SCHEMAS
 # =============================================================================
 
-class InspirationImage(BaseModel):
-    """Inspiration image with notes."""
-    url: str = Field(..., description="URL of the inspiration image")
-    notes: str = Field("", description="What elements to take from this image")
-    
-    
 class ProjectCreate(BaseModel):
     """Create project request."""
     name: str = Field(..., min_length=1, max_length=200)
     prompt: str = Field(..., min_length=10, max_length=10000)
     design_preferences: Optional[Dict[str, Any]] = None
-    inspiration_images: Optional[List[InspirationImage]] = Field(
-        default=None,
-        max_length=10,
-        description="Up to 10 inspiration images with notes"
-    )
-    auto_setup: bool = Field(
-        default=True,
-        description="Automatically set up GitHub repo and Vercel project"
-    )
 
 
 class ProjectResponse(BaseModel):
@@ -121,348 +106,16 @@ def generate_slug(name: str, project_id: int) -> str:
 
 
 # =============================================================================
-# COMING SOON PAGE TEMPLATE
-# =============================================================================
-
-COMING_SOON_HTML = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{project_name} - Coming Soon</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        body {{
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: #FFFDF5;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }}
-        .container {{
-            text-align: center;
-            padding: 2rem;
-        }}
-        h1 {{
-            font-size: clamp(3rem, 10vw, 6rem);
-            font-weight: 700;
-            color: #FF6B35;
-            letter-spacing: -0.02em;
-            text-transform: uppercase;
-        }}
-        p {{
-            margin-top: 1rem;
-            font-size: 1.25rem;
-            color: #8B7355;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Coming Soon</h1>
-        <p>We're building something amazing. Check back soon!</p>
-    </div>
-</body>
-</html>
-'''
-
-PACKAGE_JSON_TEMPLATE = '''{
-  "name": "faz-{slug}",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "next": "14.0.4",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  },
-  "devDependencies": {
-    "@types/node": "20.10.5",
-    "@types/react": "18.2.45",
-    "typescript": "5.3.3"
-  }
-}
-'''
-
-NEXT_CONFIG = '''/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
-  swcMinify: true,
-}
-
-module.exports = nextConfig
-'''
-
-TSCONFIG = '''{
-  "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-'''
-
-COMING_SOON_PAGE = '''export default function Home() {
-  return (
-    <main style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#FFFDF5',
-      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
-    }}>
-      <div style={{ textAlign: 'center', padding: '2rem' }}>
-        <h1 style={{
-          fontSize: 'clamp(3rem, 10vw, 6rem)',
-          fontWeight: 700,
-          color: '#FF6B35',
-          letterSpacing: '-0.02em',
-          textTransform: 'uppercase',
-          margin: 0
-        }}>
-          Coming Soon
-        </h1>
-        <p style={{
-          marginTop: '1rem',
-          fontSize: '1.25rem',
-          color: '#8B7355'
-        }}>
-          We're building something amazing. Check back soon!
-        </p>
-      </div>
-    </main>
-  )
-}
-'''
-
-LAYOUT_TSX = '''import type { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: '{project_name}',
-  description: 'Coming Soon - Built with Faz Code',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  )
-}
-'''
-
-
-async def _setup_project_infrastructure(
-    project_id: int,
-    user_id: int,
-    slug: str,
-    project_name: str,
-) -> None:
-    """
-    Set up GitHub repo and Vercel project with Coming Soon page.
-    
-    This runs in the background after project creation.
-    """
-    from app.services.faz_github_service import github_service
-    from app.services.faz_vercel_service import vercel_service
-    
-    repo_name = f"faz-{slug}"
-    
-    try:
-        logger.info(f"[Faz] Setting up infrastructure for project {project_id}")
-        
-        # Step 1: Create GitHub repository
-        github_result = await github_service.create_repository(
-            name=repo_name,
-            description=f"Generated by Faz Code AI - {project_name}",
-            private=False,
-            auto_init=False,  # We'll push our own files
-        )
-        
-        if github_result.get("error"):
-            logger.error(f"[Faz] GitHub setup failed: {github_result['error']}")
-            await db.execute(
-                """UPDATE faz_projects 
-                   SET status_history = COALESCE(status_history, '[]'::jsonb) || $1::jsonb
-                   WHERE project_id = $2""",
-                json.dumps([{
-                    "event": "github_setup_failed",
-                    "error": github_result["error"],
-                    "timestamp": datetime.utcnow().isoformat(),
-                }]),
-                project_id,
-            )
-            return
-        
-        github_url = github_result.get("html_url")
-        github_full_name = github_result.get("full_name")
-        
-        logger.info(f"[Faz] Created GitHub repo: {github_url}")
-        
-        # Step 2: Create Coming Soon files and commit
-        coming_soon_files = {
-            "public/index.html": COMING_SOON_HTML.format(project_name=project_name),
-            "package.json": PACKAGE_JSON_TEMPLATE.format(slug=slug),
-            "next.config.js": NEXT_CONFIG,
-            "tsconfig.json": TSCONFIG,
-            "src/app/page.tsx": COMING_SOON_PAGE,
-            "src/app/layout.tsx": LAYOUT_TSX.format(project_name=project_name),
-            ".gitignore": "node_modules/\n.next/\nout/\n.env*.local\n",
-            "README.md": f"# {project_name}\\n\\nBuilt with Faz Code AI\\n",
-        }
-        
-        commit_result = await github_service.commit_files(
-            repo_name=github_result["name"],
-            files=coming_soon_files,
-            message="Initial commit - Coming Soon page",
-            branch="main",
-        )
-        
-        if commit_result.get("error"):
-            logger.error(f"[Faz] File commit failed: {commit_result['error']}")
-        else:
-            logger.info(f"[Faz] Committed {commit_result.get('files_committed')} files")
-        
-        # Step 3: Create Vercel project
-        vercel_result = await vercel_service.create_project(
-            name=repo_name,
-            github_repo=github_full_name,
-            framework="nextjs",
-        )
-        
-        if vercel_result.get("error"):
-            logger.error(f"[Faz] Vercel setup failed: {vercel_result['error']}")
-            # Still update with GitHub info
-            await db.execute(
-                """UPDATE faz_projects 
-                   SET github_repo = $1,
-                       status_history = COALESCE(status_history, '[]'::jsonb) || $2::jsonb,
-                       updated_at = NOW()
-                   WHERE project_id = $3""",
-                github_url,
-                json.dumps([{
-                    "event": "vercel_setup_failed",
-                    "error": vercel_result["error"],
-                    "github_url": github_url,
-                    "timestamp": datetime.utcnow().isoformat(),
-                }]),
-                project_id,
-            )
-            return
-        
-        vercel_project_id = vercel_result.get("project_id")
-        production_url = f"https://{repo_name}.vercel.app"
-        
-        logger.info(f"[Faz] Created Vercel project: {production_url}")
-        
-        # Step 4: Store initial files in database (for editor display)
-        for path, content in coming_soon_files.items():
-            filename = path.split("/")[-1]
-            extension = filename.split(".")[-1] if "." in filename else None
-            
-            await db.execute(
-                """INSERT INTO faz_files 
-                   (project_id, path, filename, extension, content, file_type, 
-                    line_count, generated_by, version, status)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'generated')""",
-                project_id,
-                path,
-                filename,
-                extension,
-                content,
-                "code",
-                content.count("\n") + 1,
-                "system",
-            )
-        
-        # Step 5: Update project with setup info
-        await db.execute(
-            """UPDATE faz_projects 
-               SET github_repo = $1,
-                   vercel_project_id = $2,
-                   preview_url = $3,
-                   production_url = $3,
-                   status_history = COALESCE(status_history, '[]'::jsonb) || $4::jsonb,
-                   updated_at = NOW()
-               WHERE project_id = $5""",
-            github_url,
-            vercel_project_id,
-            production_url,
-            json.dumps([{
-                "event": "infrastructure_setup_complete",
-                "github_url": github_url,
-                "vercel_url": production_url,
-                "timestamp": datetime.utcnow().isoformat(),
-            }]),
-            project_id,
-        )
-        
-        logger.info(f"[Faz] Infrastructure setup complete for project {project_id}")
-        
-    except Exception as e:
-        logger.exception(f"[Faz] Infrastructure setup failed for project {project_id}: {e}")
-        await db.execute(
-            """UPDATE faz_projects 
-               SET status_history = COALESCE(status_history, '[]'::jsonb) || $1::jsonb
-               WHERE project_id = $2""",
-            json.dumps([{
-                "event": "infrastructure_setup_error",
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
-            }]),
-            project_id,
-        )
-
-
-# =============================================================================
 # PROJECT CRUD
 # =============================================================================
 
 @router.post("/projects", response_model=ProjectResponse)
 async def create_project(
     request: ProjectCreate,
-    background_tasks: BackgroundTasks,
     user = Depends(get_current_user),
 ):
-    """Create a new Faz Code project with optional auto-setup."""
+    """Create a new Faz Code project."""
     try:
-        # Prepare design preferences including inspiration images
-        design_prefs = request.design_preferences or {}
-        if request.inspiration_images:
-            design_prefs["inspiration_images"] = [
-                {"url": img.url, "notes": img.notes}
-                for img in request.inspiration_images
-            ]
-        
         # Create project
         project_id = await db.fetchval(
             """
@@ -474,7 +127,7 @@ async def create_project(
             user.user_id,
             request.name,
             request.prompt,
-            json.dumps(design_prefs),
+            json.dumps(request.design_preferences or {}),
         )
         
         # Generate slug with ID
@@ -486,16 +139,6 @@ async def create_project(
         )
         
         logger.info(f"[Faz] Created project {project_id}: {request.name}")
-        
-        # Auto-setup GitHub + Vercel with Coming Soon page
-        if request.auto_setup:
-            background_tasks.add_task(
-                _setup_project_infrastructure,
-                project_id,
-                user.user_id,
-                slug,
-                request.name,
-            )
         
         # Get full project
         project = await db.fetchrow(
@@ -871,6 +514,149 @@ async def get_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class FileUpdateRequest(BaseModel):
+    """Update file content request."""
+    content: str = Field(..., min_length=1)
+
+
+@router.put("/projects/{project_id}/files/{file_id}", response_model=FileResponse)
+async def update_file(
+    project_id: int,
+    file_id: int,
+    request: FileUpdateRequest,
+    user = Depends(get_current_user),
+):
+    """Update a file's content (user edit from Monaco editor)."""
+    try:
+        # Verify ownership and get current file
+        file = await db.fetchrow(
+            """
+            SELECT f.* 
+            FROM faz_files f
+            JOIN faz_projects p ON f.project_id = p.project_id
+            WHERE f.file_id = $1 AND f.project_id = $2 AND p.user_id = $3
+            """,
+            file_id,
+            project_id,
+            user.user_id,
+        )
+        
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Update file content
+        new_version = (file["version"] or 1) + 1
+        new_line_count = len(request.content.split('\n'))
+        
+        await db.execute(
+            """
+            UPDATE faz_files 
+            SET content = $1, 
+                line_count = $2,
+                version = $3,
+                status = 'modified',
+                updated_at = NOW()
+            WHERE file_id = $4
+            """,
+            request.content,
+            new_line_count,
+            new_version,
+            file_id,
+        )
+        
+        # Update project timestamp
+        await db.execute(
+            "UPDATE faz_projects SET updated_at = NOW() WHERE project_id = $1",
+            project_id,
+        )
+        
+        logger.info(f"[Faz] Updated file {file['path']} (v{new_version})")
+        
+        return FileResponse(
+            file_id=file["file_id"],
+            path=file["path"],
+            filename=file["filename"],
+            extension=file["extension"],
+            content=request.content,
+            file_type=file["file_type"],
+            line_count=new_line_count,
+            generated_by=file["generated_by"],
+            version=new_version,
+            status="modified",
+            created_at=file["created_at"],
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to update file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/projects/{project_id}/files/by-path")
+async def update_file_by_path(
+    project_id: int,
+    path: str,
+    request: FileUpdateRequest,
+    user = Depends(get_current_user),
+):
+    """Update a file by its path (alternative to file_id)."""
+    try:
+        # Verify ownership and get current file
+        file = await db.fetchrow(
+            """
+            SELECT f.* 
+            FROM faz_files f
+            JOIN faz_projects p ON f.project_id = p.project_id
+            WHERE f.path = $1 AND f.project_id = $2 AND p.user_id = $3
+            """,
+            path,
+            project_id,
+            user.user_id,
+        )
+        
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Update file content
+        new_version = (file["version"] or 1) + 1
+        new_line_count = len(request.content.split('\n'))
+        
+        await db.execute(
+            """
+            UPDATE faz_files 
+            SET content = $1, 
+                line_count = $2,
+                version = $3,
+                status = 'modified',
+                updated_at = NOW()
+            WHERE file_id = $4
+            """,
+            request.content,
+            new_line_count,
+            new_version,
+            file["file_id"],
+        )
+        
+        await db.execute(
+            "UPDATE faz_projects SET updated_at = NOW() WHERE project_id = $1",
+            project_id,
+        )
+        
+        return {
+            "success": True,
+            "file_id": file["file_id"],
+            "path": path,
+            "version": new_version,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to update file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # ACTIVITIES
 # =============================================================================
@@ -1009,28 +795,13 @@ async def update_project_architecture(
 # DEPLOYMENT
 # =============================================================================
 
-class DeployRequest(BaseModel):
-    """Deploy request options."""
-    skip_github: bool = False  # If True, only deploy to Vercel (requires existing repo)
-    private_repo: bool = False  # Create private GitHub repo
-
-
 @router.post("/projects/{project_id}/deploy")
 async def deploy_project(
     project_id: int,
     background_tasks: BackgroundTasks,
-    request: Optional[DeployRequest] = None,
     user = Depends(get_current_user),
 ):
-    """
-    Deploy project to GitHub and Vercel.
-    
-    Steps:
-    1. Create GitHub repository
-    2. Commit all project files
-    3. Create Vercel project linked to GitHub
-    4. Trigger Vercel deployment
-    """
+    """Deploy project to Vercel."""
     try:
         project = await db.fetchrow(
             "SELECT * FROM faz_projects WHERE project_id = $1 AND user_id = $2",
@@ -1041,21 +812,8 @@ async def deploy_project(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Allow deployment from approved, review, or delivered states
-        if project["status"] not in ["approved", "review", "delivered", "deployed"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Project must be approved before deployment (current: {project['status']})"
-            )
-        
-        # Check if we have files
-        file_count = await db.fetchval(
-            "SELECT COUNT(*) FROM faz_files WHERE project_id = $1",
-            project_id,
-        )
-        
-        if not file_count:
-            raise HTTPException(status_code=400, detail="No files to deploy")
+        if project["status"] not in ["approved", "review"]:
+            raise HTTPException(status_code=400, detail="Project must be approved before deployment")
         
         # Update status
         await db.execute(
@@ -1064,95 +822,69 @@ async def deploy_project(
         )
         
         # Deploy in background
-        req = request or DeployRequest()
-        
         async def deploy_in_background():
             try:
-                from app.services.faz_github_service import deploy_project_to_github
-                from app.services.faz_vercel_service import deploy_project_to_vercel
+                from app.integrations.github_service import github_service
+                from app.integrations.vercel_service import vercel_service
                 
-                # Step 1: Deploy to GitHub
-                if not req.skip_github or not project.get("github_repo"):
-                    github_result = await deploy_project_to_github(
-                        project_id,
-                        user.user_id,
+                # Get files
+                files = await db.fetch(
+                    "SELECT path, content FROM faz_files WHERE project_id = $1",
+                    project_id,
+                )
+                
+                file_dict = {f["path"]: f["content"] for f in files}
+                
+                # Create GitHub repo
+                repo_name = project["slug"]
+                repo_result = await github_service.create_repo(repo_name)
+                
+                if repo_result.get("success"):
+                    # Push files
+                    await github_service.push_files(repo_name, file_dict)
+                    
+                    # Create Vercel project
+                    vercel_result = await vercel_service.create_project(
+                        repo_name,
+                        repo_result.get("full_name"),
                     )
                     
-                    if github_result.get("error"):
-                        logger.error(f"[Faz] GitHub deploy failed: {github_result['error']}")
+                    if vercel_result.get("success"):
+                        # Trigger deployment
+                        deploy_result = await vercel_service.trigger_deployment(
+                            vercel_result.get("project_id"),
+                        )
+                        
+                        # Update project
                         await db.execute(
-                            """UPDATE faz_projects 
-                               SET status = 'failed', 
-                                   status_history = status_history || $1::jsonb,
-                                   updated_at = NOW() 
-                               WHERE project_id = $2""",
-                            json.dumps([{"status": "failed", "error": github_result["error"], 
-                                       "stage": "github", "timestamp": datetime.utcnow().isoformat()}]),
+                            """
+                            UPDATE faz_projects
+                            SET status = 'deployed',
+                                github_repo = $1,
+                                vercel_project_id = $2,
+                                preview_url = $3,
+                                deployed_at = NOW(),
+                                updated_at = NOW()
+                            WHERE project_id = $4
+                            """,
+                            repo_result.get("full_name"),
+                            vercel_result.get("project_id"),
+                            deploy_result.get("url"),
                             project_id,
                         )
+                        
                         return
-                    
-                    github_repo = github_result.get("repo_name")
-                    github_url = github_result.get("github_url")
-                    logger.info(f"[Faz] GitHub deploy success: {github_url}")
-                else:
-                    github_repo = project.get("github_repo")
-                    if "github.com" in github_repo:
-                        github_repo = github_repo.replace("https://github.com/", "")
                 
-                # Step 2: Deploy to Vercel
-                vercel_result = await deploy_project_to_vercel(
-                    project_id,
-                    user.user_id,
-                    github_repo,
-                )
-                
-                if vercel_result.get("error"):
-                    logger.error(f"[Faz] Vercel deploy failed: {vercel_result['error']}")
-                    await db.execute(
-                        """UPDATE faz_projects 
-                           SET status = 'failed', 
-                               status_history = status_history || $1::jsonb,
-                               updated_at = NOW() 
-                           WHERE project_id = $2""",
-                        json.dumps([{"status": "failed", "error": vercel_result["error"],
-                                   "stage": "vercel", "timestamp": datetime.utcnow().isoformat()}]),
-                        project_id,
-                    )
-                    return
-                
-                # Step 3: Update project with deployment info
+                # If we get here, something failed
                 await db.execute(
-                    """UPDATE faz_projects
-                       SET status = 'deployed',
-                           production_url = $1,
-                           vercel_project_id = $2,
-                           status_history = status_history || $3::jsonb,
-                           updated_at = NOW()
-                       WHERE project_id = $4""",
-                    vercel_result.get("production_url"),
-                    vercel_result.get("vercel_project_id"),
-                    json.dumps([{
-                        "status": "deployed",
-                        "production_url": vercel_result.get("production_url"),
-                        "github_repo": github_repo,
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }]),
+                    "UPDATE faz_projects SET status = 'failed', updated_at = NOW() WHERE project_id = $1",
                     project_id,
                 )
-                
-                logger.info(f"[Faz] Project {project_id} deployed to {vercel_result.get('production_url')}")
                 
             except Exception as e:
                 logger.exception(f"[Faz] Deployment failed for project {project_id}: {e}")
                 await db.execute(
-                    """UPDATE faz_projects 
-                       SET status = 'failed', 
-                           status_history = status_history || $1::jsonb,
-                           updated_at = NOW() 
-                       WHERE project_id = $2""",
-                    json.dumps([{"status": "failed", "error": str(e),
-                               "timestamp": datetime.utcnow().isoformat()}]),
+                    "UPDATE faz_projects SET status = 'failed', updated_at = NOW() WHERE project_id = $1",
                     project_id,
                 )
         
@@ -1162,235 +894,11 @@ async def deploy_project(
             "success": True,
             "message": "Deployment started",
             "project_id": project_id,
-            "status": "deploying",
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"[Faz] Failed to start deployment: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/projects/{project_id}/deploy/status")
-async def get_deploy_status(
-    project_id: int,
-    user = Depends(get_current_user),
-):
-    """Get deployment status for a project."""
-    try:
-        project = await db.fetchrow(
-            """SELECT project_id, status, github_repo, vercel_project_id, 
-                      preview_url, production_url, status_history
-               FROM faz_projects 
-               WHERE project_id = $1 AND user_id = $2""",
-            project_id,
-            user.user_id,
-        )
-        
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # If deploying, check Vercel status
-        live_status = None
-        if project["status"] == "deploying" and project["vercel_project_id"]:
-            from app.services.faz_vercel_service import check_deployment_status
-            live_status = await check_deployment_status(project_id)
-        
-        return {
-            "project_id": project_id,
-            "status": project["status"],
-            "github_repo": project["github_repo"],
-            "vercel_project_id": project["vercel_project_id"],
-            "preview_url": project["preview_url"],
-            "production_url": project["production_url"],
-            "deployment_status": live_status,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"[Faz] Failed to get deploy status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================================================================
-# INSPIRATION IMAGES
-# =============================================================================
-
-class AddInspirationImageRequest(BaseModel):
-    """Add inspiration image request."""
-    url: str = Field(..., description="URL of the inspiration image")
-    notes: str = Field("", description="What elements to take from this image")
-
-
-class InspirationImageResponse(BaseModel):
-    """Inspiration image response."""
-    url: str
-    notes: str
-    added_at: str
-
-
-@router.post("/projects/{project_id}/inspiration")
-async def add_inspiration_image(
-    project_id: int,
-    request: AddInspirationImageRequest,
-    user = Depends(get_current_user),
-):
-    """
-    Add an inspiration image to a project.
-    
-    Nicole will analyze the image and incorporate desired elements into the design.
-    Each image should have notes describing what you want her to take from it.
-    """
-    try:
-        # Get project and its design preferences
-        project = await db.fetchrow(
-            """SELECT project_id, design_preferences 
-               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
-            project_id,
-            user.user_id,
-        )
-        
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # Parse existing design preferences
-        design_prefs = project["design_preferences"] or {}
-        if isinstance(design_prefs, str):
-            design_prefs = json.loads(design_prefs)
-        
-        # Get or create inspiration images list
-        inspiration_images = design_prefs.get("inspiration_images", [])
-        
-        # Check limit (max 10 images)
-        if len(inspiration_images) >= 10:
-            raise HTTPException(
-                status_code=400, 
-                detail="Maximum of 10 inspiration images allowed"
-            )
-        
-        # Add new image
-        new_image = {
-            "url": request.url,
-            "notes": request.notes,
-            "added_at": datetime.utcnow().isoformat(),
-        }
-        inspiration_images.append(new_image)
-        design_prefs["inspiration_images"] = inspiration_images
-        
-        # Update project
-        await db.execute(
-            """UPDATE faz_projects 
-               SET design_preferences = $1, updated_at = NOW()
-               WHERE project_id = $2""",
-            json.dumps(design_prefs),
-            project_id,
-        )
-        
-        logger.info(f"[Faz] Added inspiration image to project {project_id}")
-        
-        return {
-            "success": True,
-            "message": "Inspiration image added",
-            "image": new_image,
-            "total_images": len(inspiration_images),
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"[Faz] Failed to add inspiration image: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/projects/{project_id}/inspiration")
-async def get_inspiration_images(
-    project_id: int,
-    user = Depends(get_current_user),
-):
-    """Get all inspiration images for a project."""
-    try:
-        project = await db.fetchrow(
-            """SELECT design_preferences 
-               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
-            project_id,
-            user.user_id,
-        )
-        
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        design_prefs = project["design_preferences"] or {}
-        if isinstance(design_prefs, str):
-            design_prefs = json.loads(design_prefs)
-        
-        inspiration_images = design_prefs.get("inspiration_images", [])
-        
-        return {
-            "project_id": project_id,
-            "images": inspiration_images,
-            "count": len(inspiration_images),
-            "max_allowed": 10,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"[Faz] Failed to get inspiration images: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/projects/{project_id}/inspiration/{image_index}")
-async def remove_inspiration_image(
-    project_id: int,
-    image_index: int,
-    user = Depends(get_current_user),
-):
-    """Remove an inspiration image by index."""
-    try:
-        project = await db.fetchrow(
-            """SELECT design_preferences 
-               FROM faz_projects WHERE project_id = $1 AND user_id = $2""",
-            project_id,
-            user.user_id,
-        )
-        
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        design_prefs = project["design_preferences"] or {}
-        if isinstance(design_prefs, str):
-            design_prefs = json.loads(design_prefs)
-        
-        inspiration_images = design_prefs.get("inspiration_images", [])
-        
-        if image_index < 0 or image_index >= len(inspiration_images):
-            raise HTTPException(status_code=404, detail="Image not found at index")
-        
-        # Remove image
-        removed = inspiration_images.pop(image_index)
-        design_prefs["inspiration_images"] = inspiration_images
-        
-        # Update project
-        await db.execute(
-            """UPDATE faz_projects 
-               SET design_preferences = $1, updated_at = NOW()
-               WHERE project_id = $2""",
-            json.dumps(design_prefs),
-            project_id,
-        )
-        
-        return {
-            "success": True,
-            "message": "Inspiration image removed",
-            "removed_image": removed,
-            "remaining_count": len(inspiration_images),
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"[Faz] Failed to remove inspiration image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -23,6 +23,7 @@ import dynamic from 'next/dynamic';
 import { useFazStore } from '@/lib/faz/store';
 import { fazApi } from '@/lib/faz/api';
 import { fazWS } from '@/lib/faz/websocket';
+import { FazLivePreview } from './FazLivePreview';
 import { FazProject, FazFile, FazActivity } from '@/types/faz';
 import { format } from 'date-fns';
 
@@ -117,6 +118,8 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     currentProject, setCurrentProject,
     setFiles,
     setActivities: storeSetActivities,
+    messages: storeMessages,
+    setMessages: storeSetMessages,
   } = useFazStore();
 
   // ===== HELPER: Get current tab content =====
@@ -275,6 +278,18 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     setOpenTabs([]);
     setActiveTab(null);
     setProjectFiles([]);
+    storeSetMessages([]); // Clear previous messages
+    
+    // Connect WebSocket for real-time updates
+    fazWS.connect(project.project_id);
+    
+    // Load chat history
+    try {
+      const chatHistory = await fazApi.getChatHistory(project.project_id);
+      storeSetMessages(chatHistory);
+    } catch (err) {
+      console.error('[Faz] Failed to load chat history:', err);
+    }
     setEditedContent({});
     
     const runningStatuses = ['planning', 'researching', 'designing', 'building', 'qa', 'review', 'deploying'];
@@ -293,6 +308,10 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     setActiveTab(null);
     setProjectFiles([]);
     setEditedContent({});
+    storeSetMessages([]);
+    
+    // Disconnect WebSocket
+    fazWS.disconnect();
     fazWS.disconnect();
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -337,9 +356,16 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     
     setSendingMessage(true);
     try {
-      await fazApi.sendChatMessage(currentProject.project_id, chatMessage);
-      setChatMessage('');
-      await fetchAllProjectData(currentProject.project_id);
+      // Use WebSocket for real-time chat if connected, fallback to API
+      if (fazWS.isConnected() && fazWS.isAuthenticated()) {
+        fazWS.sendChat(chatMessage);
+        setChatMessage('');
+      } else {
+        // Fallback to HTTP API
+        await fazApi.sendChatMessage(currentProject.project_id, chatMessage);
+        setChatMessage('');
+        await fetchAllProjectData(currentProject.project_id);
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
@@ -401,18 +427,32 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
       const content = editedContent[path];
       if (content === undefined) return;
       
-      // TODO: Implement save API endpoint
-      // await fazApi.updateFile(currentProject.project_id, path, content);
+      // Find file ID from project files
+      const file = projectFiles.find(f => f.path === path);
+      if (file?.file_id) {
+        // Use file ID update endpoint
+        await fazApi.updateFile(currentProject.project_id, file.file_id, content);
+      } else {
+        // Fallback to path-based update
+        await fazApi.updateFileByPath(currentProject.project_id, path, content);
+      }
       
-      // For now, just clear dirty state
+      // Update local state
       setOpenTabs(prev => prev.map(t => t.path === path ? { ...t, isDirty: false, content } : t));
       setEditedContent(prev => {
         const next = { ...prev };
         delete next[path];
         return next;
       });
+      
+      // Update project files array
+      setProjectFiles(prev => prev.map(f => 
+        f.path === path ? { ...f, content, version: (f.version || 1) + 1 } : f
+      ));
     } catch (error) {
       console.error('Failed to save file:', error);
+      // Show error to user
+      alert(`Failed to save file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -437,88 +477,6 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
     };
     const normalizedStatus = statusMap[currentProject.status] || currentProject.status;
     return PIPELINE_STAGES.indexOf(normalizedStatus);
-  };
-
-  const generatePreviewHTML = (): string => {
-    if (projectFiles.length === 0) {
-      return `<!DOCTYPE html><html><body style="background:#0a0a0f;color:#64748B;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;"><div style="text-align:center"><h2 style="color:#8B5CF6;">No Preview Available</h2><p>Run the pipeline to generate files</p></div></body></html>`;
-    }
-
-    // Get globals.css for styling
-    const globalsFile = projectFiles.find(f => f.path.includes('globals.css'));
-    let cssContent = '';
-    if (globalsFile) {
-      cssContent = globalsFile.content
-        .replace(/@tailwind[^;]+;/g, '')
-        .replace(/@import[^;]+;/g, '');
-    }
-
-    // Build a simple component list for display
-    const componentList = projectFiles
-      .filter(f => f.path.startsWith('components/'))
-      .map(f => f.path.split('/').pop()?.replace('.tsx', ''))
-      .filter(Boolean);
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    ${cssContent}
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-  </style>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: '#8B5CF6',
-          }
-        }
-      }
-    }
-  </script>
-</head>
-<body class="bg-slate-950 text-white min-h-screen">
-  <div style="position:fixed;top:0;left:0;right:0;background:linear-gradient(90deg,#8B5CF6,#6366F1);color:white;padding:8px 16px;font-size:12px;text-align:center;z-index:9999;">
-    ⚡ Preview Mode - ${projectFiles.length} files generated | Components: ${componentList.join(', ') || 'none'}
-  </div>
-  <div style="padding-top:40px;">
-    <div class="container mx-auto px-4 py-12">
-      <div class="text-center mb-8">
-        <h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-          ${currentProject?.name || 'Project Preview'}
-        </h1>
-        <p class="text-slate-400 mt-2">Generated by Faz Code</p>
-      </div>
-      
-      <div class="grid gap-4 mb-8">
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            📁 Generated Files (${projectFiles.length})
-          </h2>
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-            ${projectFiles.map(f => `
-              <div class="bg-slate-800 rounded-lg px-3 py-2 text-sm">
-                <span class="text-purple-400">📄</span>
-                <span class="text-slate-300 font-mono text-xs ml-1">${f.path}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-      
-      <div class="text-center text-slate-500 text-sm">
-        <p>Click <strong class="text-purple-400">Deploy</strong> to see the full rendered site on Vercel</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
   };
 
   // ===== RENDER HELPERS =====
@@ -825,19 +783,19 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
                       </button>
                     </div>
 
-                    {/* Preview iframe */}
+                    {/* Live Preview */}
                     <div className="flex-1 p-4 bg-[radial-gradient(#1e1e2e_1px,transparent_1px)] [background-size:12px_12px] flex items-start justify-center overflow-auto">
                       <div className={`bg-white shadow-2xl transition-all duration-300 h-full overflow-hidden ${
                         previewMode === 'mobile' ? 'w-[375px] rounded-2xl border-4 border-[#1e1e2e]' :
                         previewMode === 'tablet' ? 'w-[768px] rounded-xl border-2 border-[#1e1e2e]' :
                         'w-full'
                       }`}>
-                        <iframe
+                        <FazLivePreview
                           key={previewKey}
-                          srcDoc={generatePreviewHTML()}
-                          className="w-full h-full border-0"
-                          title="Preview"
-                          sandbox="allow-scripts"
+                          files={projectFiles}
+                          projectName={currentProject?.name || 'Project'}
+                          previewMode={previewMode}
+                          className="w-full h-full"
                         />
                       </div>
                     </div>
@@ -930,12 +888,41 @@ export function FazCodePanel({ isOpen, onClose, isFullWidth = false }: FazCodePa
               ) : (
                 <>
                   <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                    {/* Chat messages would go here */}
-                    <div className="text-center text-[#4a4a5a] py-8">
-                      <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
-                      <p className="text-xs">Chat with Nicole</p>
-                      <p className="text-[10px] mt-1 opacity-60">Coming soon - interactive feedback</p>
-                    </div>
+                    {storeMessages.length === 0 ? (
+                      <div className="text-center text-[#4a4a5a] py-8">
+                        <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
+                        <p className="text-xs">Chat with Nicole</p>
+                        <p className="text-[10px] mt-1 opacity-60">Start a conversation about your project</p>
+                      </div>
+                    ) : (
+                      storeMessages.map((msg) => (
+                        <motion.div
+                          key={msg.message_id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`rounded-lg p-2.5 text-xs ${
+                            msg.role === 'user'
+                              ? 'bg-purple-600/20 ml-6 text-white'
+                              : 'bg-[#12121a] mr-6 text-[#94A3B8]'
+                          }`}
+                        >
+                          {msg.role === 'assistant' && msg.agent_name && (
+                            <div className="flex items-center gap-1 mb-1">
+                              <Sparkles size={10} className="text-purple-400" />
+                              <span className="text-[9px] text-purple-400 font-medium">
+                                {msg.agent_name === 'nicole' ? 'Nicole' : msg.agent_name}
+                              </span>
+                            </div>
+                          )}
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                          {msg.created_at && (
+                            <span className="text-[8px] text-[#4a4a5a] mt-1 block">
+                              {format(new Date(msg.created_at), 'HH:mm')}
+                            </span>
+                          )}
+                        </motion.div>
+                      ))
+                    )}
                   </div>
                 </>
               )}
