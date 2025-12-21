@@ -105,6 +105,199 @@ def generate_slug(name: str, project_id: int) -> str:
     return f"{slug}-{project_id}"
 
 
+async def _setup_project_infrastructure(
+    project_id: int,
+    slug: str,
+    project_name: str,
+) -> None:
+    """
+    Set up GitHub repo and Vercel project for a new Faz Code project.
+    
+    This runs as a background task after project creation to:
+    1. Create a GitHub repository with a Next.js scaffold
+    2. Commit a "Coming Soon" placeholder page
+    3. Create a Vercel project linked to the repo
+    4. Deploy the placeholder and get a preview URL
+    """
+    from app.services.faz_github_service import GitHubService
+    from app.services.faz_vercel_service import VercelService
+    
+    logger.info(f"[Faz] Setting up infrastructure for project {project_id}")
+    
+    github_service = GitHubService()
+    vercel_service = VercelService()
+    
+    try:
+        # Step 1: Create GitHub repository
+        repo_name = f"faz-{slug}"
+        repo_result = await github_service.create_repository(
+            name=repo_name,
+            description=f"Faz Code project: {project_name}",
+            private=False,
+            auto_init=True,
+        )
+        
+        if repo_result.get("error"):
+            logger.warning(f"[Faz] GitHub repo creation failed: {repo_result.get('error')}")
+            return
+        
+        full_name = repo_result.get("full_name")
+        logger.info(f"[Faz] Created GitHub repo: {full_name}")
+        
+        # Step 2: Create Coming Soon scaffold files
+        coming_soon_files = {
+            "package.json": '''{
+  "name": "''' + slug + '''",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}''',
+            "next.config.js": '''/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+}
+module.exports = nextConfig
+''',
+            "app/page.tsx": '''export default function Home() {
+  return (
+    <main 
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: '#FFF8F0' }}
+    >
+      <div className="text-center">
+        <h1 
+          className="text-7xl font-bold tracking-tight"
+          style={{ color: '#F97316' }}
+        >
+          Coming Soon
+        </h1>
+        <p className="mt-6 text-xl text-gray-500">
+          Something amazing is being built...
+        </p>
+      </div>
+    </main>
+  );
+}
+''',
+            "app/layout.tsx": '''import './globals.css'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: '''' + project_name + ''' - Coming Soon',
+  description: 'A new project is being built with Faz Code',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+''',
+            "app/globals.css": '''@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+''',
+            "tailwind.config.js": '''/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+''',
+            "postcss.config.js": '''module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+''',
+        }
+        
+        # Commit scaffold files
+        commit_result = await github_service.commit_files(
+            repo=full_name,
+            files=coming_soon_files,
+            message="Initial scaffold with Coming Soon page",
+            branch="main",
+        )
+        
+        if commit_result.get("error"):
+            logger.warning(f"[Faz] File commit failed: {commit_result.get('error')}")
+        else:
+            logger.info(f"[Faz] Committed scaffold files to {full_name}")
+        
+        # Step 3: Create Vercel project
+        vercel_result = await vercel_service.create_project(
+            name=repo_name,
+            github_repo=full_name,
+            framework="nextjs",
+        )
+        
+        if vercel_result.get("error"):
+            logger.warning(f"[Faz] Vercel project creation failed: {vercel_result.get('error')}")
+            # Still update with GitHub info
+            await db.execute(
+                """
+                UPDATE faz_projects
+                SET github_repo = $1, updated_at = NOW()
+                WHERE project_id = $2
+                """,
+                full_name,
+                project_id,
+            )
+            return
+        
+        vercel_project_id = vercel_result.get("id")
+        preview_url = f"https://{repo_name}.vercel.app"
+        
+        logger.info(f"[Faz] Created Vercel project: {vercel_project_id}")
+        
+        # Step 4: Update project with URLs
+        await db.execute(
+            """
+            UPDATE faz_projects
+            SET github_repo = $1,
+                vercel_project_id = $2,
+                preview_url = $3,
+                updated_at = NOW()
+            WHERE project_id = $4
+            """,
+            full_name,
+            vercel_project_id,
+            preview_url,
+            project_id,
+        )
+        
+        logger.info(f"[Faz] Project {project_id} infrastructure ready: {preview_url}")
+        
+    except Exception as e:
+        logger.exception(f"[Faz] Infrastructure setup failed for project {project_id}: {e}")
+
+
 # =============================================================================
 # PROJECT CRUD
 # =============================================================================
@@ -112,9 +305,10 @@ def generate_slug(name: str, project_id: int) -> str:
 @router.post("/projects", response_model=ProjectResponse)
 async def create_project(
     request: ProjectCreate,
+    background_tasks: BackgroundTasks,
     user = Depends(get_current_user),
 ):
-    """Create a new Faz Code project."""
+    """Create a new Faz Code project with automatic GitHub/Vercel setup."""
     try:
         # Create project
         project_id = await db.fetchval(
@@ -139,6 +333,14 @@ async def create_project(
         )
         
         logger.info(f"[Faz] Created project {project_id}: {request.name}")
+        
+        # Trigger GitHub/Vercel setup in background
+        background_tasks.add_task(
+            _setup_project_infrastructure,
+            project_id,
+            slug,
+            request.name,
+        )
         
         # Get full project
         project = await db.fetchrow(

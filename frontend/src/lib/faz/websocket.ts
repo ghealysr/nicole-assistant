@@ -79,7 +79,8 @@ function normalizeProjectStatus(value: unknown): ProjectStatus {
     'deployed', 'failed', 'paused', 'archived', 'cancelled',
     // Interactive gate statuses
     'awaiting_confirm', 'awaiting_research_review', 'awaiting_plan_approval',
-    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_final_approval'
+    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_final_approval',
+    'awaiting_user_testing'  // User testing phase after QA iterations exhausted
   ];
   if (typeof value === 'string' && validStatuses.includes(value as ProjectStatus)) {
     return value as ProjectStatus;
@@ -319,16 +320,27 @@ class FazWebSocket {
         break;
         
       case 'status':
+        // Clear gate when pipeline resumes (status changes to non-awaiting)
+        const newStatus = normalizeProjectStatus(data.status);
+        if (!newStatus.startsWith('awaiting_')) {
+          store.setCurrentGate(null);
+        }
         if (store.currentProject) {
           store.setCurrentProject({
             ...store.currentProject,
-            status: normalizeProjectStatus(data.status),
+            status: newStatus,
             current_agent: data.current_agent as string | null,
+            // Clear awaiting_approval_for when not at a gate
+            awaiting_approval_for: newStatus.startsWith('awaiting_') 
+              ? store.currentProject.awaiting_approval_for 
+              : undefined,
           });
         }
         break;
         
       case 'complete':
+        // Clear gate on completion
+        store.setCurrentGate(null);
         if (store.currentProject) {
           store.setCurrentProject({
             ...store.currentProject,
@@ -336,6 +348,7 @@ class FazWebSocket {
             file_count: data.file_count as number,
             total_tokens_used: data.total_tokens as number,
             total_cost_cents: data.total_cost_cents as number,
+            awaiting_approval_for: undefined,  // Clear gate status
           });
         }
         // Clear loading state
@@ -369,6 +382,10 @@ class FazWebSocket {
       case 'gate':
         // Pipeline stopped at approval gate
         console.log('[Faz WS] At gate:', data.gate);
+        
+        // CRITICAL: Set currentGate in store so ChatMessages can show approval button
+        store.setCurrentGate(data.gate as string);
+        
         if (store.currentProject) {
           store.setCurrentProject({
             ...store.currentProject,

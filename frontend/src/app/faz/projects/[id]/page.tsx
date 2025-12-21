@@ -139,6 +139,14 @@ export default function ProjectWorkspacePage() {
     };
   }, [projectId, setCurrentProject, setFiles, setActivities, setMessages, setError, generatePreviewFromFiles]);
 
+  // Regenerate preview when files change (real-time updates from WebSocket)
+  React.useEffect(() => {
+    if (files.length > 0 && !currentProject?.preview_url) {
+      // Only regenerate local preview if no Vercel URL exists
+      generatePreviewFromFiles(files.map(f => ({ path: f.path, content: f.content })));
+    }
+  }, [files, currentProject?.preview_url, generatePreviewFromFiles]);
+
   // Handle chat message with optional images
   const handleSendMessage = async (content: string, imageUrls?: string[]) => {
     try {
@@ -487,39 +495,106 @@ export default function ProjectWorkspacePage() {
     </div>
   );
 
-  // Preview wrapper with device frame
+  // Preview wrapper with device frame - accurate device dimensions
   const PreviewWithFrame = () => {
-    const widthMap = {
-      mobile: 'max-w-[375px]',
-      tablet: 'max-w-[768px]',
-      desktop: 'max-w-full'
+    // Accurate device dimensions
+    const deviceConfig = {
+      mobile: { 
+        width: 390,   // iPhone 14/15 Pro
+        height: 844,
+        label: 'iPhone',
+        bezel: 'rounded-[40px]'
+      },
+      tablet: { 
+        width: 820,   // iPad 10th gen
+        height: 1180,
+        label: 'iPad',
+        bezel: 'rounded-[20px]'
+      },
+      desktop: { 
+        width: 0,     // 0 = full width
+        height: 0,
+        label: 'Desktop',
+        bezel: 'rounded-lg'
+      }
+    };
+
+    const device = deviceConfig[previewMode];
+    const isDeviceMode = previewMode !== 'desktop';
+
+    // Coming Soon placeholder when no preview available
+    const ComingSoonPlaceholder = () => (
+      <div 
+        className="w-full h-full flex items-center justify-center"
+        style={{ backgroundColor: '#FFF8F0' }}
+      >
+        <div className="text-center">
+          <h1 
+            className="text-6xl font-bold tracking-tight"
+            style={{ color: '#F97316' }}
+          >
+            Coming Soon
+          </h1>
+          <p className="mt-4 text-lg text-gray-500">
+            Your website is being built...
+          </p>
+        </div>
+      </div>
+    );
+
+    const renderPreview = () => {
+      if (currentProject?.preview_url) {
+        return (
+          <iframe
+            src={currentProject.preview_url}
+            className="w-full h-full bg-white"
+            title="Live Preview"
+          />
+        );
+      }
+      
+      if (previewHtml) {
+        return (
+          <iframe
+            srcDoc={previewHtml}
+            className="w-full h-full bg-white"
+            title="Preview"
+          />
+        );
+      }
+      
+      return <ComingSoonPlaceholder />;
     };
 
     return (
-      <div className="h-full flex items-center justify-center bg-[#0A0A0F] p-4">
-        <div className={cn("w-full h-full", widthMap[previewMode])}>
-          {currentProject?.preview_url ? (
-            <iframe
-              src={currentProject.preview_url}
-              className="w-full h-full rounded-lg border border-[#1E1E2E]"
-              title="Live Preview"
-            />
-          ) : previewHtml ? (
-            <iframe
-              srcDoc={previewHtml}
-              className="w-full h-full rounded-lg border border-[#1E1E2E]"
-              title="Preview"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-[#12121A] rounded-lg border border-[#1E1E2E]">
-              <div className="text-center">
-                <Eye size={48} className="mx-auto text-[#64748B] mb-4" />
-                <p className="text-[#94A3B8]">No preview available yet</p>
-                <p className="text-sm text-[#64748B] mt-2">Run the pipeline to generate files</p>
-              </div>
+      <div className="h-full flex items-center justify-center bg-[#0A0A0F] p-4 overflow-auto">
+        {isDeviceMode ? (
+          // Device frame for mobile/tablet
+          <div 
+            className={cn(
+              "relative bg-[#1a1a2e] shadow-2xl overflow-hidden flex-shrink-0",
+              device.bezel,
+              "border-[8px] border-[#2a2a3e]"
+            )}
+            style={{ 
+              width: device.width,
+              height: Math.min(device.height, window.innerHeight - 200)
+            }}
+          >
+            {/* Device notch/camera for iPhone */}
+            {previewMode === 'mobile' && (
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-black rounded-b-2xl z-10" />
+            )}
+            <div className="w-full h-full overflow-hidden">
+              {renderPreview()}
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          // Full-width desktop view
+          <div className="w-full h-full rounded-lg border border-[#1E1E2E] overflow-hidden">
+            {renderPreview()}
+          </div>
+        )}
       </div>
     );
   };
