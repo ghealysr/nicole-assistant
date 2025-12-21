@@ -30,7 +30,7 @@ class PlanningAgent(BaseAgent):
     agent_name = "Planning Agent"
     agent_role = "Architect - Creates project architecture and component structure"
     model_provider = "anthropic"
-    model_name = "claude-opus-4-5-20251101"
+    model_name = "claude-sonnet-4-20250514"
     temperature = 0.5  # Lower for more consistent architecture
     max_tokens = 8192
     
@@ -43,8 +43,8 @@ class PlanningAgent(BaseAgent):
     ]
     
     available_tools = ["memory_search"]
-    valid_handoff_targets = ["research", "design", "coding"]
-    receives_handoffs_from = ["nicole"]
+    valid_handoff_targets = ["design", "coding"]
+    receives_handoffs_from = ["nicole", "research"]
     
     def _get_system_prompt(self) -> str:
         return """You are the Planning Agent for Faz Code, an expert software architect.
@@ -131,10 +131,9 @@ You MUST output valid JSON with this exact structure:
 - Make the Coding Agent's job crystal clear
 
 ## HANDOFF
-After creating the architecture, hand off to:
-- **research**: To gather design inspiration and competitor analysis (default for new projects)
-- **design**: If user already provided specific design preferences
-- **coding**: Only if design tokens are already provided in the request"""
+After creating the architecture, hand off to either:
+- **design**: If user needs custom colors/typography
+- **coding**: If architecture is ready for implementation (default)"""
     
     def _build_prompt(self, state: Dict[str, Any]) -> str:
         """Build prompt for architecture generation."""
@@ -206,18 +205,12 @@ After creating the architecture, hand off to:
             component_count = len(architecture.get("components", []))
             
             # Determine next agent
-            # Default: research to gather inspiration
-            # If design tokens already exist: design
-            # If user provided complete design specs: coding
-            if architecture.get("design_tokens") and architecture["design_tokens"].get("colors"):
-                # Full design tokens provided, skip to coding
-                next_agent = "coding"
-            elif state.get("design_tokens"):
-                # Design tokens from previous run
+            # If no design tokens or user asked for design → design
+            # Otherwise → coding
+            if not architecture.get("design_tokens") and "design" in state.get("original_prompt", "").lower():
                 next_agent = "design"
             else:
-                # Default: gather research to inform design
-                next_agent = "research"
+                next_agent = "coding"
             
             return AgentResult(
                 success=True,

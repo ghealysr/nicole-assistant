@@ -4,11 +4,12 @@ Faz Code Screenshot Service
 Captures screenshots of generated websites for QA and preview purposes.
 Uses Playwright for reliable cross-browser rendering.
 """
+from __future__ import annotations
 
 import logging
 import asyncio
 import base64
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from pathlib import Path
 from datetime import datetime
 import tempfile
@@ -16,12 +17,19 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Type checking imports (never executed at runtime)
+if TYPE_CHECKING:
+    from playwright.async_api import Browser, Page
+
 # Try to import playwright
+PLAYWRIGHT_AVAILABLE = False
+async_playwright = None
+
 try:
-    from playwright.async_api import async_playwright, Browser, Page
+    from playwright.async_api import async_playwright as _async_playwright
+    async_playwright = _async_playwright
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
     logger.warning("[Screenshot] Playwright not installed. Install with: pip install playwright && playwright install")
 
 
@@ -44,12 +52,12 @@ class ScreenshotService:
     }
     
     def __init__(self):
-        self._browser: Optional[Browser] = None
+        self._browser: Optional["Browser"] = None
         self._playwright = None
     
-    async def _ensure_browser(self) -> Browser:
+    async def _ensure_browser(self) -> "Browser":
         """Ensure browser is launched."""
-        if not PLAYWRIGHT_AVAILABLE:
+        if not PLAYWRIGHT_AVAILABLE or async_playwright is None:
             raise RuntimeError("Playwright is not installed")
         
         if self._browser is None or not self._browser.is_connected():

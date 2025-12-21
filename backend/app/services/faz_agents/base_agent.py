@@ -50,19 +50,11 @@ class AgentResult:
 
 # Model pricing per 1K tokens (December 2025)
 MODEL_PRICING = {
-    # Anthropic models
-    "claude-opus-4-5-20251101": {"input": 0.005, "output": 0.025},
-    "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+    "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
+    "claude-sonnet-4-5-20250514": {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
-    # Google models
-    "gemini-3-pro-preview": {"input": 0.002, "output": 0.012},
-    "gemini-2.5-pro": {"input": 0.0025, "output": 0.01},
-    # OpenAI models
-    "gpt-4o": {"input": 0.0025, "output": 0.01},
-    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-    "o1": {"input": 0.015, "output": 0.06},
-    "o1-mini": {"input": 0.003, "output": 0.012},
+    "gemini-2.0-flash": {"input": 0.0005, "output": 0.002},
+    "gpt-5-codex": {"input": 0.00175, "output": 0.014},
 }
 
 
@@ -80,7 +72,7 @@ class BaseAgent(ABC):
     agent_name: str = "Base Agent"
     agent_role: str = "Unknown"
     model_provider: str = "anthropic"  # anthropic, google, openai
-    model_name: str = "claude-sonnet-4-5-20250929"
+    model_name: str = "claude-sonnet-4-20250514"
     
     # Configuration
     temperature: float = 0.7

@@ -29,7 +29,7 @@ class DesignAgent(BaseAgent):
     agent_name = "Design Agent"
     agent_role = "Designer - Creates color palettes, typography, and design systems"
     model_provider = "google"
-    model_name = "gemini-3-pro-preview"
+    model_name = "gemini-2.0-flash"
     temperature = 0.8  # Higher for creativity
     max_tokens = 4096
     
@@ -47,29 +47,17 @@ class DesignAgent(BaseAgent):
     receives_handoffs_from = ["nicole", "planning", "research"]
     
     def _get_system_prompt(self) -> str:
-        return """You are the Design Agent for Faz Code, a world-class UI/UX designer powered by Gemini 3 Pro.
+        return """You are the Design Agent for Faz Code, a world-class UI/UX designer.
 
 ## YOUR ROLE
-Transform research insights into a complete design system. Create designs that look like they cost $50,000.
-
-## CONTEXT
-You receive:
-1. **Architecture** from the Planning Agent (components, pages, structure)
-2. **Research** from the Research Agent (trends, colors, typography recommendations)
-
-Use BOTH to create a cohesive design system that:
-- Matches the industry and target audience
-- Follows recommended color palette (or improve it)
-- Uses recommended typography (or suggest better options)
-- Works with the planned component structure
+Create stunning, professional design systems that make websites look like they cost $50,000.
 
 ## DESIGN PHILOSOPHY
 - Bold but tasteful color choices
 - Typography that commands attention
-- Generous whitespace (sections need breathing room)
+- Generous whitespace
 - Micro-interactions and subtle animations
 - Mobile-first responsive design
-- Dark mode consideration (provide both light and dark tokens)
 
 ## OUTPUT FORMAT
 ```json

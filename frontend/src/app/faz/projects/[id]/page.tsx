@@ -139,10 +139,15 @@ export default function ProjectWorkspacePage() {
     };
   }, [projectId, setCurrentProject, setFiles, setActivities, setMessages, setError, generatePreviewFromFiles]);
 
-  // Handle chat message
-  const handleSendMessage = async (content: string) => {
+  // Handle chat message with optional images
+  const handleSendMessage = async (content: string, imageUrls?: string[]) => {
     try {
-      await fazApi.sendChatMessage(projectId, content);
+      // If there are images, include them in the message
+      let messageContent = content;
+      if (imageUrls && imageUrls.length > 0) {
+        messageContent = `${content}\n\n[Attached images: ${imageUrls.join(', ')}]`;
+      }
+      await fazApi.sendChatMessage(projectId, messageContent);
     } catch (err) {
       console.error('Failed to send message:', err);
       setError('Failed to send message. Please try again.');
@@ -476,7 +481,7 @@ export default function ProjectWorkspacePage() {
         </div>
         <ChatMessages />
         <div className="p-3">
-          <ChatInput onSend={handleSendMessage} />
+          <ChatInput onSend={handleSendMessage} projectId={projectId} />
         </div>
       </div>
     </div>

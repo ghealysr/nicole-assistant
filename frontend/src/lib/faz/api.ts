@@ -185,5 +185,48 @@ export const fazApi = {
     }
     return res.json();
   },
+
+  // Image Upload
+  async uploadReferenceImages(projectId: number, files: File[]): Promise<{
+    success: boolean;
+    images: Array<{
+      image_id: number;
+      filename: string;
+      url: string;
+      width?: number;
+      height?: number;
+    }>;
+    message: string;
+  }> {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    
+    // Get auth headers but remove Content-Type (let browser set for multipart)
+    const headers = getAuthHeaders();
+    delete (headers as Record<string, string>)['Content-Type'];
+    
+    const res = await fetch(`${FAZ_API_URL}/projects/${projectId}/upload-images`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    return handleResponse(res);
+  },
+
+  async getReferenceImages(projectId: number): Promise<{
+    images: Array<{
+      image_id: number;
+      filename: string;
+      url: string;
+      width?: number;
+      height?: number;
+      created_at?: string;
+    }>;
+  }> {
+    const res = await fetch(`${FAZ_API_URL}/projects/${projectId}/reference-images`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(res);
+  },
 };
 

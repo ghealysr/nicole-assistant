@@ -1,16 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, ImageIcon, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useFazStore } from '@/lib/faz/store';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface ChatInputProps {
-  onSend: (message: string, images?: File[]) => void;
-  disabled?: boolean;
-  placeholder?: string;
-}
+import { fazApi } from '@/lib/faz/api';
 
 interface UploadedImage {
   file: File;
@@ -18,33 +12,28 @@ interface UploadedImage {
   note: string;
 }
 
-export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
+interface ChatInputProps {
+  projectId?: number;
+  onSend: (message: string, imageUrls?: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+export function ChatInput({ projectId, onSend, disabled, placeholder }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
-  const [isUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const { currentGate, setCurrentGate } = useFazStore();
 
-  // Dismiss approval button when user starts typing
-  const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setInput(value);
-    
-    // If user starts typing while there's a pending approval, dismiss it
-    if (currentGate && value.length > 0) {
-      // User is typing feedback instead of clicking approve
-      // This will be treated as "not approved" - Nicole will ask again after addressing
-      setCurrentGate(null);
-    }
-    
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
     // Auto-resize
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [currentGate, setCurrentGate]);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -53,26 +42,41 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     }
   };
 
-  const handleSubmit = () => {
-    if ((!input.trim() && uploadedImages.length === 0) || disabled) return;
+  const handleSubmit = async () => {
+    if ((!input.trim() && uploadedImages.length === 0) || disabled || isUploading) return;
     
-    // If there are images, include them
-    const files = uploadedImages.map(img => img.file);
+    let imageUrls: string[] = [];
+    
+    // Upload images if any
+    if (uploadedImages.length > 0 && projectId) {
+      setIsUploading(true);
+      try {
+        const files = uploadedImages.map(img => img.file);
+        const result = await fazApi.uploadReferenceImages(projectId, files);
+        if (result.success) {
+          imageUrls = result.images.map(img => img.url);
+        }
+      } catch (error) {
+        console.error('Failed to upload images:', error);
+      } finally {
+        setIsUploading(false);
+      }
+    }
     
     // Build message with image notes if any
     let fullMessage = input.trim();
     if (uploadedImages.length > 0) {
       const imageNotes = uploadedImages
         .filter(img => img.note.trim())
-        .map((img, i) => `[Image ${i + 1}]: ${img.note}`)
+        .map((img, i) => `[Reference Image ${i + 1}]: ${img.note}`)
         .join('\n');
-      
       if (imageNotes) {
-        fullMessage = `${fullMessage}\n\n---\n**Reference Images:**\n${imageNotes}`;
+        fullMessage = fullMessage ? `${fullMessage}\n\n${imageNotes}` : imageNotes;
       }
     }
     
-    onSend(fullMessage, files.length > 0 ? files : undefined);
+    // Send the message with optional image URLs
+    onSend(fullMessage, imageUrls.length > 0 ? imageUrls : undefined);
     
     // Clean up
     setInput('');
@@ -88,8 +92,8 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     
-    // Limit to 10 images total
-    const remaining = 10 - uploadedImages.length;
+    // Limit to 5 images total
+    const remaining = 5 - uploadedImages.length;
     const toAdd = files.slice(0, remaining);
     
     const newImages: UploadedImage[] = toAdd.map(file => ({
@@ -137,7 +141,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2"
+            className="grid grid-cols-2 sm:grid-cols-3 gap-2"
           >
             {uploadedImages.map((img, idx) => (
               <motion.div
@@ -147,43 +151,44 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
                 exit={{ opacity: 0, scale: 0.8 }}
                 className="relative group"
               >
-                <div className="relative rounded-lg overflow-hidden border border-zinc-700 bg-zinc-800">
-                  <img
-                    src={img.preview}
+                <div className="relative aspect-video bg-[#1E1E2E] rounded-lg overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src={img.preview} 
                     alt={`Reference ${idx + 1}`}
-                    className="w-full h-20 object-cover"
+                    className="w-full h-full object-cover"
                   />
                   <button
                     onClick={() => removeImage(idx)}
-                    className="absolute top-1 right-1 p-1 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <X className="w-3 h-3 text-white" />
+                    <X size={12} />
                   </button>
                 </div>
                 <input
                   type="text"
-                  placeholder="What do you like?"
+                  placeholder="Add note..."
                   value={img.note}
                   onChange={(e) => updateImageNote(idx, e.target.value)}
-                  className="mt-1 w-full px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:border-orange-500/50"
+                  className="mt-1 w-full text-[10px] px-2 py-1 bg-[#1E1E2E] border border-[#2D2D3D] rounded text-[#94A3B8] placeholder-[#4a4a5a] focus:outline-none focus:border-[#6366F1]"
                 />
               </motion.div>
             ))}
           </motion.div>
         )}
       </AnimatePresence>
-      
-      {/* Main input */}
-      <div className="relative bg-[#12121A] border border-zinc-700/50 rounded-xl focus-within:border-orange-500/50 transition-colors">
+
+      {/* Input area */}
+      <div className="relative bg-[#12121A] border border-[#1E1E2E] rounded-xl focus-within:border-[#6366F1] transition-colors">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder || "Describe your vision, ask questions, or provide feedback..."}
+          placeholder={placeholder || "Ask Nicole to change something..."}
           className="w-full bg-transparent text-[#F1F5F9] placeholder-[#64748B] p-4 pr-24 text-sm resize-none outline-none min-h-[50px] max-h-[200px]"
           rows={1}
-          disabled={disabled}
+          disabled={disabled || isUploading}
         />
         
         {/* Action buttons */}
@@ -199,14 +204,14 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || uploadedImages.length >= 10}
+            disabled={disabled || uploadedImages.length >= 5 || isUploading}
             className={cn(
               "p-1.5 rounded-lg transition-all",
-              uploadedImages.length < 10 && !disabled
-                ? "text-zinc-400 hover:text-orange-400 hover:bg-zinc-800"
+              uploadedImages.length < 5 && !disabled && !isUploading
+                ? "text-zinc-400 hover:text-purple-400 hover:bg-zinc-800"
                 : "text-zinc-600 cursor-not-allowed"
             )}
-            title={`Add reference images (${uploadedImages.length}/10)`}
+            title={`Add reference images (${uploadedImages.length}/5)`}
           >
             <ImageIcon size={16} />
           </button>
@@ -214,12 +219,12 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           {/* Send button */}
           <button
             onClick={handleSubmit}
-            disabled={(!input.trim() && uploadedImages.length === 0) || disabled}
+            disabled={(!input.trim() && uploadedImages.length === 0) || disabled || isUploading}
             className={cn(
               "p-1.5 rounded-lg transition-all",
-              (input.trim() || uploadedImages.length > 0) && !disabled
-                ? "bg-orange-500 text-white hover:bg-orange-400" 
-                : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+              (input.trim() || uploadedImages.length > 0) && !disabled && !isUploading
+                ? "bg-[#6366F1] text-white hover:bg-[#818CF8]" 
+                : "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
             )}
           >
             {isUploading ? (
@@ -229,21 +234,17 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
             )}
           </button>
         </div>
-      </div>
-      
-      {/* Hint */}
-      <div className="flex items-center justify-between px-1">
-        <span className="text-[10px] text-zinc-600">
-          Cmd/Ctrl + Enter to send
-        </span>
-        {uploadedImages.length > 0 && (
-          <span className="text-[10px] text-orange-400/70">
-            {uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''} attached
-          </span>
-        )}
+        
+        <div className="absolute left-4 -bottom-6 flex gap-3 text-[10px] text-[#64748B]">
+          <span>Cmd + Enter to send</span>
+          {uploadedImages.length > 0 && (
+            <span className="text-purple-400/70">
+              {uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''} attached
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export default ChatInput;

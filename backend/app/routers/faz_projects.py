@@ -902,3 +902,153 @@ async def deploy_project(
         logger.exception(f"[Faz] Failed to start deployment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# =============================================================================
+# IMAGE UPLOAD
+# =============================================================================
+
+from fastapi import File, UploadFile
+
+class ImageUploadResponse(BaseModel):
+    """Image upload response."""
+    success: bool
+    images: List[Dict[str, Any]]
+    message: str
+
+
+@router.post("/projects/{project_id}/upload-images", response_model=ImageUploadResponse)
+async def upload_reference_images(
+    project_id: int,
+    files: List[UploadFile] = File(...),
+    user=Depends(get_current_user),
+):
+    """
+    Upload reference images for a project.
+    
+    Images are stored in Cloudinary and metadata is saved to the database.
+    """
+    try:
+        # Verify project access
+        project = await db.fetchrow(
+            "SELECT project_id FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user.user_id,
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found or access denied")
+        
+        # Import Cloudinary service
+        from app.integrations.alphawave_cloudinary import cloudinary_service
+        
+        uploaded_images = []
+        
+        for file in files:
+            # Validate file type
+            if not file.content_type or not file.content_type.startswith("image/"):
+                continue
+            
+            # Read file content
+            content = await file.read()
+            
+            # Upload to Cloudinary
+            import base64
+            base64_data = base64.b64encode(content).decode("utf-8")
+            
+            result = await cloudinary_service.upload_from_base64(
+                base64_data,
+                folder=f"faz-projects/{project_id}/references",
+                resource_type="image",
+            )
+            
+            if result.get("success"):
+                # Store metadata in database
+                image_id = await db.fetchval(
+                    """
+                    INSERT INTO faz_project_artifacts
+                        (project_id, artifact_type, content, generated_by, created_at)
+                    VALUES ($1, 'reference_image', $2, 'user', NOW())
+                    RETURNING artifact_id
+                    """,
+                    project_id,
+                    json.dumps({
+                        "filename": file.filename,
+                        "url": result.get("url"),
+                        "public_id": result.get("public_id"),
+                        "width": result.get("width"),
+                        "height": result.get("height"),
+                    }),
+                )
+                
+                uploaded_images.append({
+                    "image_id": image_id,
+                    "filename": file.filename,
+                    "url": result.get("url"),
+                    "width": result.get("width"),
+                    "height": result.get("height"),
+                })
+        
+        logger.info(f"[Faz] Uploaded {len(uploaded_images)} images for project {project_id}")
+        
+        return ImageUploadResponse(
+            success=True,
+            images=uploaded_images,
+            message=f"Uploaded {len(uploaded_images)} images",
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to upload images: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/reference-images")
+async def get_reference_images(
+    project_id: int,
+    user=Depends(get_current_user),
+):
+    """Get all reference images for a project."""
+    try:
+        # Verify project access
+        project = await db.fetchrow(
+            "SELECT project_id FROM faz_projects WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user.user_id,
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found or access denied")
+        
+        # Get reference images
+        artifacts = await db.fetch(
+            """
+            SELECT artifact_id, content, created_at
+            FROM faz_project_artifacts
+            WHERE project_id = $1 AND artifact_type = 'reference_image'
+            ORDER BY created_at DESC
+            """,
+            project_id,
+        )
+        
+        images = []
+        for artifact in artifacts:
+            try:
+                content = json.loads(artifact["content"]) if isinstance(artifact["content"], str) else artifact["content"]
+                images.append({
+                    "image_id": artifact["artifact_id"],
+                    "filename": content.get("filename"),
+                    "url": content.get("url"),
+                    "width": content.get("width"),
+                    "height": content.get("height"),
+                    "created_at": artifact["created_at"].isoformat() if artifact["created_at"] else None,
+                })
+            except json.JSONDecodeError:
+                continue
+        
+        return {"images": images}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Faz] Failed to get reference images: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

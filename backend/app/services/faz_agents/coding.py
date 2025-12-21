@@ -2,7 +2,7 @@
 Coding Agent - Faz Code Developer
 
 Generates production-quality code based on architecture and design.
-Uses Claude Sonnet 4.5 for fast, accurate code generation.
+Uses Gemini 3 Pro for fast, accurate code generation.
 """
 
 from typing import Any, Dict
@@ -30,8 +30,8 @@ class CodingAgent(BaseAgent):
     agent_id = "coding"
     agent_name = "Coding Agent"
     agent_role = "Developer - Generates production-ready code"
-    model_provider = "anthropic"
-    model_name = "claude-sonnet-4-5-20250929"
+    model_provider = "google"
+    model_name = "gemini-2.0-flash"
     temperature = 0.3  # Lower for consistent code
     max_tokens = 16384  # Large for full file generation
     
@@ -50,32 +50,25 @@ class CodingAgent(BaseAgent):
     receives_handoffs_from = ["nicole", "planning", "design"]
     
     def _get_system_prompt(self) -> str:
-        return """You are the Coding Agent for Faz Code, an expert frontend developer powered by Claude Sonnet 4.5.
+        return """You are the Coding Agent for Faz Code, an expert frontend developer.
 
 ## YOUR ROLE
-Transform architecture and design specifications into production-ready Next.js 14 code.
+Generate complete, production-ready Next.js 14 code based on architecture and design specifications.
 
-## CONTEXT YOU RECEIVE
-1. **Architecture** - Component structure, pages, file paths (from Planning Agent)
-2. **Design Tokens** - Colors, typography, spacing (from Design Agent)
-3. **QA Feedback** - Issues to fix (if returning from QA Agent)
-
-## TECH STACK (use these exactly)
-- Next.js 14 (App Router) - use app/ directory
-- TypeScript (strict) - proper types, no `any`
-- Tailwind CSS - utility classes, mobile-first
-- Framer Motion - smooth animations
-- Lucide Icons - import from 'lucide-react'
-- Google Fonts via next/font
+## TECH STACK
+- Next.js 14 (App Router)
+- TypeScript (strict)
+- Tailwind CSS
+- Framer Motion (animations)
+- Lucide Icons
 
 ## CODE QUALITY STANDARDS
-1. **TypeScript**: Explicit interfaces for all props, no `any` types
-2. **Components**: Functional with named exports, clear Props interfaces
-3. **Styling**: Tailwind classes using design token colors as CSS variables
-4. **Accessibility**: Semantic HTML (main, section, nav), ARIA labels, focus states
-5. **Content**: REAL content relevant to the project, NEVER use Lorem Ipsum
-6. **Structure**: One component per file, consistent naming (PascalCase components)
-7. **Responsiveness**: Mobile-first with sm:, md:, lg: breakpoints
+1. **TypeScript**: Proper interfaces, no `any` types
+2. **Components**: Functional, with props interfaces
+3. **Styling**: Tailwind classes, mobile-first responsive
+4. **Accessibility**: Semantic HTML, ARIA labels, keyboard nav
+5. **Content**: Real content, NO Lorem Ipsum
+6. **Structure**: One component per file, clear naming
 
 ## OUTPUT FORMAT
 For each file, output using this exact format:
@@ -141,89 +134,50 @@ After generating all files, hand off to **qa** for quality checks."""
         """Build comprehensive prompt for code generation."""
         prompt_parts = []
         
-        # Check if this is a QA feedback iteration
-        qa_review = state.get("qa_review") or state.get("data", {}).get("qa_review")
-        is_fix_iteration = qa_review and qa_review.get("issues")
+        # Original request for context
+        original = state.get("original_prompt", "")
+        prompt_parts.append(f"## PROJECT REQUEST\n{original}")
         
-        if is_fix_iteration:
-            # QA FEEDBACK MODE - Focus on fixing specific issues
-            prompt_parts.append("## ⚠️ QA FEEDBACK - FIX THESE ISSUES")
-            prompt_parts.append(f"\nQA Score: {qa_review.get('score', 'N/A')}/100")
-            prompt_parts.append(f"Verdict: {qa_review.get('verdict', 'NEEDS_FIXES')}")
-            
-            prompt_parts.append("\n### ISSUES TO FIX:")
-            for idx, issue in enumerate(qa_review.get("issues", [])[:10], 1):
-                severity = issue.get("severity", "unknown").upper()
-                file_path = issue.get("file", "unknown")
-                line = issue.get("line", "")
-                line_info = f" (line {line})" if line else ""
-                prompt_parts.append(f"\n**{idx}. [{severity}] {file_path}{line_info}**")
-                prompt_parts.append(f"   Issue: {issue.get('issue', '')}")
-                prompt_parts.append(f"   Fix: {issue.get('fix', '')}")
-            
-            prompt_parts.append("\n### EXISTING FILES TO FIX:")
-            files = state.get("files", {})
-            for path, content in files.items():
-                # Only include files mentioned in issues
-                if any(issue.get("file") == path for issue in qa_review.get("issues", [])):
-                    prompt_parts.append(f"\n```file:{path}\n{content}\n```")
-            
-            prompt_parts.append("""
-## YOUR TASK
-Fix ONLY the issues listed above. Re-generate the affected files with fixes applied.
-Use the ```file:path/to/file.tsx format for each fixed file.
-Do NOT regenerate files that don't have issues.""")
-            
-        else:
-            # INITIAL GENERATION MODE
-            original = state.get("original_prompt", "")
-            prompt_parts.append(f"## PROJECT REQUEST\n{original}")
-            
-            # Architecture (most important)
+        # Architecture (most important)
+        if state.get("architecture") or state.get("data", {}).get("architecture"):
             arch = state.get("architecture") or state.get("data", {}).get("architecture", {})
-            if arch:
-                prompt_parts.append(f"\n## ARCHITECTURE\n```json\n{json.dumps(arch, indent=2)}\n```")
-            
-            # Design tokens
+            prompt_parts.append(f"\n## ARCHITECTURE\n```json\n{json.dumps(arch, indent=2)}\n```")
+        
+        # Design tokens
+        if state.get("design_tokens") or state.get("data", {}).get("design_tokens"):
             tokens = state.get("design_tokens") or state.get("data", {}).get("design_tokens", {})
-            if tokens:
-                prompt_parts.append(f"\n## DESIGN TOKENS\n```json\n{json.dumps(tokens, indent=2)}\n```")
-            
-            # Research context if available
-            research = state.get("research_results") or state.get("data", {}).get("research_results", {})
-            if research:
-                if research.get("key_patterns"):
-                    prompt_parts.append(f"\n## DESIGN PATTERNS TO IMPLEMENT\n" + "\n".join([f"- {p}" for p in research["key_patterns"][:5]]))
-            
-            # Relevant artifacts (reusable code)
-            if state.get("relevant_artifacts"):
-                artifacts = state["relevant_artifacts"][:3]
-                prompt_parts.append("\n## REUSABLE ARTIFACTS")
-                for art in artifacts:
-                    prompt_parts.append(f"\n### {art.get('name', 'Artifact')} ({art.get('artifact_type', 'component')})")
-                    if art.get("code"):
-                        prompt_parts.append(f"```typescript\n{art['code'][:1000]}\n```")
-            
-            # Error patterns to avoid
-            if state.get("relevant_errors"):
-                errors = state["relevant_errors"][:3]
-                error_text = "\n".join([
-                    f"- **{e.get('error_type', 'Error')}**: {e.get('error_message', '')[:100]} → Fix: {e.get('solution_description', '')[:100]}"
-                    for e in errors
-                ])
-                prompt_parts.append(f"\n## AVOID THESE ERRORS\n{error_text}")
-            
-            prompt_parts.append("""
+            prompt_parts.append(f"\n## DESIGN TOKENS\n```json\n{json.dumps(tokens, indent=2)}\n```")
+        
+        # Relevant artifacts (reusable code)
+        if state.get("relevant_artifacts"):
+            artifacts = state["relevant_artifacts"][:3]
+            prompt_parts.append("\n## REUSABLE ARTIFACTS")
+            for art in artifacts:
+                prompt_parts.append(f"\n### {art.get('name', 'Artifact')} ({art.get('artifact_type', 'component')})")
+                if art.get("code"):
+                    prompt_parts.append(f"```typescript\n{art['code'][:1000]}\n```")
+        
+        # Error patterns to avoid
+        if state.get("relevant_errors"):
+            errors = state["relevant_errors"][:3]
+            error_text = "\n".join([
+                f"- **{e.get('error_type', 'Error')}**: {e.get('error_message', '')[:100]} → Fix: {e.get('solution_description', '')[:100]}"
+                for e in errors
+            ])
+            prompt_parts.append(f"\n## AVOID THESE ERRORS\n{error_text}")
+        
+        # Build instructions
+        prompt_parts.append("""
 ## YOUR TASK
-Generate ALL required files for this project:
-1. tailwind.config.ts - with design token colors from CSS variables
-2. app/globals.css - CSS variables for colors, fonts
-3. app/layout.tsx - root layout with metadata, fonts, body wrapper
-4. components/*.tsx - ALL components from architecture
-5. app/page.tsx - main page composing the sections
+Generate ALL required files for this project. Include:
+1. tailwind.config.ts with design token colors
+2. app/globals.css with CSS variables
+3. app/layout.tsx with proper metadata and fonts
+4. All components from the architecture
+5. app/page.tsx composing the components
 
 Use the ```file:path/to/file.tsx format for each file.
-Generate complete, working code - no placeholders or TODOs.""")
+Generate complete, working code - no placeholders.""")
         
         return "\n".join(prompt_parts)
     
