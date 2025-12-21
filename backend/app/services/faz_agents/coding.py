@@ -31,7 +31,7 @@ class CodingAgent(BaseAgent):
     agent_name = "Coding Agent"
     agent_role = "Developer - Generates production-ready code"
     model_provider = "google"
-    model_name = "gemini-2.5-pro-preview-05-06"
+    model_name = "gemini-3-pro-preview"
     temperature = 0.3  # Lower for consistent code
     max_tokens = 16384  # Large for full file generation
     

@@ -53,7 +53,7 @@ MODEL_PRICING = {
     "claude-opus-4-5-20251101": {"input": 0.005, "output": 0.025},
     "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
-    "gemini-2.5-pro-preview-05-06": {"input": 0.00125, "output": 0.01},
+    "gemini-3-pro-preview": {"input": 0.002, "output": 0.012},
     "gpt-5-codex": {"input": 0.00175, "output": 0.014},
 }
 
