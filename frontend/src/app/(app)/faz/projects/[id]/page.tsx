@@ -8,9 +8,11 @@ import { CodeViewer } from '@/components/faz/CodeViewer';
 import { AgentActivityFeed } from '@/components/faz/AgentActivityFeed';
 import { ChatMessages } from '@/components/faz/ChatMessages';
 import { ChatInput } from '@/components/faz/ChatInput';
+import { PreviewFrame } from '@/components/faz/PreviewFrame';
 import { fazApi } from '@/lib/faz/api';
 import { fazWS } from '@/lib/faz/websocket';
 import { useFazStore } from '@/lib/faz/store';
+import { generatePreviewHTML } from '@/lib/faz/preview-utils';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { 
   Loader2, Play, Square, Rocket, ExternalLink, RefreshCw, 
@@ -41,63 +43,10 @@ export default function ProjectWorkspacePage() {
   const [previewHtml, setPreviewHtml] = React.useState<string | null>(null);
 
   // Helper to escape HTML
-  const escapeHtml = (str: string) => {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  };
-
-  // Generate preview HTML from project files
+  // Generate preview HTML from project files (using extracted utility)
   const generatePreviewFromFiles = React.useCallback((fileList: { path: string; content: string }[]) => {
-    const pageFile = fileList.find(f => f.path.includes('page.tsx') || f.path.includes('index.tsx'));
-    const globalsCss = fileList.find(f => f.path.includes('globals.css'));
-    
-    if (!pageFile) {
-      setPreviewHtml(null);
-      return;
-    }
-
-    const previewDoc = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    ${globalsCss?.content || ''}
-    body { background: #0a0a0f; color: white; min-height: 100vh; }
-  </style>
-</head>
-<body>
-  <div id="preview-root">
-    <div class="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#1a1a2e] p-8">
-      <div class="max-w-4xl mx-auto">
-        <div class="text-center mb-8">
-          <h1 class="text-4xl font-bold text-white mb-4">Preview Mode</h1>
-          <p class="text-gray-400">
-            This is a static preview. Full interactivity requires deployment.
-          </p>
-        </div>
-        <div class="bg-[#12121a] rounded-xl p-6 border border-[#1e1e2e]">
-          <pre class="text-sm text-[#94a3b8] overflow-auto max-h-[60vh]"><code>${escapeHtml(pageFile.content)}</code></pre>
-        </div>
-        <div class="mt-6 text-center">
-          <p class="text-sm text-[#64748b]">
-            ${fileList.length} files generated • Deploy to see live preview
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-    
-    setPreviewHtml(previewDoc);
+    const html = generatePreviewHTML(fileList);
+    setPreviewHtml(html);
   }, []);
 
   // Initialize workspace
@@ -182,10 +131,8 @@ export default function ProjectWorkspacePage() {
     try {
       setLoading(true);
       clearError();
-      // First reset the project
-      await fazApi.resetProject(projectId);
-      // Then run the pipeline
-      await fazApi.runPipeline(projectId);
+      // Run the pipeline with force flag to reset and restart
+      await fazApi.runPipeline(projectId, undefined, 'nicole', true);
     } catch (err) {
       console.error('Failed to force restart:', err);
       setError('Failed to restart pipeline. Please try again.');
@@ -554,43 +501,6 @@ export default function ProjectWorkspacePage() {
     </div>
   );
 
-  // Preview wrapper with device frame
-  const PreviewWithFrame = () => {
-    const widthMap = {
-      mobile: 'max-w-[375px]',
-      tablet: 'max-w-[768px]',
-      desktop: 'max-w-full'
-    };
-
-    return (
-      <div className="h-full flex items-center justify-center bg-[#0A0A0F] p-4">
-        <div className={cn("w-full h-full", widthMap[previewMode])}>
-          {currentProject?.preview_url ? (
-            <iframe
-              src={currentProject.preview_url}
-              className="w-full h-full rounded-lg border border-[#1E1E2E]"
-              title="Live Preview"
-            />
-          ) : previewHtml ? (
-            <iframe
-              srcDoc={previewHtml}
-              className="w-full h-full rounded-lg border border-[#1E1E2E]"
-              title="Preview"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-[#12121A] rounded-lg border border-[#1E1E2E]">
-              <div className="text-center">
-                <Eye size={48} className="mx-auto text-[#64748B] mb-4" />
-                <p className="text-[#94A3B8]">No preview available yet</p>
-                <p className="text-sm text-[#64748B] mt-2">Run the pipeline to generate files</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="h-screen flex flex-col bg-[#0A0A0F]">
       <Toolbar />
@@ -602,7 +512,11 @@ export default function ProjectWorkspacePage() {
           <PanelGroup direction="horizontal">
             <Panel defaultSize={50} minSize={20}>
               {activeTab === 'preview' ? (
-                <PreviewWithFrame />
+                <PreviewFrame 
+                  previewUrl={currentProject?.preview_url}
+                  previewHtml={previewHtml}
+                  mode={previewMode}
+                />
               ) : activeTab === 'code' ? (
                 <CodeViewer code={selectedContent} language={selectedLang} path={selectedFile || undefined} />
               ) : (
@@ -614,7 +528,11 @@ export default function ProjectWorkspacePage() {
               <>
                 <PanelResizeHandle className="w-1 bg-[#1E1E2E] hover:bg-[#6366F1] transition-colors" />
                 <Panel defaultSize={50} minSize={20}>
-                  <PreviewWithFrame />
+                  <PreviewFrame 
+                    previewUrl={currentProject?.preview_url}
+                    previewHtml={previewHtml}
+                    mode={previewMode}
+                  />
                 </Panel>
               </>
             )}

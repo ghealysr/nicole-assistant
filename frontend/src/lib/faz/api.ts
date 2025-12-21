@@ -98,14 +98,6 @@ export const fazApi = {
     }
   },
 
-  async resetProject(id: number): Promise<{ success: boolean; message: string; old_status: string; new_status: string }> {
-    const res = await fetch(`${FAZ_API_URL}/projects/${id}/reset`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(res);
-  },
-
   // Files
   async getFiles(id: number): Promise<FazFile[]> {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/files`, {
