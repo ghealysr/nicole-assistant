@@ -44,7 +44,7 @@ export function AlphawaveSidebar({
   const router = useRouter();
 
   const isOnChat = pathname === '/chat' || pathname?.startsWith('/chat/');
-  const isOnFaz = pathname === '/faz' || pathname?.startsWith('/faz/');
+  const isOnEnjineer = pathname === '/enjineer' || pathname?.startsWith('/enjineer/');
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
@@ -118,16 +118,16 @@ export function AlphawaveSidebar({
           Research
         </button>
 
-        {/* Faz Code Button - Navigates to Faz Code workspace */}
+        {/* Enjineer Button - Navigates to Enjineer workspace */}
         <button
-          onClick={() => router.push('/faz')}
-          className={`menu-item vibe-btn ${isOnFaz ? 'vibe-active' : ''}`}
+          onClick={() => router.push('/enjineer')}
+          className={`menu-item vibe-btn ${isOnEnjineer ? 'vibe-active' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
             <polyline points="16 18 22 12 16 6"/>
             <polyline points="8 6 2 12 8 18"/>
           </svg>
-          Faz Code
+          Enjineer
         </button>
 
         {/* Divider and Data Section */}
