@@ -92,10 +92,8 @@ export default function CreateProjectPage() {
         }
       }
 
-      // Start pipeline in interactive mode
-      await fazApi.runPipeline(project.project_id, prompt);
-
-      // Navigate to workspace
+      // Navigate to workspace - user will manually start the pipeline
+      // This prevents the project from getting stuck in "planning" if pipeline fails
       router.push(`/faz/projects/${project.project_id}`);
     } catch (error) {
       console.error('Failed to create project:', error);
