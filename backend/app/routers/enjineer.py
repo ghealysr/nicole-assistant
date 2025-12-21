@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, WebSocket, WebSock
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.database import get_db_pool
+from app.database import db, get_tiger_pool
 from app.integrations.alphawave_utils import get_user_id_from_token, get_auth_headers
 
 logger = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ async def create_project(
 ):
     """Create a new Enjineer project."""
     user_id = await get_current_user_id(authorization)
-    pool = await get_db_pool()
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
@@ -222,7 +222,7 @@ async def list_projects(
 ):
     """List user's Enjineer projects."""
     user_id = await get_current_user_id(authorization)
-    pool = await get_db_pool()
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         if status:
@@ -270,8 +270,8 @@ async def get_project(
 ):
     """Get project details with files and current plan."""
     user_id = await get_current_user_id(authorization)
-    project = await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    project = await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         # Get files
@@ -349,8 +349,8 @@ async def update_project(
 ):
     """Update project details."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     updates = []
     values = []
@@ -415,8 +415,8 @@ async def delete_project(
 ):
     """Soft delete a project (set status to abandoned)."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         await conn.execute(
@@ -439,8 +439,8 @@ async def list_files(
 ):
     """List project files."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         if path_prefix:
@@ -483,8 +483,8 @@ async def create_file(
 ):
     """Create a new file."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     language = request.language or detect_language(request.path)
     checksum = hashlib.sha256(request.content.encode()).hexdigest()
@@ -542,8 +542,8 @@ async def get_file(
 ):
     """Get file content."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         file = await conn.fetchrow(
@@ -577,8 +577,8 @@ async def update_file(
 ):
     """Update file content."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     path = f"/{file_path}" if not file_path.startswith("/") else file_path
     checksum = hashlib.sha256(request.content.encode()).hexdigest()
@@ -646,8 +646,8 @@ async def delete_file(
 ):
     """Delete a file."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     path = f"/{file_path}" if not file_path.startswith("/") else file_path
     
@@ -675,8 +675,8 @@ async def send_message(
 ):
     """Send message to Nicole and stream response."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     # Save user message
     async with pool.acquire() as conn:
@@ -747,8 +747,8 @@ async def get_chat_history(
 ):
     """Get conversation history."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         if before:
@@ -800,8 +800,8 @@ async def get_pending_approvals(
 ):
     """Get pending approvals for project."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         approvals = await conn.fetch(
@@ -837,8 +837,8 @@ async def approve_request(
 ):
     """Approve a pending request."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         approval = await conn.fetchrow(
@@ -877,8 +877,8 @@ async def reject_request(
 ):
     """Reject a pending request."""
     user_id = await get_current_user_id(authorization)
-    await verify_project_access(await get_db_pool(), project_id, user_id)
-    pool = await get_db_pool()
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
     
     if not request.reason:
         raise HTTPException(status_code=400, detail="Rejection reason required")
