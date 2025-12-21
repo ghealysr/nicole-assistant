@@ -52,8 +52,8 @@ const agentConfig: Record<string, { icon: React.ReactNode; color: string; bgColo
 
 // Human-readable activity messages
 const formatActivityMessage = (activity: FazActivity): string => {
-  const agentName = activity.agent_name.toLowerCase();
-  const message = activity.message;
+  const agentName = activity.agent_name?.toLowerCase() || '';
+  const message = String(activity.message || '');
   
   // Make Nicole's messages more conversational
   if (agentName === 'nicole') {
