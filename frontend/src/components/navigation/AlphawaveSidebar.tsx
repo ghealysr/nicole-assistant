@@ -1,11 +1,9 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { LotusSphere } from '@/components/chat/LotusSphere';
 
 interface AlphawaveSidebarProps {
-  onFazCodeClick?: () => void;
-  isFazCodeOpen?: boolean;
   onMemoryClick?: () => void;
   isMemoryOpen?: boolean;
   onJournalClick?: () => void;
@@ -26,12 +24,10 @@ interface AlphawaveSidebarProps {
  * - Dark theme sidebar
  * - Alphawave logo at top (large size)
  * - Navigation items with icons
- * - Faz Code button to open coding workspace panel
+ * - Faz Code button navigates to /faz route
  * - Active state highlighting
  */
 export function AlphawaveSidebar({ 
-  onFazCodeClick,
-  isFazCodeOpen,
   onMemoryClick, 
   isMemoryOpen,
   onJournalClick,
@@ -45,8 +41,10 @@ export function AlphawaveSidebar({
   onNewChat,
 }: AlphawaveSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const isOnChat = pathname === '/chat' || pathname?.startsWith('/chat/');
+  const isOnFaz = pathname === '/faz' || pathname?.startsWith('/faz/');
 
   return (
     <aside className="w-60 bg-[#1a1a1a] flex flex-col shrink-0">
@@ -120,10 +118,10 @@ export function AlphawaveSidebar({
           Research
         </button>
 
-        {/* Faz Code Button - Opens AI coding workspace panel */}
+        {/* Faz Code Button - Navigates to Faz Code workspace */}
         <button
-          onClick={onFazCodeClick}
-          className={`menu-item vibe-btn ${isFazCodeOpen ? 'vibe-active' : ''}`}
+          onClick={() => router.push('/faz')}
+          className={`menu-item vibe-btn ${isOnFaz ? 'vibe-active' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-[18px] h-[18px]" strokeWidth={2}>
             <polyline points="16 18 22 12 16 6"/>

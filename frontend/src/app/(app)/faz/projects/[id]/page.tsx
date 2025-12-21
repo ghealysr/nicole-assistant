@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { WorkspaceLayout } from '@/components/faz/WorkspaceLayout';
 import { FileTree } from '@/components/faz/FileTree';
 import { CodeViewer } from '@/components/faz/CodeViewer';
@@ -14,7 +14,7 @@ import { useFazStore } from '@/lib/faz/store';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { 
   Loader2, Play, Square, Rocket, ExternalLink, RefreshCw, 
-  AlertCircle, X, Smartphone, Tablet, Monitor, Code, Eye, Columns
+  AlertCircle, X, Smartphone, Tablet, Monitor, Code, Eye, Columns, ArrowLeft
 } from 'lucide-react';
 import { ProjectSetupStatus } from '@/components/faz/ProjectSetupStatus';
 import { ApprovalPanel } from '@/components/faz/ApprovalPanel';
@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = parseInt(params.id as string);
   
   const { 
@@ -157,14 +158,37 @@ export default function ProjectWorkspacePage() {
   };
 
   // Run pipeline
-  const handleRunPipeline = async () => {
+  const handleRunPipeline = async (force: boolean = false) => {
     try {
       setLoading(true);
       clearError();
-      await fazApi.runPipeline(projectId);
+      await fazApi.runPipeline(projectId, undefined, 'nicole', force);
     } catch (err) {
       console.error('Failed to run pipeline:', err);
-      setError('Failed to start pipeline. Please try again.');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to start pipeline';
+      // If pipeline already running, offer to force restart
+      if (errorMsg.includes('already running')) {
+        setError('Pipeline appears stuck. Click "Reset" to force restart.');
+      } else {
+        setError(errorMsg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Force restart pipeline
+  const handleForceRestart = async () => {
+    try {
+      setLoading(true);
+      clearError();
+      // First reset the project
+      await fazApi.resetProject(projectId);
+      // Then run the pipeline
+      await fazApi.runPipeline(projectId);
+    } catch (err) {
+      console.error('Failed to force restart:', err);
+      setError('Failed to restart pipeline. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -255,8 +279,18 @@ export default function ProjectWorkspacePage() {
   // Toolbar component
   const Toolbar = () => (
     <div className="h-12 bg-[#12121A] border-b border-[#1E1E2E] flex items-center justify-between px-4">
-      {/* Left: Project info */}
+      {/* Left: Project info with navigation */}
       <div className="flex items-center gap-4">
+        <button
+          onClick={() => router.push('/faz')}
+          className="flex items-center gap-1.5 text-[#64748B] hover:text-[#F1F5F9] transition-colors text-sm"
+        >
+          <ArrowLeft size={16} />
+          <span>Projects</span>
+        </button>
+        
+        <div className="w-px h-6 bg-[#1E1E2E]" />
+        
         <h1 className="text-sm font-semibold text-[#F1F5F9]">
           {currentProject?.name || 'Untitled Project'}
         </h1>
@@ -361,7 +395,7 @@ export default function ProjectWorkspacePage() {
           </button>
         ) : (
           <button
-            onClick={handleRunPipeline}
+            onClick={() => handleRunPipeline()}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#6366F1] text-white hover:bg-[#5558E3] rounded text-sm font-medium transition-colors"
           >
             <Play size={14} />
@@ -413,6 +447,14 @@ export default function ProjectWorkspacePage() {
       <div className="flex items-center gap-2 text-red-400">
         <AlertCircle size={16} />
         <span className="text-sm">{error}</span>
+        {error.includes('stuck') && (
+          <button 
+            onClick={handleForceRestart}
+            className="ml-2 px-2 py-1 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 rounded text-xs font-medium"
+          >
+            Reset & Restart
+          </button>
+        )}
       </div>
       <button onClick={clearError} className="text-red-400 hover:text-red-300">
         <X size={16} />

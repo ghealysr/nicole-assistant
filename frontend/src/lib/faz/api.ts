@@ -61,11 +61,11 @@ export const fazApi = {
   },
 
   // Pipeline
-  async runPipeline(id: number, prompt?: string, startAgent: string = 'nicole'): Promise<void> {
+  async runPipeline(id: number, prompt?: string, startAgent: string = 'nicole', force: boolean = false): Promise<void> {
     const res = await fetch(`${FAZ_API_URL}/projects/${id}/run`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ prompt, start_agent: startAgent }),
+      body: JSON.stringify({ prompt, start_agent: startAgent, force }),
     });
     if (!res.ok) {
       let detail = '';
@@ -96,6 +96,14 @@ export const fazApi = {
       const prefix = `Failed to stop pipeline (${res.status})`;
       throw new Error(detail ? `${prefix}: ${detail}` : prefix);
     }
+  },
+
+  async resetProject(id: number): Promise<{ success: boolean; message: string; old_status: string; new_status: string }> {
+    const res = await fetch(`${FAZ_API_URL}/projects/${id}/reset`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(res);
   },
 
   // Files

@@ -2,13 +2,15 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Plus, Search, Rocket, Grid, List as ListIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Search, Rocket, Grid, List as ListIcon, ArrowLeft } from 'lucide-react';
 import { ProjectCard } from '@/components/faz/ProjectCard';
 import { fazApi } from '@/lib/faz/api';
 import { useFazStore } from '@/lib/faz/store';
 // Types imported via useFazStore
 
 export default function FazDashboard() {
+  const router = useRouter();
   const { projects, setProjects } = useFazStore();
   const [loading, setLoading] = React.useState(true);
   const [view, setView] = React.useState<'grid' | 'list'>('grid');
@@ -37,11 +39,23 @@ export default function FazDashboard() {
     <div className="min-h-screen bg-[#0A0A0F] text-[#F1F5F9]">
       {/* Header */}
       <header className="h-16 border-b border-[#1E1E2E] flex items-center justify-between px-6 bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366F1] to-[#818CF8] flex items-center justify-center text-white font-bold">
-            <Rocket size={18} />
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push('/chat')}
+            className="flex items-center gap-2 text-[#64748B] hover:text-[#F1F5F9] transition-colors text-sm"
+          >
+            <ArrowLeft size={16} />
+            <span>Back to Chat</span>
+          </button>
+          
+          <div className="w-px h-6 bg-[#1E1E2E]" />
+          
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366F1] to-[#818CF8] flex items-center justify-center text-white font-bold">
+              <Rocket size={18} />
+            </div>
+            <span className="font-bold text-lg tracking-tight">FAZ CODE</span>
           </div>
-          <span className="font-bold text-lg tracking-tight">FAZ CODE</span>
         </div>
         
         <div className="flex items-center gap-4">
