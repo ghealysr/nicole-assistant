@@ -4,7 +4,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { 
-  Bot, Code2, Search, PenTool, Bug, CheckCircle, BrainCircuit, 
+  Bot, Code2, Search, Bug, CheckCircle, BrainCircuit, 
   AlertCircle, Sparkles, FileText, Palette, Zap, Eye
 } from 'lucide-react';
 import { FazActivity } from '@/types/faz';

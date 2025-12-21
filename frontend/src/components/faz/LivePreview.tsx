@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   Maximize2, Minimize2, RefreshCw, Smartphone, Tablet, Monitor,
   ExternalLink, Loader2, AlertCircle
@@ -231,9 +231,6 @@ export function LivePreview({ className }: LivePreviewProps) {
 
   // Get viewport dimensions
   const viewportSize = VIEWPORT_SIZES[viewport];
-
-  // Calculate scale to fit container
-  const containerWidth = isExpanded ? '100vw' : '100%';
 
   return (
     <div className={cn(

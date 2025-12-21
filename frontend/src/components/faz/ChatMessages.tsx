@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { 
   Bot, User, CheckCircle2, Loader2, ChevronDown, ChevronUp,
-  MessageCircle, XCircle, AlertCircle
+  MessageCircle, XCircle
 } from 'lucide-react';
 import { useFazStore } from '@/lib/faz/store';
 import { fazWS } from '@/lib/faz/websocket';
@@ -179,7 +179,7 @@ function ArtifactPreview({ content, title, isExpanded, onToggle }: ArtifactPrevi
 }
 
 export function ChatMessages() {
-  const { messages, currentGate, currentProject, setCurrentGate } = useFazStore();
+  const { messages, currentGate, currentProject } = useFazStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set());

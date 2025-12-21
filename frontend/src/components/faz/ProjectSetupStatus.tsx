@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 interface ProjectSetupStatusProps {
   githubRepo?: string | null;
   productionUrl?: string | null;
-  vercelProjectId?: string | null;
+  vercelProjectId?: string | null;  // Reserved for future use
   isConnecting?: boolean;
   className?: string;
 }
@@ -99,7 +99,8 @@ function VercelIcon({ className }: { className?: string }) {
 export function ProjectSetupStatus({ 
   githubRepo, 
   productionUrl, 
-  vercelProjectId,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  vercelProjectId,  // Reserved for future Vercel dashboard link
   isConnecting = false,
   className 
 }: ProjectSetupStatusProps) {
