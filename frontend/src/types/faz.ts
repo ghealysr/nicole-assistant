@@ -1,7 +1,3 @@
-// Pipeline mode determines if the system pauses for user approval
-export type PipelineMode = 'auto' | 'interactive';
-
-// All possible project statuses including interactive approval gates
 export type ProjectStatus = 
   // Standard pipeline states
   | 'intake' 
@@ -19,16 +15,19 @@ export type ProjectStatus =
   | 'paused'
   | 'archived'
   | 'cancelled'
-  // Interactive pipeline approval gates
-  | 'awaiting_confirm'           // Waiting for user to confirm understanding
-  | 'awaiting_research_review'   // Waiting for user to review research
-  | 'awaiting_plan_approval'     // Waiting for user to approve architecture
-  | 'awaiting_design_approval'   // Waiting for user to approve design
-  | 'awaiting_qa_approval'       // Waiting for user to review QA results
-  | 'awaiting_user_testing'      // User testing phase - user iterations have no limit
-  | 'awaiting_final_approval';   // Waiting for final review approval
+  // Interactive approval gates
+  | 'awaiting_confirm'
+  | 'awaiting_research_review'
+  | 'awaiting_plan_approval'
+  | 'awaiting_design_approval'
+  | 'awaiting_qa_approval'
+  | 'awaiting_user_testing'
+  | 'awaiting_final_approval';
 
-// Artifact types that can be stored and reviewed
+// Pipeline execution mode
+export type PipelineMode = 'interactive' | 'autonomous' | 'hybrid';
+
+// Artifact types for approval gates
 export type ArtifactType = 
   | 'project_brief'
   | 'research'
@@ -38,21 +37,13 @@ export type ArtifactType =
   | 'review_summary'
   | 'custom';
 
-export interface FazProjectArtifact {
-  artifact_id: number;
-  project_id: number;
+export interface Artifact {
   artifact_type: ArtifactType;
   title: string;
   content: string;
-  content_format: 'markdown' | 'json' | 'yaml' | 'text';
-  generated_by?: string;
-  version: number;
-  is_approved: boolean;
-  approved_at?: string;
-  user_feedback?: string;
-  rating?: number;
-  created_at: string;
-  updated_at: string;
+  is_approved?: boolean;
+  feedback?: string;
+  created_at?: string;
 }
 
 export interface FazProject {
@@ -73,13 +64,9 @@ export interface FazProject {
   vercel_project_id?: string;
   architecture?: Architecture;
   design_tokens?: DesignSystem;
-  // Interactive pipeline fields
-  pipeline_mode?: PipelineMode;
-  current_phase?: string;
-  awaiting_approval_for?: string;
-  last_gate_reached_at?: string;
-  // Artifacts for review
-  artifacts?: FazProjectArtifact[];
+  // Gate/approval fields
+  awaiting_approval_for?: string | null;
+  artifacts?: Artifact[];
 }
 
 export interface FazFile {
