@@ -202,14 +202,13 @@ function ActivityItem({ activity }: ActivityItemProps) {
         <div className="flex-1 pb-4">
           <div className="flex items-center justify-between mb-1">
             <span className={cn("text-xs font-medium capitalize", config.color)}>
-              {activity.agent_name}
+              {String(activity.agent_name || '')}
             </span>
             <span className="text-[10px] text-zinc-600">
               {format(new Date(activity.started_at), 'HH:mm:ss')}
             </span>
           </div>
           
-          {/* Message */}
           <div className={cn(
             "text-sm leading-relaxed",
             activity.content_type === 'error' ? 'text-red-400' : 'text-zinc-300'
@@ -217,8 +216,7 @@ function ActivityItem({ activity }: ActivityItemProps) {
             {formattedMessage}
           </div>
           
-          {/* Thinking indicator - displays animated dots for ongoing thinking */}
-          {activity.content_type === 'thinking' && activity.status === 'running' && (
+          {activity.content_type === 'thinking' && activity.status === 'running' ? (
             <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
               <span className="flex gap-1">
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -227,31 +225,29 @@ function ActivityItem({ activity }: ActivityItemProps) {
               </span>
               <span>Thinking...</span>
             </div>
-          )}
+          ) : null}
           
-          {/* Tool usage */}
-          {activity.content_type === 'tool_call' && activity.details?.tool_name && (
+          {activity.content_type === 'tool_call' && activity.details?.tool_name ? (
             <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-[10px] text-cyan-400 font-mono">
               <Zap size={10} />
               {String(activity.details.tool_name)}
             </div>
-          )}
+          ) : null}
           
-          {/* Cost metrics */}
-          {(activity.cost_cents > 0 || activity.output_tokens > 0) && activity.status === 'complete' && (
+          {(activity.cost_cents > 0 || activity.output_tokens > 0) && activity.status === 'complete' ? (
             <div className="flex gap-2 mt-2">
-              {activity.cost_cents > 0 && (
+              {activity.cost_cents > 0 ? (
                 <span className="text-[10px] text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                   ${(activity.cost_cents / 100).toFixed(4)}
                 </span>
-              )}
-              {activity.output_tokens > 0 && (
+              ) : null}
+              {activity.output_tokens > 0 ? (
                 <span className="text-[10px] text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded">
                   {activity.output_tokens.toLocaleString()} tokens
                 </span>
-              )}
+              ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </motion.div>
