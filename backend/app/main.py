@@ -48,6 +48,7 @@ from app.routers import (
     alphawave_research,
     faz_projects,
     faz_chat,
+    enjineer,
 )
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,7 @@ class ConditionalGZipMiddleware:
         "/chat/stream-test",                  # Streaming test endpoint
         "/vibe/",                             # Vibe dashboard streaming
         "/faz/",                              # Faz code streaming
+        "/enjineer/",                         # Enjineer dashboard streaming
         "/images/generate/stream",            # Image generation progress streaming
         "/images/analyze-references/stream",  # Vision analysis streaming
         "/images/prompt-suggestions/stream",  # Nicole prompt suggestions streaming
@@ -277,6 +279,9 @@ app.include_router(alphawave_research.router, tags=["Research"])
 # Faz Code Dashboard
 app.include_router(faz_projects.router, tags=["Faz Code"])
 app.include_router(faz_chat.router, tags=["Faz Code Chat"])
+
+# Enjineer Dashboard (Cursor-like AI coding environment)
+app.include_router(enjineer.router, tags=["Enjineer"])
 
 
 @app.get("/healthz")

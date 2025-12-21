@@ -21,6 +21,7 @@ export function NicoleChat() {
   const {
     messages,
     addMessage,
+    updateMessage,
     isNicoleThinking,
     setNicoleThinking,
     isChatCollapsed,
@@ -46,6 +47,15 @@ export function NicoleChat() {
 
   const handleSend = async () => {
     if (!input.trim() || isNicoleThinking) return;
+    if (!currentProject) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Please select or create a project first.',
+        timestamp: new Date(),
+      });
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -58,18 +68,48 @@ export function NicoleChat() {
     setInput('');
     setNicoleThinking(true);
 
-    // Placeholder for actual API call - will be connected in backend phase
-    // For now, simulate Nicole's response
-    setTimeout(() => {
-      const nicoleMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `I received your message: "${userMessage.content}"\n\nThe Enjineer backend is not yet connected. Once connected, I'll be able to:\n\n• Create and edit files\n• Run your code\n• Deploy to production\n• Coordinate with my agents\n\nFor now, the UI is ready for you to explore!`,
-        timestamp: new Date(),
-      };
-      addMessage(nicoleMessage);
+    // Create placeholder for Nicole's streaming response
+    const nicoleMessageId = crypto.randomUUID();
+    addMessage({
+      id: nicoleMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true,
+      toolCalls: [],
+    });
+
+    try {
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      let fullContent = '';
+      const toolCalls: ToolCall[] = [];
+
+      await enjineerApi.chat(
+        currentProject.id,
+        userMessage.content,
+        (chunk) => {
+          fullContent += chunk;
+          updateMessage(nicoleMessageId, { 
+            content: fullContent,
+            toolCalls: [...toolCalls],
+          });
+        }
+      );
+
+      // Finalize the message
+      updateMessage(nicoleMessageId, { 
+        content: fullContent || "I'm ready to help! What would you like to build?",
+        isStreaming: false,
+      });
+    } catch (error) {
+      console.error('[NicoleChat] Error:', error);
+      updateMessage(nicoleMessageId, {
+        content: `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+        isStreaming: false,
+      });
+    } finally {
       setNicoleThinking(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

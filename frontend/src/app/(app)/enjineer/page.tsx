@@ -29,19 +29,71 @@ export default function EnjineerPage() {
     setCurrentProject,
   } = useEnjineerStore();
 
-  // Initialize with a default project for demo
+  const {
+    setFiles,
+    setPlan,
+    setLoading,
+  } = useEnjineerStore();
+
+  // Load projects from backend
   React.useEffect(() => {
-    if (!currentProject) {
-      setCurrentProject({
-        id: 0,
-        name: 'New Project',
-        description: 'Start building with Nicole',
-        status: 'draft',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+    async function loadProjects() {
+      try {
+        setLoading(true);
+        const { enjineerApi } = await import('@/lib/enjineer/api');
+        
+        // Try to get existing projects
+        const projects = await enjineerApi.listProjects();
+        
+        if (projects.length > 0) {
+          // Load most recent project
+          const project = projects[0];
+          setCurrentProject({
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            status: project.status,
+            createdAt: new Date(project.createdAt),
+            updatedAt: new Date(project.updatedAt),
+          });
+          
+          // Load project files
+          const files = await enjineerApi.getFiles(project.id);
+          setFiles(files);
+          
+          // Load project plan
+          const plan = await enjineerApi.getPlan(project.id);
+          setPlan(plan.map((s, idx) => ({
+            id: s.id || String(idx),
+            title: s.title,
+            description: s.description || '',
+            status: s.status || 'pending',
+            files: s.files,
+          })));
+        } else {
+          // No projects, show welcome state
+          setCurrentProject(null);
+        }
+      } catch (error) {
+        console.error('[Enjineer] Failed to load projects:', error);
+        // Set to demo mode if backend unavailable
+        if (!currentProject) {
+          setCurrentProject({
+            id: 0,
+            name: 'New Project',
+            description: 'Start building with Nicole',
+            status: 'draft',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [currentProject, setCurrentProject]);
+    
+    loadProjects();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="h-screen bg-[#0A0A0F] flex flex-col overflow-hidden">
