@@ -192,7 +192,7 @@ module.exports = nextConfig
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '''' + project_name + ''' - Coming Soon',
+  title: "'" + project_name + "' - Coming Soon",
   description: 'A new project is being built with Faz Code',
 }
 
