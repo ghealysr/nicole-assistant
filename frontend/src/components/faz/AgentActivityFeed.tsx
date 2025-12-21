@@ -213,7 +213,7 @@ function ActivityItem({ activity }: ActivityItemProps) {
             "text-sm leading-relaxed",
             activity.content_type === 'error' ? 'text-red-400' : 'text-zinc-300'
           )}>
-            {formattedMessage}
+            {formattedMessage as string}
           </div>
           
           {/* Thinking indicator */}
