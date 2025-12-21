@@ -157,10 +157,11 @@ interface ActivityItemProps {
 }
 
 function ActivityItem({ activity }: ActivityItemProps) {
-  const config = agentConfig[activity.agent_name.toLowerCase()] || agentConfig.nicole;
-  const formattedMessage = formatActivityMessage(activity);
+  const agentKey = activity.agent_name?.toLowerCase() || 'nicole';
+  const config = agentConfig[agentKey] || agentConfig.nicole;
+  const formattedMessage: string = formatActivityMessage(activity);
   
-  const renderIcon = () => {
+  const renderIcon = (): React.ReactNode => {
     switch (activity.content_type) {
       case 'thinking':
         return <Sparkles size={12} className="text-purple-400" />;
@@ -171,7 +172,7 @@ function ActivityItem({ activity }: ActivityItemProps) {
       case 'error':
         return <AlertCircle size={12} className="text-red-400" />;
       default:
-        return config.icon;
+        return config.icon as React.ReactNode;
     }
   };
 
@@ -213,10 +214,10 @@ function ActivityItem({ activity }: ActivityItemProps) {
             "text-sm leading-relaxed",
             activity.content_type === 'error' ? 'text-red-400' : 'text-zinc-300'
           )}>
-            {formattedMessage as string}
+            {formattedMessage}
           </div>
           
-          {/* Thinking indicator */}
+          {/* Thinking indicator - displays animated dots for ongoing thinking */}
           {activity.content_type === 'thinking' && activity.status === 'running' && (
             <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
               <span className="flex gap-1">
