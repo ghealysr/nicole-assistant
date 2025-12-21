@@ -5,6 +5,7 @@ import { Send, ImageIcon, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fazApi } from '@/lib/faz/api';
+import { useFazStore } from '@/lib/faz/store';
 
 interface UploadedImage {
   file: File;
@@ -25,9 +26,18 @@ export function ChatInput({ projectId, onSend, disabled, placeholder }: ChatInpu
   const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Get store functions for dismissing approval gate when user types
+  const { currentGate, setCurrentGate } = useFazStore();
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
+    
+    // Dismiss approval button when user starts typing (considered as "no approval")
+    if (currentGate && e.target.value.trim()) {
+      setCurrentGate(null);
+    }
+    
     // Auto-resize
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';

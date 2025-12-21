@@ -2,14 +2,17 @@
 Research Agent - Faz Code Analyst
 
 Gathers design inspiration, competitor analysis, and current trends.
-Uses Gemini 3 Pro with web search grounding.
+Uses Gemini 3 Pro with web search grounding and vision analysis.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 import json
 import logging
+import base64
+import httpx
 
 from .base_agent import BaseAgent, AgentResult
+from app.database import db
 
 logger = logging.getLogger(__name__)
 
@@ -105,23 +108,156 @@ After research, hand off to:
         if state.get("data", {}).get("agent_instructions"):
             prompt_parts.append(f"\n## ORCHESTRATOR INSTRUCTIONS\n{state['data']['agent_instructions']}")
         
+        # Include user inspiration image analysis if available
+        inspiration_analysis = state.get("inspiration_analysis")
+        if inspiration_analysis:
+            prompt_parts.append(f"\n## USER INSPIRATION IMAGES ANALYSIS\n{inspiration_analysis}")
+        
         prompt_parts.append("""
 ## YOUR TASK
 1. Identify the industry/type of website needed
 2. Research current design trends for this industry
 3. Find inspiring examples
 4. Recommend colors, typography, and patterns
-5. Output your findings as JSON""")
+5. If user provided inspiration images, incorporate their desired elements into recommendations
+6. Output your findings as JSON""")
         
         return "\n".join(prompt_parts)
     
-    async def run(self, state: Dict[str, Any]) -> AgentResult:
-        """Run research with web search."""
+    async def _load_reference_images(self, project_id: int) -> List[Dict[str, Any]]:
+        """Load reference/inspiration images for a project from the database."""
         try:
-            # First, do a web search for trends
+            rows = await db.fetch(
+                """
+                SELECT artifact_id, content, created_at
+                FROM faz_project_artifacts
+                WHERE project_id = $1 AND artifact_type = 'reference_image'
+                ORDER BY created_at DESC
+                LIMIT 10
+                """,
+                project_id,
+            )
+            
+            images = []
+            for row in rows:
+                content = json.loads(row["content"]) if isinstance(row["content"], str) else row["content"]
+                images.append({
+                    "image_id": row["artifact_id"],
+                    "url": content.get("url"),
+                    "filename": content.get("filename"),
+                    "notes": content.get("notes", ""),
+                    "width": content.get("width"),
+                    "height": content.get("height"),
+                })
+            
+            return images
+        except Exception as e:
+            logger.error(f"[Research] Failed to load reference images: {e}")
+            return []
+    
+    async def _analyze_inspiration_images(
+        self, 
+        images: List[Dict[str, Any]], 
+        project_context: str
+    ) -> str:
+        """
+        Analyze user-provided inspiration images using vision API.
+        
+        Uses Gemini's vision capability to analyze images and extract design insights.
+        """
+        if not images:
+            return ""
+        
+        try:
+            from app.config import settings
+            
+            # Prepare vision analysis prompt
+            vision_prompt = f"""You are analyzing inspiration images provided by a user for a web design project.
+
+Project context: {project_context}
+
+For each image, identify:
+1. Color palette being used (extract specific hex codes if visible)
+2. Typography styles (serif/sans-serif, modern/classic, weights)
+3. Layout patterns (grid structure, whitespace usage, visual hierarchy)
+4. UI components and elements worth noting
+5. Overall aesthetic and mood
+6. What specific elements the user likely wants to incorporate
+
+The user provided notes for each image - pay special attention to what they've highlighted."""
+
+            # Build image descriptions with notes
+            analysis_parts = []
+            
+            for i, img in enumerate(images, 1):
+                analysis_parts.append(f"\n### Image {i}: {img.get('filename', 'Untitled')}")
+                analysis_parts.append(f"URL: {img.get('url', 'N/A')}")
+                if img.get("notes"):
+                    analysis_parts.append(f"User Notes: {img['notes']}")
+                else:
+                    analysis_parts.append("User Notes: (none provided)")
+            
+            # For vision analysis, we use Gemini's vision capability
+            # Since we have URLs, we can use the multimodal input
+            if settings.GOOGLE_API_KEY:
+                import google.generativeai as genai
+                
+                genai.configure(api_key=settings.GOOGLE_API_KEY)
+                model = genai.GenerativeModel("gemini-1.5-pro-latest")
+                
+                # Build content with images
+                content_parts = [vision_prompt + "\n".join(analysis_parts)]
+                
+                # Fetch and include images
+                for img in images[:5]:  # Limit to 5 images for token efficiency
+                    img_url = img.get("url")
+                    if img_url:
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                response = await client.get(img_url, timeout=10.0)
+                                if response.status_code == 200:
+                                    img_data = base64.standard_b64encode(response.content).decode("utf-8")
+                                    content_type = response.headers.get("content-type", "image/jpeg")
+                                    content_parts.append({
+                                        "mime_type": content_type,
+                                        "data": img_data,
+                                    })
+                        except Exception as img_err:
+                            logger.warning(f"[Research] Failed to fetch image {img_url}: {img_err}")
+                
+                # Call Gemini vision
+                response = await model.generate_content_async(content_parts)
+                
+                if response.text:
+                    logger.info(f"[Research] Vision analysis complete for {len(images)} images")
+                    return response.text
+            
+            # Fallback: return basic info without vision analysis
+            return "User provided inspiration images:\n" + "\n".join(analysis_parts)
+            
+        except Exception as e:
+            logger.error(f"[Research] Vision analysis failed: {e}")
+            return f"User provided {len(images)} inspiration images (vision analysis unavailable)"
+    
+    async def run(self, state: Dict[str, Any]) -> AgentResult:
+        """Run research with web search and inspiration image analysis."""
+        try:
+            project_id = state.get("project_id")
             original = state.get("original_prompt", "")
             
-            # Extract industry from prompt
+            # Step 1: Load and analyze user inspiration images if available
+            inspiration_analysis = ""
+            if project_id:
+                reference_images = await self._load_reference_images(project_id)
+                if reference_images:
+                    logger.info(f"[Research] Found {len(reference_images)} inspiration images to analyze")
+                    inspiration_analysis = await self._analyze_inspiration_images(
+                        reference_images, 
+                        original
+                    )
+                    state["inspiration_analysis"] = inspiration_analysis
+            
+            # Step 2: Do web search for trends
             search_query = f"{original} website design trends 2025"
             
             logger.info(f"[Research] Searching: {search_query}")
@@ -133,11 +269,11 @@ After research, hand off to:
             if search_result.get("content"):
                 search_context = f"\n## WEB SEARCH RESULTS\n{search_result['content'][:3000]}"
             
-            # Build prompt with search results
+            # Step 3: Build prompt with search results and inspiration analysis
             prompt = self._build_prompt(state) + search_context
             system_prompt = self._get_system_prompt()
             
-            # Call LLM to analyze
+            # Call LLM to analyze and synthesize findings
             response, input_tokens, output_tokens = await self._call_llm(
                 prompt=prompt,
                 system_prompt=system_prompt,
@@ -146,6 +282,10 @@ After research, hand off to:
             
             # Parse response
             result = self._parse_response(response, state)
+            
+            # Include inspiration analysis in data for downstream agents
+            if inspiration_analysis:
+                result.data["inspiration_analysis"] = inspiration_analysis
             
             # Add token tracking
             from .base_agent import MODEL_PRICING

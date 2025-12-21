@@ -25,6 +25,7 @@ export type ProjectStatus =
   | 'awaiting_plan_approval'     // Waiting for user to approve architecture
   | 'awaiting_design_approval'   // Waiting for user to approve design
   | 'awaiting_qa_approval'       // Waiting for user to review QA results
+  | 'awaiting_user_testing'      // User testing phase - user iterations have no limit
   | 'awaiting_final_approval';   // Waiting for final review approval
 
 // Artifact types that can be stored and reviewed

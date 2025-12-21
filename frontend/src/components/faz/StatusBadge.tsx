@@ -31,6 +31,7 @@ const statusConfig: Record<ProjectStatus, { bg: string; text: string; label: str
   awaiting_plan_approval: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', label: 'Approve Plan', glow: 'shadow-indigo-500/20' },
   awaiting_design_approval: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Approve Design', glow: 'shadow-pink-500/20' },
   awaiting_qa_approval: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'QA Review', glow: 'shadow-orange-500/20' },
+  awaiting_user_testing: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Your Turn to Test', glow: 'shadow-amber-500/20' },
   awaiting_final_approval: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Final Approval', glow: 'shadow-green-500/20' },
 };
 
@@ -39,7 +40,7 @@ export function StatusBadge({ status, className, animate = false }: StatusBadgeP
   const isActive = [
     'planning', 'researching', 'designing', 'building', 'processing', 'qa', 'deploying', 'review',
     'awaiting_confirm', 'awaiting_research_review', 'awaiting_plan_approval', 
-    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_final_approval'
+    'awaiting_design_approval', 'awaiting_qa_approval', 'awaiting_user_testing', 'awaiting_final_approval'
   ].includes(status);
 
   return (

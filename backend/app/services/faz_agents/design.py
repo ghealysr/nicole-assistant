@@ -147,21 +147,27 @@ After design tokens are ready, hand off to **coding** for implementation."""
         prompt_parts.append(f"## PROJECT REQUEST\n{original}")
         
         # Research context
-        if state.get("data", {}).get("research_results"):
-            research = state["data"]["research_results"]
+        research_results = state.get("research_results") or state.get("data", {}).get("research_results")
+        if research_results:
             prompt_parts.append(f"\n## RESEARCH FINDINGS")
             
-            if research.get("industry"):
-                prompt_parts.append(f"Industry: {research['industry']}")
+            if research_results.get("industry"):
+                prompt_parts.append(f"Industry: {research_results['industry']}")
             
-            if research.get("trends"):
-                prompt_parts.append(f"Trends: {', '.join(research['trends'][:3])}")
+            if research_results.get("trends"):
+                prompt_parts.append(f"Trends: {', '.join(research_results['trends'][:3])}")
             
-            if research.get("color_recommendations"):
-                prompt_parts.append(f"Color suggestions: {json.dumps(research['color_recommendations'])}")
+            if research_results.get("color_recommendations"):
+                prompt_parts.append(f"Color suggestions: {json.dumps(research_results['color_recommendations'])}")
             
-            if research.get("typography_recommendations"):
-                prompt_parts.append(f"Typography suggestions: {json.dumps(research['typography_recommendations'])}")
+            if research_results.get("typography_recommendations"):
+                prompt_parts.append(f"Typography suggestions: {json.dumps(research_results['typography_recommendations'])}")
+        
+        # Inspiration image analysis from Research Agent
+        inspiration_analysis = state.get("inspiration_analysis") or state.get("data", {}).get("inspiration_analysis")
+        if inspiration_analysis:
+            prompt_parts.append(f"\n## USER INSPIRATION IMAGES\nThe user provided inspiration images with notes. Here's the analysis:\n{inspiration_analysis}")
+            prompt_parts.append("\n**IMPORTANT**: Incorporate elements the user highlighted from their inspiration images into your design system.")
         
         # Architecture context
         if state.get("architecture"):
@@ -177,6 +183,7 @@ Create a complete design system JSON with:
 3. Spacing system
 4. Effects (shadows, borders, transitions)
 5. Tailwind configuration extensions
+6. If user provided inspiration images, incorporate their desired elements
 
 Make it look premium and professional.""")
         

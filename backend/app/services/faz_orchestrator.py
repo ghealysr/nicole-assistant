@@ -118,8 +118,10 @@ class ProjectState(TypedDict, total=False):
     agent_history: List[str]
     iteration_count: int
     max_iterations: int
-    qa_iteration_count: int      # Track coding↔qa cycles
-    max_qa_iterations: int       # Max loops before forcing review
+    qa_iteration_count: int      # Track coding↔qa cycles (agent-driven)
+    max_qa_iterations: int       # Max agent loops before forcing user review
+    user_iteration_count: int    # Track user-driven iterations (no limit)
+    is_user_testing: bool        # True when user is actively testing/iterating
     
     # Data from agents
     architecture: Dict[str, Any]
@@ -193,8 +195,10 @@ class FazOrchestrator:
             "agent_history": [],
             "iteration_count": 0,
             "max_iterations": 10,  # Increased for interactive mode
-            "qa_iteration_count": 0,  # Track coding↔qa cycles specifically
-            "max_qa_iterations": 3,   # Max coding↔qa loops before forcing approval
+            "qa_iteration_count": 0,  # Track agent-driven coding↔qa cycles
+            "max_qa_iterations": 3,   # Max agent loops before forcing user review
+            "user_iteration_count": 0, # User-driven iterations have no limit
+            "is_user_testing": False,  # Flag for user testing phase
             "files": {},
             "gate_artifacts": {},
             "total_tokens": 0,
@@ -498,24 +502,49 @@ class FazOrchestrator:
                 # Determine next agent
                 next_agent = result.next_agent
                 
-                # Track coding↔qa iterations to prevent infinite loops
+                # Track coding↔qa iterations to prevent infinite agent loops
                 if current_agent == "qa" and next_agent == "coding":
-                    self.state["qa_iteration_count"] = self.state.get("qa_iteration_count", 0) + 1
-                    max_qa = self.state.get("max_qa_iterations", 3)
-                    
-                    if self.state["qa_iteration_count"] >= max_qa:
-                        # Force proceed to review after max iterations
-                        logger.warning(
-                            f"[Orchestrator] Max QA iterations ({max_qa}) reached. "
-                            f"Forcing proceed to review."
+                    # Skip limit if user is actively testing (user iterations have no limit)
+                    if self.state.get("is_user_testing", False):
+                        self.state["user_iteration_count"] = self.state.get("user_iteration_count", 0) + 1
+                        logger.info(
+                            f"[Orchestrator] User testing iteration {self.state['user_iteration_count']}"
                         )
-                        await self._log_activity(
-                            "orchestrator", "escalate",
-                            f"Max QA iterations reached ({max_qa}). Escalating to review.",
-                            {"qa_iterations": self.state["qa_iteration_count"]},
-                            content_type="status"
-                        )
-                        next_agent = "review"
+                    else:
+                        # Agent-driven iterations have a limit
+                        self.state["qa_iteration_count"] = self.state.get("qa_iteration_count", 0) + 1
+                        max_qa = self.state.get("max_qa_iterations", 3)
+                        
+                        if self.state["qa_iteration_count"] >= max_qa:
+                            # Max agent iterations reached - enter user testing phase
+                            logger.info(
+                                f"[Orchestrator] Max agent QA iterations ({max_qa}) reached. "
+                                f"Entering user testing phase."
+                            )
+                            await self._log_activity(
+                                "orchestrator", "user_testing",
+                                f"Agent QA iterations reached limit ({max_qa}). Ready for user testing.",
+                                {"qa_iterations": self.state["qa_iteration_count"]},
+                                content_type="status"
+                            )
+                            
+                            # Mark as user testing phase - user iterations now have no limit
+                            self.state["is_user_testing"] = True
+                            self.state["user_iteration_count"] = 0
+                            
+                            # Force a gate for user testing before proceeding to review
+                            self.state["pipeline_status"] = PipelineStatus.WAITING
+                            self.state["awaiting_approval_for"] = "awaiting_user_testing"
+                            self.state["last_gate_reached_at"] = datetime.utcnow().isoformat()
+                            
+                            await self._update_project_status("awaiting_user_testing")
+                            
+                            # Store QA summary as artifact for user to review
+                            qa_summary = self.state.get("qa_review", {})
+                            self.state["gate_artifacts"]["qa_report"] = json.dumps(qa_summary, indent=2)
+                            
+                            logger.info("[Orchestrator] Paused for user testing phase")
+                            return self.state
                 
                 current_agent = next_agent
                 
