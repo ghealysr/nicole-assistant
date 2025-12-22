@@ -454,7 +454,7 @@ export function PreviewPane({
       </div>
 
       {/* Status bar */}
-      {hasPreview && (
+      {(hasPreview || state.type === 'building') && (
         <div className="h-6 bg-[#0D0D12] border-t border-[#1E1E2E] flex items-center justify-between px-3 text-xs text-[#64748B]">
           <span className="flex items-center gap-1.5">
             <span className={cn(
