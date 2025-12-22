@@ -320,9 +320,16 @@ export function useGoogleAuth(): GoogleAuthContextValue {
 }
 
 // Helper to get token for API calls (can be used outside React)
+// Checks all possible token storage keys for maximum compatibility
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
-  const token = localStorage.getItem(STORAGE_KEY);
+  
+  // Check all token keys used across the app (order: newest to oldest)
+  const token = 
+    localStorage.getItem(STORAGE_KEY) ||           // nicole_google_token (Google OAuth)
+    localStorage.getItem('nicole_token') ||         // Legacy Nicole token
+    localStorage.getItem('auth_token');             // Generic auth token
+  
   if (token && !isTokenExpired(token)) {
     return token;
   }

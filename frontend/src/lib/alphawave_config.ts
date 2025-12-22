@@ -8,7 +8,9 @@
  */
 
 // API Configuration
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+// Hardcoded for reliability - environment variables are baked at build time
+// and can cause stale cache issues with Vercel
+export const API_URL = 'https://api.nicole.alphawavetech.com';
 export const API_VERSION = 'v1';
 
 // Feature Flags
