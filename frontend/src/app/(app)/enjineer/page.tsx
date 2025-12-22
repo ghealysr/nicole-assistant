@@ -35,7 +35,7 @@ type ViewState = 'loading' | 'projects' | 'intake' | 'workspace';
 interface ProjectListItem {
   id: number;
   name: string;
-  description: string;
+  description: string | undefined;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -421,6 +421,7 @@ export default function EnjineerPage() {
                 <div className="relative">
                   {imagePreview ? (
                     <div className="relative rounded-xl overflow-hidden border border-[#1E1E2E]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img 
                         src={imagePreview} 
                         alt="Reference" 
