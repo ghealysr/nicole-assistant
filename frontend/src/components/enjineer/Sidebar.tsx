@@ -138,7 +138,7 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
     });
     
     if (added.size > 0) {
-      setNewFiles(prev => new Set([...prev, ...added]));
+      setNewFiles(prev => new Set([...Array.from(prev), ...Array.from(added)]));
       
       // Remove "new" status after animation
       setTimeout(() => {
