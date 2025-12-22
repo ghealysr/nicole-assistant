@@ -1955,6 +1955,27 @@ async def deploy_preview(
     if not file_map:
         raise HTTPException(status_code=400, detail="No deployable files (all files were binary)")
     
+    # Inject vercel.json to allow iframe embedding in Nicole dashboard
+    # This sets headers to allow framing from alphawavetech.com domains
+    vercel_config = {
+        "headers": [
+            {
+                "source": "/(.*)",
+                "headers": [
+                    {
+                        "key": "X-Frame-Options",
+                        "value": "ALLOW-FROM https://nicole.alphawavetech.com"
+                    },
+                    {
+                        "key": "Content-Security-Policy",
+                        "value": "frame-ancestors 'self' https://*.alphawavetech.com https://*.vercel.app https://localhost:*"
+                    }
+                ]
+            }
+        ]
+    }
+    file_map["vercel.json"] = json.dumps(vercel_config, indent=2)
+    
     # Detect project type if not specified
     framework = request.framework if request else None
     if not framework:

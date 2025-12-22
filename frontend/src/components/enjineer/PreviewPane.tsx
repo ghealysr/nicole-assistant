@@ -3,13 +3,14 @@
 /**
  * Enjineer Preview Pane
  * 
- * Live preview via Vercel preview deployments with persistent URLs.
+ * Live preview via Vercel with in-dashboard iframe display.
  * Each project gets a permanent preview domain: project-{id}.enjineer.alphawavetech.com
  * 
  * Features:
- * - Persistent preview URLs
+ * - Persistent preview URLs with custom domains
+ * - In-dashboard iframe preview (enabled by vercel.json headers)
+ * - Responsive device simulation (mobile/tablet/desktop)
  * - Auto-cleanup of old deployments
- * - Production deployment with custom domain support
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -17,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { 
   Smartphone, Tablet, Monitor, AlertCircle, 
   Loader2, Maximize2, Minimize2, ExternalLink, Rocket, 
-  Globe, CheckCircle2, Clock
+  RefreshCw, Clock
 } from 'lucide-react';
 import { enjineerApi } from '@/lib/enjineer/api';
 
@@ -48,6 +49,12 @@ type PreviewState =
   | { type: 'ready'; deployment: DeploymentInfo; previewDomain: string | null }
   | { type: 'error'; message: string };
 
+const PREVIEW_WIDTHS = {
+  mobile: 375,
+  tablet: 768,
+  desktop: '100%',
+};
+
 export function PreviewPane({ 
   projectId, 
   previewMode,
@@ -57,7 +64,9 @@ export function PreviewPane({
 }: PreviewPaneProps) {
   const [state, setState] = useState<PreviewState>({ type: 'loading' });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Load existing preview info on mount or project change
   useEffect(() => {
@@ -133,6 +142,8 @@ export function PreviewPane({
               deployment: { id: deployment.id, url: status.url },
               previewDomain: result.preview_domain
             });
+            // Force iframe refresh
+            setIframeKey(k => k + 1);
           } else if (status.status === 'ERROR' || status.status === 'CANCELED') {
             if (pollIntervalRef.current) {
               clearInterval(pollIntervalRef.current);
@@ -157,9 +168,25 @@ export function PreviewPane({
     }
   }, [projectId]);
 
+  // Refresh iframe
+  const refreshPreview = () => {
+    setIframeKey(k => k + 1);
+  };
+
   // Open URL in new tab
-  const openUrl = (url: string) => {
+  const openInNewTab = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Get the current preview URL
+  const getPreviewUrl = (): string | null => {
+    if (state.type === 'ready') {
+      return state.previewDomain || state.deployment.url;
+    }
+    if (state.type === 'idle' && state.existingPreview) {
+      return state.existingPreview.domain || state.existingPreview.lastUrl;
+    }
+    return null;
   };
 
   // Format relative time
@@ -177,6 +204,22 @@ export function PreviewPane({
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${diffDays}d ago`;
   };
+
+  // Get container style for device preview
+  const getContainerStyle = () => {
+    if (previewMode === 'desktop') {
+      return { width: '100%', height: '100%' };
+    }
+    return { 
+      width: PREVIEW_WIDTHS[previewMode], 
+      maxWidth: '100%',
+      height: '100%'
+    };
+  };
+
+  // Check if we have a preview to show
+  const hasPreview = state.type === 'ready' || (state.type === 'idle' && state.existingPreview);
+  const previewUrl = getPreviewUrl();
 
   return (
     <div className={cn(
@@ -208,17 +251,62 @@ export function PreviewPane({
             ))}
           </div>
           
-          {(state.type === 'ready' || state.type === 'idle' && state.existingPreview) && (
+          {hasPreview && (
             <span className="text-xs text-[#64748B]">
               {previewMode === 'mobile' && '375px'}
               {previewMode === 'tablet' && '768px'}
-              {previewMode === 'desktop' && 'Full width'}
+              {previewMode === 'desktop' && 'Full'}
             </span>
           )}
         </div>
 
+        {/* Center: URL */}
+        {previewUrl && (
+          <div className="flex-1 mx-4 max-w-md">
+            <div className="bg-[#12121A] rounded px-3 py-1 text-xs text-[#64748B] truncate text-center">
+              {previewUrl.replace('https://', '')}
+            </div>
+          </div>
+        )}
+
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
+          {hasPreview && (
+            <>
+              <button
+                onClick={refreshPreview}
+                className="p-1.5 text-[#64748B] hover:text-white transition-colors"
+                title="Refresh preview"
+              >
+                <RefreshCw size={14} />
+              </button>
+              <button
+                onClick={() => previewUrl && openInNewTab(previewUrl)}
+                className="p-1.5 text-[#64748B] hover:text-white transition-colors"
+                title="Open in new tab"
+              >
+                <ExternalLink size={14} />
+              </button>
+            </>
+          )}
+          <button
+            onClick={deployPreview}
+            disabled={!projectId || state.type === 'deploying' || state.type === 'building'}
+            className={cn(
+              "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
+              state.type === 'deploying' || state.type === 'building'
+                ? "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
+                : "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white"
+            )}
+            title={hasPreview ? "Update preview" : "Deploy preview"}
+          >
+            {state.type === 'deploying' || state.type === 'building' ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Rocket size={12} />
+            )}
+            {hasPreview ? 'Update' : 'Deploy'}
+          </button>
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1.5 text-[#64748B] hover:text-white transition-colors"
@@ -235,93 +323,56 @@ export function PreviewPane({
         {state.type === 'loading' && (
           <div className="flex flex-col items-center gap-3 text-[#64748B]">
             <Loader2 size={32} className="animate-spin text-[#8B5CF6]" />
-            <span className="text-sm">Loading preview info...</span>
+            <span className="text-sm">Loading...</span>
           </div>
         )}
 
-        {/* Idle State - Show deploy button or existing preview */}
-        {state.type === 'idle' && (
+        {/* Idle State - No preview yet */}
+        {state.type === 'idle' && !state.existingPreview && (
           <div className="flex flex-col items-center gap-6 text-center max-w-md">
-            {state.existingPreview ? (
-              <>
-                {/* Existing preview available */}
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/20 flex items-center justify-center">
-                  <Globe size={40} className="text-[#10B981]" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-2">Preview Available</h3>
-                  <p className="text-sm text-[#64748B] mb-3">
-                    Your project has an existing preview deployment.
-                  </p>
-                  
-                  {/* Domain Badge */}
-                  {state.existingPreview.domain && (
-                    <div className="bg-[#1E1E2E] rounded-lg px-4 py-2 text-xs text-[#10B981] font-mono break-all mb-2">
-                      {state.existingPreview.domain}
-                    </div>
-                  )}
-                  
-                  {/* Last deployed time */}
-                  {state.existingPreview.lastDeployedAt && (
-                    <div className="flex items-center justify-center gap-1 text-xs text-[#64748B]">
-                      <Clock size={12} />
-                      <span>Updated {formatRelativeTime(state.existingPreview.lastDeployedAt)}</span>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex gap-3">
-                  <a
-                    href={state.existingPreview.domain || state.existingPreview.lastUrl!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-6 py-3 rounded-lg font-medium bg-[#10B981] hover:bg-[#059669] text-white transition-all flex items-center gap-2"
-                  >
-                    <ExternalLink size={18} />
-                    View Preview
-                  </a>
-                  <button
-                    onClick={deployPreview}
-                    disabled={!projectId}
-                    className="px-6 py-3 rounded-lg font-medium bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white transition-all flex items-center gap-2"
-                  >
-                    <Rocket size={18} />
-                    Update
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* No preview yet */}
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#8B5CF6]/20 to-[#6366F1]/20 flex items-center justify-center">
-                  <Rocket size={40} className="text-[#8B5CF6]" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-2">Preview Your Project</h3>
-                  <p className="text-sm text-[#64748B]">
-                    Deploy to see your project live. Each project gets a permanent preview URL.
-                  </p>
-                </div>
-                <button
-                  onClick={deployPreview}
-                  disabled={!projectId}
-                  className={cn(
-                    "px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2",
-                    projectId 
-                      ? "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white" 
-                      : "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
-                  )}
-                >
-                  <Rocket size={18} />
-                  Deploy Preview
-                </button>
-                
-                {/* Persistent URL hint */}
-                <div className="text-xs text-[#64748B] bg-[#1E1E2E]/50 px-4 py-2 rounded-lg">
-                  <span className="text-[#8B5CF6]">project-{projectId}</span>.enjineer.alphawavetech.com
-                </div>
-              </>
-            )}
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#8B5CF6]/20 to-[#6366F1]/20 flex items-center justify-center">
+              <Rocket size={40} className="text-[#8B5CF6]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-white mb-2">Preview Your Project</h3>
+              <p className="text-sm text-[#64748B] mb-4">
+                Deploy to see your project live in this panel.
+              </p>
+              {/* Persistent URL hint */}
+              <div className="text-xs text-[#64748B] bg-[#1E1E2E]/50 px-4 py-2 rounded-lg inline-block">
+                <span className="text-[#8B5CF6]">project-{projectId}</span>.enjineer.alphawavetech.com
+              </div>
+            </div>
+            <button
+              onClick={deployPreview}
+              disabled={!projectId}
+              className={cn(
+                "px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2",
+                projectId 
+                  ? "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white" 
+                  : "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
+              )}
+            >
+              <Rocket size={18} />
+              Deploy Preview
+            </button>
+          </div>
+        )}
+
+        {/* Idle State WITH existing preview - Show iframe */}
+        {state.type === 'idle' && state.existingPreview && previewUrl && (
+          <div 
+            className="transition-all duration-300 bg-white rounded-lg shadow-2xl overflow-hidden border border-[#2E2E3E]"
+            style={getContainerStyle()}
+          >
+            <iframe
+              ref={iframeRef}
+              key={iframeKey}
+              src={previewUrl}
+              className="w-full h-full border-0"
+              title="Preview"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            />
           </div>
         )}
 
@@ -358,59 +409,26 @@ export function PreviewPane({
             
             {state.previewDomain && (
               <div className="text-xs text-[#64748B] bg-[#1E1E2E] px-3 py-1.5 rounded-full">
-                {state.previewDomain}
+                {state.previewDomain.replace('https://', '')}
               </div>
             )}
           </div>
         )}
 
-        {/* Ready State */}
-        {state.type === 'ready' && (
-          <div className="flex flex-col items-center gap-6 text-center max-w-lg">
-            <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/20 flex items-center justify-center">
-              <div className="w-16 h-16 rounded-xl bg-[#10B981] flex items-center justify-center">
-                <CheckCircle2 size={32} className="text-white" />
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-2">Preview Ready! 🎉</h3>
-              <p className="text-sm text-[#64748B] mb-4">
-                Your project has been deployed successfully.
-              </p>
-              
-              {/* Persistent Domain */}
-              {state.previewDomain && (
-                <button
-                  onClick={() => openUrl(state.previewDomain!)}
-                  className="group bg-[#1E1E2E] hover:bg-[#2E2E3E] rounded-lg px-4 py-3 w-full transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-left">
-                      <div className="text-xs text-[#64748B] mb-1">Persistent URL</div>
-                      <div className="text-sm text-[#10B981] font-mono break-all">
-                        {state.previewDomain}
-                      </div>
-                    </div>
-                    <ExternalLink size={16} className="text-[#64748B] group-hover:text-white transition-colors" />
-                  </div>
-                </button>
-              )}
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => openUrl(state.previewDomain || state.deployment.url)}
-                className="px-6 py-3 rounded-lg font-medium bg-[#8B5CF6] hover:bg-[#7C3AED] text-white transition-all flex items-center gap-2"
-              >
-                <ExternalLink size={18} />
-                Open Preview
-              </button>
-            </div>
-            
-            <p className="text-xs text-[#64748B]">
-              This URL will always show your latest preview deployment.
-            </p>
+        {/* Ready State - Show iframe */}
+        {state.type === 'ready' && previewUrl && (
+          <div 
+            className="transition-all duration-300 bg-white rounded-lg shadow-2xl overflow-hidden border border-[#2E2E3E]"
+            style={getContainerStyle()}
+          >
+            <iframe
+              ref={iframeRef}
+              key={iframeKey}
+              src={previewUrl}
+              className="w-full h-full border-0"
+              title="Preview"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            />
           </div>
         )}
 
@@ -436,21 +454,21 @@ export function PreviewPane({
       </div>
 
       {/* Status bar */}
-      {(state.type === 'ready' || state.type === 'building') && (
-        <div className="h-6 bg-[#0D0D12] border-t border-[#1E1E2E] flex items-center px-3 text-xs text-[#64748B]">
+      {hasPreview && (
+        <div className="h-6 bg-[#0D0D12] border-t border-[#1E1E2E] flex items-center justify-between px-3 text-xs text-[#64748B]">
           <span className="flex items-center gap-1.5">
             <span className={cn(
               "w-2 h-2 rounded-full",
-              state.type === 'ready' ? "bg-[#10B981]" : "bg-[#F59E0B] animate-pulse"
+              state.type === 'building' ? "bg-[#F59E0B] animate-pulse" : "bg-[#10B981]"
             )}></span>
-            {state.type === 'ready' ? 'Live' : 'Building'}
+            {state.type === 'building' ? 'Building' : 'Live'}
           </span>
-          <span className="mx-2">•</span>
-          <span className="truncate">
-            {state.type === 'ready' 
-              ? (state.previewDomain || state.deployment.url)
-              : 'Deploying to Vercel...'}
-          </span>
+          {state.type === 'idle' && state.existingPreview?.lastDeployedAt && (
+            <span className="flex items-center gap-1">
+              <Clock size={10} />
+              Updated {formatRelativeTime(state.existingPreview.lastDeployedAt)}
+            </span>
+          )}
         </div>
       )}
     </div>
