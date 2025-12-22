@@ -36,12 +36,6 @@ type PreviewState =
   | { type: 'ready'; deployment: DeploymentState }
   | { type: 'error'; message: string };
 
-const PREVIEW_WIDTHS = {
-  mobile: 375,
-  tablet: 768,
-  desktop: '100%',
-};
-
 export function PreviewPane({ 
   projectId, 
   previewMode,
@@ -52,7 +46,6 @@ export function PreviewPane({
 }: PreviewPaneProps) {
   const [state, setState] = useState<PreviewState>({ type: 'idle' });
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Stop polling when component unmounts
@@ -141,18 +134,6 @@ export function PreviewPane({
     if (state.type === 'ready') {
       window.open(state.deployment.url, '_blank');
     }
-  };
-
-  // Get container width based on preview mode
-  const getContainerStyle = () => {
-    if (previewMode === 'desktop') {
-      return { width: '100%', height: '100%' };
-    }
-    return { 
-      width: PREVIEW_WIDTHS[previewMode], 
-      maxWidth: '100%',
-      height: '100%'
-    };
   };
 
   return (
