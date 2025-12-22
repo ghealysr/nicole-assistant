@@ -1379,20 +1379,159 @@ async def get_preview_html(
                     main_component_name = "App"
                 break
     
-    if not main_component:
-        # No component found - show file list
-        files_list = '\n'.join(f'<li>{path}</li>' for path in sorted(file_map.keys()))
-        return HTMLResponse(f"""<!DOCTYPE html>
-<html>
-<head><title>Project Files</title>
-<style>body {{ font-family: system-ui; padding: 2rem; background: #0a0a0f; color: #e2e8f0; }}</style>
+    # For complex multi-file projects, show a styled file explorer instead of fragile in-browser rendering
+    def create_file_explorer_html(files: dict, css_content: list) -> str:
+        """Create a beautiful file explorer view for complex projects."""
+        file_items = []
+        for path in sorted(files.keys()):
+            content = files[path]
+            # Escape HTML in content
+            escaped_content = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Determine file type for syntax highlighting class
+            ext = path.split('.')[-1] if '.' in path else 'txt'
+            file_items.append(f'''
+                <div class="file-card" onclick="toggleFile(this)">
+                    <div class="file-header">
+                        <span class="file-icon">{get_file_icon(ext)}</span>
+                        <span class="file-name">{path}</span>
+                        <span class="file-toggle">▶</span>
+                    </div>
+                    <pre class="file-content" style="display:none;"><code class="language-{ext}">{escaped_content}</code></pre>
+                </div>
+            ''')
+        
+        return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Preview</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ 
+            font-family: 'SF Mono', 'Fira Code', monospace; 
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            color: #e2e8f0; 
+            min-height: 100vh;
+            padding: 2rem;
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #2d2d4d;
+        }}
+        .header h1 {{
+            font-size: 1.5rem;
+            color: #8b5cf6;
+            margin-bottom: 0.5rem;
+        }}
+        .header p {{
+            color: #64748b;
+            font-size: 0.875rem;
+        }}
+        .file-count {{
+            display: inline-block;
+            background: #8b5cf620;
+            color: #8b5cf6;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            margin-top: 0.5rem;
+        }}
+        .file-card {{
+            background: #12121a;
+            border: 1px solid #1e1e2e;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            overflow: hidden;
+            transition: all 0.2s;
+        }}
+        .file-card:hover {{
+            border-color: #8b5cf640;
+        }}
+        .file-header {{
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            user-select: none;
+        }}
+        .file-header:hover {{
+            background: #1e1e2e;
+        }}
+        .file-icon {{
+            font-size: 1.25rem;
+            margin-right: 0.75rem;
+        }}
+        .file-name {{
+            flex: 1;
+            font-weight: 500;
+            color: #e2e8f0;
+        }}
+        .file-toggle {{
+            color: #64748b;
+            transition: transform 0.2s;
+        }}
+        .file-card.open .file-toggle {{
+            transform: rotate(90deg);
+        }}
+        .file-content {{
+            background: #0d0d12;
+            border-top: 1px solid #1e1e2e;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }}
+        .file-content code {{
+            color: #a5b4fc;
+        }}
+        /* Simple syntax highlighting */
+        .keyword {{ color: #c792ea; }}
+        .string {{ color: #c3e88d; }}
+        .comment {{ color: #546e7a; font-style: italic; }}
+    </style>
 </head>
 <body>
-<h1>Project Files</h1>
-<ul>{files_list}</ul>
-<p>No renderable component found.</p>
+    <div class="header">
+        <h1>📂 Project Files</h1>
+        <p>Click on any file to view its contents</p>
+        <span class="file-count">{len(files)} files</span>
+    </div>
+    {''.join(file_items)}
+    <script>
+        function toggleFile(card) {{
+            card.classList.toggle('open');
+            var content = card.querySelector('.file-content');
+            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        }}
+    </script>
 </body>
-</html>""")
+</html>'''
+    
+    def get_file_icon(ext):
+        icons = {{
+            'tsx': '⚛️', 'jsx': '⚛️', 'ts': '📘', 'js': '📒',
+            'css': '🎨', 'html': '🌐', 'json': '📋', 'md': '📝',
+            'py': '🐍', 'txt': '📄'
+        }}
+        return icons.get(ext, '📄')
+    
+    # Check if this is a complex multi-file React project
+    component_files = [p for p in file_map.keys() if p.endswith(('.tsx', '.jsx'))]
+    is_complex_project = len(component_files) > 3
+    
+    if not main_component:
+        # No component found - show file explorer
+        return HTMLResponse(create_file_explorer_html(file_map, all_css))
+    
+    # For complex multi-file React/Next.js projects, show the file explorer
+    # In-browser Babel transformation is too fragile for these
+    if is_complex_project:
+        return HTMLResponse(create_file_explorer_html(file_map, all_css))
     
     # Clean up the component code for browser execution
     def clean_component_code(code: str) -> str:
