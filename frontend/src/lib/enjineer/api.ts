@@ -394,3 +394,4 @@ function getLanguageFromPath(path: string): string {
   };
   return langMap[ext || ''] || 'plaintext';
 }
+// Build trigger: 1766380311
