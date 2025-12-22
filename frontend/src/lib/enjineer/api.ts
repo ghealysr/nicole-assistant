@@ -7,7 +7,7 @@
 
 import { EnjineerFile, PlanStep, Project } from './store';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://alphawave-api.online';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
 
 function getAuthHeaders(): HeadersInit {
   // Check multiple token keys for compatibility
