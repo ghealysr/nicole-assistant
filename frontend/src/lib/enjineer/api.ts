@@ -385,6 +385,58 @@ export const enjineerApi = {
     // The frontend fetches the HTML content via getPreviewHtml() and sets it as srcdoc
     return `${API_BASE}/enjineer/projects/${projectId}/preview/html`;
   },
+
+  // ========================================================================
+  // Vercel Preview Deployments
+  // ========================================================================
+
+  /**
+   * Deploy project to Vercel for live preview.
+   */
+  async deployPreview(projectId: number, framework?: string): Promise<{
+    deployment_id: string;
+    url: string;
+    status: string;
+    message: string;
+  }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/deploy`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ framework }),
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to deploy preview: ${error}`);
+    }
+    return res.json();
+  },
+
+  /**
+   * Get status of a preview deployment.
+   */
+  async getPreviewStatus(projectId: number, deploymentId: string): Promise<{
+    deployment_id: string;
+    url: string;
+    status: string;
+    ready: boolean;
+  }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/status/${deploymentId}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to get preview status');
+    return res.json();
+  },
+
+  /**
+   * Delete a preview deployment to clean up resources.
+   */
+  async deletePreview(projectId: number, deploymentId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/${deploymentId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete preview');
+  },
 };
 
 // Preview Bundle type

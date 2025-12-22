@@ -1520,17 +1520,14 @@ async def get_preview_html(
         }
         return icons.get(ext, '📄')
     
-    # Check if this is a complex multi-file React project
-    component_files = [p for p in file_map.keys() if p.endswith(('.tsx', '.jsx'))]
-    is_complex_project = len(component_files) > 3
+    # For ALL React/Next.js projects, show the file explorer
+    # In-browser Babel transformation is too fragile and unreliable
+    # This provides a consistent, working experience for code review
+    if project_type in ['react', 'nextjs']:
+        return HTMLResponse(create_file_explorer_html(file_map, all_css))
     
     if not main_component:
         # No component found - show file explorer
-        return HTMLResponse(create_file_explorer_html(file_map, all_css))
-    
-    # For complex multi-file React/Next.js projects, show the file explorer
-    # In-browser Babel transformation is too fragile for these
-    if is_complex_project:
         return HTMLResponse(create_file_explorer_html(file_map, all_css))
     
     # Clean up the component code for browser execution
@@ -1864,6 +1861,176 @@ async def get_preview_file(
             "Cache-Control": "no-cache"
         }
     )
+
+
+# ============================================================================
+# Preview Deployment (Vercel)
+# ============================================================================
+
+class PreviewDeployRequest(BaseModel):
+    """Request to deploy project for preview."""
+    framework: Optional[str] = None  # Auto-detect if not provided
+
+
+@router.post("/projects/{project_id}/preview/deploy")
+async def deploy_preview(
+    project_id: int,
+    request: PreviewDeployRequest = None,
+    user = Depends(get_current_user)
+):
+    """
+    Deploy project files to Vercel for live preview.
+    
+    This creates a temporary preview deployment that can be cleaned up later.
+    Returns the preview URL and deployment ID.
+    """
+    from app.integrations.vercel_service import get_vercel_service
+    
+    user_id = get_user_id_from_context(user)
+    pool = await get_tiger_pool()
+    
+    # Verify project access
+    await verify_project_access(pool, project_id, user_id)
+    
+    # Get project details
+    async with pool.acquire() as conn:
+        project = await conn.fetchrow(
+            "SELECT name FROM enjineer_projects WHERE id = $1",
+            project_id
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get all project files
+        files = await conn.fetch(
+            "SELECT path, content FROM enjineer_files WHERE project_id = $1",
+            project_id
+        )
+    
+    if not files:
+        raise HTTPException(status_code=400, detail="No files to deploy")
+    
+    # Build file map
+    file_map = {f["path"]: f["content"] or "" for f in files}
+    
+    # Detect project type if not specified
+    framework = request.framework if request else None
+    if not framework:
+        project_type, _ = detect_project_type(file_map)
+        framework = project_type if project_type in ['nextjs', 'react'] else 'static'
+    
+    # Generate a unique deployment name
+    import time
+    deployment_name = f"enjineer-{project_id}-{int(time.time())}"
+    
+    # Deploy to Vercel
+    vercel = get_vercel_service()
+    if not vercel.is_configured:
+        raise HTTPException(
+            status_code=503, 
+            detail="Vercel is not configured. Set VERCEL_TOKEN in environment."
+        )
+    
+    deployment = await vercel.deploy_files(
+        name=deployment_name,
+        files=file_map,
+        framework=framework
+    )
+    
+    if not deployment:
+        raise HTTPException(status_code=500, detail="Failed to create deployment")
+    
+    # Store deployment info for later cleanup
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO enjineer_deployments (project_id, deployment_id, url, platform, status, created_at)
+            VALUES ($1, $2, $3, 'vercel_preview', 'building', NOW())
+            ON CONFLICT (deployment_id) DO UPDATE SET url = $3, status = 'building', updated_at = NOW()
+        """, project_id, deployment.id, deployment.url)
+    
+    logger.info(f"[PREVIEW] Deployed project {project_id} to {deployment.url}")
+    
+    return {
+        "deployment_id": deployment.id,
+        "url": deployment.url,
+        "status": deployment.state,
+        "message": "Preview deployment started. It may take 30-60 seconds to build."
+    }
+
+
+@router.get("/projects/{project_id}/preview/status/{deployment_id}")
+async def get_preview_status(
+    project_id: int,
+    deployment_id: str,
+    user = Depends(get_current_user)
+):
+    """
+    Check the status of a preview deployment.
+    
+    Returns the current state: BUILDING, READY, ERROR, CANCELED
+    """
+    from app.integrations.vercel_service import get_vercel_service
+    
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    vercel = get_vercel_service()
+    if not vercel.is_configured:
+        raise HTTPException(status_code=503, detail="Vercel is not configured")
+    
+    deployment = await vercel.get_deployment(deployment_id)
+    
+    if not deployment:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    
+    # Update stored status
+    pool = await get_tiger_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE enjineer_deployments 
+            SET status = $1, updated_at = NOW()
+            WHERE deployment_id = $2
+        """, deployment.state.lower(), deployment_id)
+    
+    return {
+        "deployment_id": deployment.id,
+        "url": deployment.url,
+        "status": deployment.state,
+        "ready": deployment.state == "READY"
+    }
+
+
+@router.delete("/projects/{project_id}/preview/{deployment_id}")
+async def delete_preview(
+    project_id: int,
+    deployment_id: str,
+    user = Depends(get_current_user)
+):
+    """
+    Delete a preview deployment to clean up resources.
+    """
+    from app.integrations.vercel_service import get_vercel_service
+    
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    vercel = get_vercel_service()
+    if not vercel.is_configured:
+        raise HTTPException(status_code=503, detail="Vercel is not configured")
+    
+    success = await vercel.delete_deployment(deployment_id)
+    
+    if success:
+        # Remove from database
+        pool = await get_tiger_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM enjineer_deployments WHERE deployment_id = $1",
+                deployment_id
+            )
+        return {"message": "Deployment deleted"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete deployment")
 
 
 # ============================================================================

@@ -343,6 +343,141 @@ class VercelService:
         except Exception as e:
             logger.error("[VERCEL] Error adding domain: %s", e)
             return False
+    
+    async def deploy_files(
+        self,
+        name: str,
+        files: Dict[str, str],
+        framework: str = "nextjs"
+    ) -> Optional[VercelDeployment]:
+        """
+        Deploy files directly to Vercel without GitHub.
+        
+        This is used for Enjineer preview deployments where we upload
+        the generated files directly.
+        
+        Args:
+            name: Deployment name (used for URL)
+            files: Dict of {path: content} for all project files
+            framework: Framework preset (nextjs, react, static)
+            
+        Returns:
+            VercelDeployment on success, None on failure
+        """
+        if not self.is_configured:
+            logger.warning("[VERCEL] Not configured, skipping file deployment")
+            return None
+        
+        client = await self._get_client()
+        
+        try:
+            # Build files array for Vercel API
+            # Each file needs: file (path), data (content)
+            vercel_files = []
+            for path, content in files.items():
+                # Normalize path - remove leading slash for Vercel
+                clean_path = path.lstrip('/')
+                if not clean_path:
+                    continue
+                    
+                vercel_files.append({
+                    "file": clean_path,
+                    "data": content
+                })
+            
+            if not vercel_files:
+                logger.error("[VERCEL] No files to deploy")
+                return None
+            
+            # Determine project settings based on framework
+            project_settings = {}
+            if framework == "nextjs":
+                project_settings = {
+                    "framework": "nextjs",
+                    "buildCommand": "npm run build",
+                    "outputDirectory": ".next",
+                    "installCommand": "npm install"
+                }
+            elif framework == "react":
+                project_settings = {
+                    "framework": "create-react-app",
+                    "buildCommand": "npm run build",
+                    "outputDirectory": "build",
+                    "installCommand": "npm install"
+                }
+            else:
+                # Static site - no build needed
+                project_settings = {
+                    "framework": None
+                }
+            
+            payload = {
+                "name": name,
+                "files": vercel_files,
+                "target": "preview",  # Use preview target for temporary deployments
+                "projectSettings": project_settings
+            }
+            
+            params = self._add_team_param({})
+            response = await client.post("/v13/deployments", json=payload, params=params)
+            
+            if response.status_code in (200, 201):
+                data = response.json()
+                deployment = VercelDeployment(
+                    id=data["id"],
+                    url=f"https://{data.get('url', '')}",
+                    state=data.get("readyState", "BUILDING"),
+                    created_at=data.get("createdAt", 0),
+                )
+                logger.info("[VERCEL] Created file deployment: %s", deployment.url)
+                return deployment
+            else:
+                logger.error(
+                    "[VERCEL] Failed to deploy files: %s - %s",
+                    response.status_code,
+                    response.text
+                )
+                return None
+                
+        except Exception as e:
+            logger.error("[VERCEL] Error deploying files: %s", e, exc_info=True)
+            return None
+    
+    async def delete_deployment(self, deployment_id: str) -> bool:
+        """
+        Delete a deployment.
+        
+        Used for cleaning up temporary preview deployments.
+        
+        Args:
+            deployment_id: The deployment ID to delete
+            
+        Returns:
+            True on success, False on failure
+        """
+        if not self.is_configured:
+            return False
+        
+        client = await self._get_client()
+        
+        try:
+            params = self._add_team_param({})
+            response = await client.delete(f"/v13/deployments/{deployment_id}", params=params)
+            
+            success = response.status_code in (200, 204)
+            if success:
+                logger.info("[VERCEL] Deleted deployment: %s", deployment_id)
+            else:
+                logger.warning(
+                    "[VERCEL] Failed to delete deployment %s: %s",
+                    deployment_id,
+                    response.text
+                )
+            return success
+            
+        except Exception as e:
+            logger.error("[VERCEL] Error deleting deployment: %s", e)
+            return False
 
 
 # Global instance (lazy-loaded with settings)
