@@ -459,7 +459,13 @@ class EnjineerNicole:
         # Add plan context if exists
         if self.project_data.get("plan"):
             plan = self.project_data["plan"]
-            plan_text = f"**Current Plan: {plan.get('name', 'Unnamed')}**\nStatus: {plan.get('status', 'unknown')}\n"
+            # Content is stored as JSON string - parse to get name
+            try:
+                content = json.loads(plan.get("content", "{}") or "{}")
+                plan_name = content.get("name", "Unnamed Plan")
+            except (json.JSONDecodeError, TypeError):
+                plan_name = "Unnamed Plan"
+            plan_text = f"**Current Plan: {plan_name}**\nStatus: {plan.get('status', 'unknown')}\n"
             
             phases = plan.get("phases", [])
             if phases:
@@ -681,11 +687,12 @@ class EnjineerNicole:
         plan_id = str(uuid4())
         
         async with pool.acquire() as conn:
-            # Create plan - set status to 'active' so it appears immediately
+            # Create plan - set status to 'in_progress' so it appears immediately
+            # Note: version is TEXT type in database
             await conn.execute(
                 """
                 INSERT INTO enjineer_plans (id, project_id, version, content, status, current_phase_number)
-                VALUES ($1, $2, 1, $3, 'active', 1)
+                VALUES ($1, $2, '1.0', $3, 'in_progress', 1)
                 """,
                 plan_id, self.project_id, json.dumps({"name": name, "description": description})
             )
