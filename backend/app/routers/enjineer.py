@@ -1943,9 +1943,8 @@ async def deploy_preview(
     # Store deployment info for later cleanup
     async with pool.acquire() as conn:
         await conn.execute("""
-            INSERT INTO enjineer_deployments (project_id, deployment_id, url, platform, status, created_at)
-            VALUES ($1, $2, $3, 'vercel_preview', 'building', NOW())
-            ON CONFLICT (deployment_id) DO UPDATE SET url = $3, status = 'building', updated_at = NOW()
+            INSERT INTO enjineer_deployments (project_id, platform_deployment_id, url, platform, environment, status)
+            VALUES ($1, $2, $3, 'vercel', 'preview', 'building')
         """, project_id, deployment.id, deployment.url)
     
     logger.info(f"[PREVIEW] Deployed project {project_id} to {deployment.url}")
@@ -1983,14 +1982,24 @@ async def get_preview_status(
     if not deployment:
         raise HTTPException(status_code=404, detail="Deployment not found")
     
+    # Map Vercel status to schema-allowed values
+    status_map = {
+        'BUILDING': 'building',
+        'READY': 'success',
+        'ERROR': 'failed',
+        'CANCELED': 'cancelled',
+        'QUEUED': 'pending',
+    }
+    db_status = status_map.get(deployment.state, 'building')
+    
     # Update stored status
     pool = await get_tiger_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
             UPDATE enjineer_deployments 
-            SET status = $1, updated_at = NOW()
-            WHERE deployment_id = $2
-        """, deployment.state.lower(), deployment_id)
+            SET status = $1, url = $2
+            WHERE platform_deployment_id = $3
+        """, db_status, deployment.url, deployment_id)
     
     return {
         "deployment_id": deployment.id,
@@ -2025,7 +2034,7 @@ async def delete_preview(
         pool = await get_tiger_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "DELETE FROM enjineer_deployments WHERE deployment_id = $1",
+                "DELETE FROM enjineer_deployments WHERE platform_deployment_id = $1",
                 deployment_id
             )
         return {"message": "Deployment deleted"}
