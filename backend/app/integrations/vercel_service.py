@@ -414,7 +414,7 @@ class VercelService:
             payload = {
                 "name": name,
                 "files": vercel_files,
-                "target": "preview",  # Use preview target for temporary deployments
+                # Don't specify target - Vercel will create a preview deployment by default
                 "projectSettings": project_settings
             }
             
@@ -620,9 +620,13 @@ class VercelService:
             payload = {
                 "name": project_name,  # Deploy to existing project
                 "files": vercel_files,
-                "target": target,
                 "projectSettings": project_settings
             }
+            
+            # Only include target for production deployments
+            # Preview deployments should NOT specify target (Vercel default is preview)
+            if target == "production":
+                payload["target"] = "production"
             
             params = self._add_team_param({})
             response = await client.post("/v13/deployments", json=payload, params=params)
