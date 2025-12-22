@@ -20,7 +20,7 @@ import {
   FileCode, ListChecks, ChevronRight, ChevronDown,
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
-  Image, Settings, Package, Coffee, Globe, Database,
+  Image as ImageIcon, Settings, Package, Globe, Database,
   Layout, Layers, Terminal, X
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
@@ -297,7 +297,7 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
     if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || 
         lower.endsWith('.gif') || lower.endsWith('.svg') || lower.endsWith('.webp') ||
         lower.endsWith('.ico')) {
-      return <Image size={14} className="text-emerald-400" />;
+      return <ImageIcon size={14} className="text-emerald-400" />;
     }
     
     // Package files
