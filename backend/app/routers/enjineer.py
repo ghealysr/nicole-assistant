@@ -1434,7 +1434,17 @@ async def get_preview_html(
                 cleaned = re.sub(r'export const (\w+)', r'const \1', cleaned)
                 additional_components.append(f"// {path}\n{cleaned}")
     
-    # Build the preview HTML
+    # Escape the code for safe inclusion in HTML
+    # Replace problematic characters that could break the script
+    def escape_for_html_script(code):
+        # Don't escape - we need the code to run as-is
+        # Just make sure there are no </script> tags that would break out
+        return code.replace('</script>', '<\\/script>')
+    
+    escaped_component = escape_for_html_script(component_code)
+    escaped_additional = [escape_for_html_script(c) for c in additional_components]
+    
+    # Build the preview HTML with error handling
     preview_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1460,44 +1470,132 @@ async def get_preview_html(
         *, *::before, *::after {{ box-sizing: border-box; }}
         body {{ margin: 0; font-family: system-ui, -apple-system, sans-serif; }}
         
+        /* Error display */
+        .preview-error {{
+            padding: 2rem;
+            background: #1a1a2e;
+            color: #ff6b6b;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow: auto;
+            height: 100vh;
+        }}
+        .preview-error h2 {{
+            color: #ff6b6b;
+            margin-bottom: 1rem;
+        }}
+        .preview-error pre {{
+            background: #16213e;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }}
+        
         /* Project CSS */
         {chr(10).join(all_css)}
     </style>
 </head>
 <body>
     <div id="root"></div>
+    <div id="error-display" style="display:none;"></div>
+    
+    <script>
+        // Global error handler
+        window.onerror = function(msg, url, lineNo, columnNo, error) {{
+            showError('JavaScript Error', msg + '\\n\\nLine: ' + lineNo + ', Column: ' + columnNo);
+            return true;
+        }};
+        
+        function showError(title, message) {{
+            document.getElementById('root').style.display = 'none';
+            var errorDiv = document.getElementById('error-display');
+            errorDiv.style.display = 'block';
+            errorDiv.className = 'preview-error';
+            errorDiv.innerHTML = '<h2>' + title + '</h2><pre>' + message + '</pre>' +
+                '<p style="color:#888;margin-top:2rem;">Check browser console (F12) for more details.</p>';
+        }}
+    </script>
     
     <script type="text/babel" data-presets="react">
-        // Provide common hooks and utilities
-        const {{ useState, useEffect, useRef, useCallback, useMemo, useContext, createContext }} = React;
-        
-        // Mock Next.js components
-        const Link = ({{ href, children, className, ...props }}) => (
-            <a href={{href}} className={{className}} {{...props}}>{{children}}</a>
-        );
-        const Image = ({{ src, alt, width, height, className, ...props }}) => (
-            <img src={{src}} alt={{alt}} width={{width}} height={{height}} className={{className}} {{...props}} />
-        );
-        const Head = ({{ children }}) => null; // Head is server-side only
-        
-        // Mock framer-motion
-        const motion = new Proxy({{}}, {{
-            get: (target, prop) => ({{ children, className, ...props }}) => 
-                React.createElement(prop, {{ className, ...props }}, children)
-        }});
-        
-        // Helper for cn (classnames utility)
-        const cn = (...classes) => classes.filter(Boolean).join(' ');
-        
-        // Additional components
-        {chr(10).join(additional_components)}
-        
-        // Main component
-        {component_code}
-        
-        // Render
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<{main_component_name} />);
+        try {{
+            // Provide common hooks and utilities
+            const {{ useState, useEffect, useRef, useCallback, useMemo, useContext, createContext, Fragment }} = React;
+            
+            // Mock Next.js components
+            const Link = ({{ href, children, className, ...props }}) => (
+                <a href={{href}} className={{className}} {{...props}}>{{children}}</a>
+            );
+            const Image = ({{ src, alt, width, height, className, fill, priority, ...props }}) => (
+                <img 
+                    src={{src}} 
+                    alt={{alt || ''}} 
+                    width={{width}} 
+                    height={{height}} 
+                    className={{className}} 
+                    style={{fill ? {{ objectFit: 'cover', width: '100%', height: '100%' }} : {{}}}}
+                    {{...props}} 
+                />
+            );
+            const Head = ({{ children }}) => null;
+            const Script = ({{ children }}) => null;
+            
+            // Mock framer-motion
+            const motion = new Proxy({{}}, {{
+                get: (target, prop) => React.forwardRef(({{ children, className, initial, animate, transition, whileHover, whileTap, variants, ...props }}, ref) => 
+                    React.createElement(prop, {{ ref, className, ...props }}, children)
+                )
+            }});
+            const AnimatePresence = ({{ children }}) => children;
+            
+            // Helper for cn (classnames utility)
+            const cn = (...classes) => classes.filter(Boolean).join(' ');
+            const clsx = cn;
+            
+            // Mock common icons as simple spans
+            const IconPlaceholder = ({{ className }}) => <span className={{className}}>●</span>;
+            
+            // Additional components
+            {chr(10).join(escaped_additional)}
+            
+            // Main component
+            {escaped_component}
+            
+            // Render with error boundary
+            class ErrorBoundary extends React.Component {{
+                constructor(props) {{
+                    super(props);
+                    this.state = {{ hasError: false, error: null }};
+                }}
+                static getDerivedStateFromError(error) {{
+                    return {{ hasError: true, error }};
+                }}
+                componentDidCatch(error, errorInfo) {{
+                    console.error('React Error:', error, errorInfo);
+                }}
+                render() {{
+                    if (this.state.hasError) {{
+                        return (
+                            <div className="preview-error">
+                                <h2>React Render Error</h2>
+                                <pre>{{this.state.error?.toString()}}</pre>
+                                <p style={{{{color:'#888',marginTop:'2rem'}}}}>Check browser console (F12) for more details.</p>
+                            </div>
+                        );
+                    }}
+                    return this.props.children;
+                }}
+            }}
+            
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(
+                <ErrorBoundary>
+                    <{main_component_name} />
+                </ErrorBoundary>
+            );
+        }} catch (e) {{
+            console.error('Preview initialization error:', e);
+            showError('Preview Error', e.toString() + '\\n\\n' + (e.stack || ''));
+        }}
     </script>
 </body>
 </html>"""
