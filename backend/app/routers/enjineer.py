@@ -1513,11 +1513,11 @@ async def get_preview_html(
 </html>'''
     
     def get_file_icon(ext):
-        icons = {{
+        icons = {
             'tsx': '⚛️', 'jsx': '⚛️', 'ts': '📘', 'js': '📒',
             'css': '🎨', 'html': '🌐', 'json': '📋', 'md': '📝',
             'py': '🐍', 'txt': '📄'
-        }}
+        }
         return icons.get(ext, '📄')
     
     # Check if this is a complex multi-file React project
