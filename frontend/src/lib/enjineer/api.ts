@@ -8,39 +8,10 @@
 import { EnjineerFile, PlanStep, Project } from './store';
 
 /**
- * Get the API base URL with proper validation.
- * Ensures we always hit the correct API domain.
+ * API Base URL - Hardcoded for reliability
+ * Environment variables are baked at build time and can cause stale cache issues.
  */
-function getApiBase(): string {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL;
-  
-  // Production default
-  const PRODUCTION_API = 'https://api.nicole.alphawavetech.com';
-  
-  if (!envUrl) {
-    return PRODUCTION_API;
-  }
-  
-  // Normalize: ensure https:// prefix
-  let url = envUrl.trim();
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `https://${url}`;
-  }
-  
-  // Remove trailing slash
-  url = url.replace(/\/$/, '');
-  
-  // Validate it looks like a proper API URL
-  // Must include 'api.' subdomain for production
-  if (url.includes('nicole.alphawavetech.com') && !url.includes('api.')) {
-    console.warn('[Enjineer API] URL missing api. subdomain, using production default');
-    return PRODUCTION_API;
-  }
-  
-  return url;
-}
-
-const API_BASE = getApiBase();
+const API_BASE = 'https://api.nicole.alphawavetech.com';
 
 /**
  * Get authentication headers with token.
@@ -394,4 +365,3 @@ function getLanguageFromPath(path: string): string {
   };
   return langMap[ext || ''] || 'plaintext';
 }
-// Build trigger: 1766380311
