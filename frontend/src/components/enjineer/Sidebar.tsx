@@ -532,8 +532,8 @@ function PlanView({ plan }: PlanViewProps) {
     if (!currentProject) return;
     setApprovingPhase(phaseId);
     try {
-      const { enjineerAPI } = await import('@/lib/enjineer/api');
-      await enjineerAPI.approvePhase(currentProject.id, phaseId);
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      await enjineerApi.approvePhase(currentProject.id, phaseId);
       // Update local state
       useEnjineerStore.getState().updatePlanStep(phaseId, { 
         status: 'in_progress', 
@@ -552,8 +552,8 @@ function PlanView({ plan }: PlanViewProps) {
     const reason = window.prompt('Reason for rejection (optional):');
     setApprovingPhase(phaseId);
     try {
-      const { enjineerAPI } = await import('@/lib/enjineer/api');
-      await enjineerAPI.rejectPhase(currentProject.id, phaseId, reason || undefined);
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      await enjineerApi.rejectPhase(currentProject.id, phaseId, reason || undefined);
       useEnjineerStore.getState().updatePlanStep(phaseId, { 
         status: 'pending', 
         approvalStatus: 'rejected' 
