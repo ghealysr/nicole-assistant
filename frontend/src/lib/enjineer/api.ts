@@ -15,15 +15,18 @@ const API_BASE = 'https://api.nicole.alphawavetech.com';
 
 /**
  * Get authentication headers with token.
- * Primary token key is 'nicole_token' (set by Google OAuth flow).
+ * Checks all possible token storage keys used by the auth system.
  */
 function getAuthHeaders(): HeadersInit {
   if (typeof window === 'undefined') {
     return { 'Content-Type': 'application/json' };
   }
   
-  // Primary key used by alphawave_utils.ts
-  const token = localStorage.getItem('nicole_token');
+  // Check all token keys used by alphawave_utils.ts
+  const token = 
+    localStorage.getItem('nicole_token') ||
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('nicole_google_token');
   
   if (!token) {
     console.warn('[Enjineer API] No auth token found in localStorage');
