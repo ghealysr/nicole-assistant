@@ -5,7 +5,7 @@
  * Nicole's tool calls flow through this API.
  */
 
-import { EnjineerFile, PlanStep, Project } from './store';
+import { EnjineerFile, PlanStep, PlanOverview, Project } from './store';
 
 /**
  * API Base URL - Hardcoded for reliability
@@ -37,6 +37,32 @@ function getAuthHeaders(): HeadersInit {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
   };
+}
+
+/**
+ * Map backend phase status + approval_status to frontend display status
+ */
+function mapPhaseStatus(
+  status: string | undefined, 
+  approvalStatus: string | undefined
+): 'pending' | 'in_progress' | 'complete' | 'skipped' | 'awaiting_approval' {
+  // If waiting for approval, show that status
+  if (approvalStatus === 'pending' && status === 'in_progress') {
+    return 'awaiting_approval';
+  }
+  
+  switch (status) {
+    case 'complete':
+    case 'completed':
+      return 'complete';
+    case 'in_progress':
+    case 'active':
+      return 'in_progress';
+    case 'skipped':
+      return 'skipped';
+    default:
+      return 'pending';
+  }
 }
 
 // SSE Event Types from backend
@@ -276,25 +302,76 @@ export const enjineerApi = {
   // Plan Management
   // ========================================================================
   
-  async getPlan(projectId: number): Promise<PlanStep[]> {
+  async getPlan(projectId: number): Promise<{ overview: PlanOverview | null; phases: PlanStep[] }> {
     const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/plan`, {
       headers: getAuthHeaders(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { overview: null, phases: [] };
     const data = await res.json();
     
-    // Backend returns {plan: {...}, phases: [...]}
-    // phases have: id, phaseNumber, name, notes, status, estimatedMinutes, etc.
-    const phases = data.phases || [];
-    if (phases.length === 0) return [];
+    // Parse plan overview
+    const planData = data.plan;
+    let overview: PlanOverview | null = null;
+    if (planData) {
+      const phases = data.phases || [];
+      overview = {
+        id: String(planData.id),
+        version: planData.version || 1,
+        status: planData.status || 'planning',
+        currentPhaseNumber: planData.current_phase_number || 1,
+        totalPhases: phases.length,
+        completedPhases: phases.filter((p: Record<string, unknown>) => p.status === 'complete').length,
+        createdAt: new Date(planData.created_at),
+        approvedAt: planData.approved_at ? new Date(planData.approved_at) : undefined,
+        completedAt: planData.completed_at ? new Date(planData.completed_at) : undefined,
+      };
+    }
     
-    return phases.map((p: Record<string, unknown>) => ({
-      id: (p.id as string) || crypto.randomUUID(),
-      title: (p.name as string) || `Phase ${p.phaseNumber}`,
+    // Parse phases with full data
+    const phases = (data.phases || []).map((p: Record<string, unknown>) => ({
+      id: String(p.id) || crypto.randomUUID(),
+      phaseNumber: (p.phase_number as number) || 1,
+      title: (p.name as string) || `Phase ${p.phase_number}`,
       description: (p.notes as string) || '',
-      status: (p.status as string) || 'pending',
+      status: mapPhaseStatus(p.status as string, p.approval_status as string),
+      estimatedMinutes: p.estimated_minutes as number | undefined,
+      actualMinutes: p.actual_minutes as number | undefined,
+      agentsRequired: p.agents_required as ('engineer' | 'qa' | 'sr_qa')[] | undefined,
+      requiresApproval: p.requires_approval as boolean | undefined,
+      approvalStatus: p.approval_status as 'pending' | 'approved' | 'rejected' | null,
+      qaDepth: p.qa_depth as 'basic' | 'standard' | 'thorough' | undefined,
+      qaFocus: p.qa_focus as string[] | undefined,
+      startedAt: p.started_at ? new Date(p.started_at as string) : undefined,
+      completedAt: p.completed_at ? new Date(p.completed_at as string) : undefined,
+      approvedAt: p.approved_at ? new Date(p.approved_at as string) : undefined,
+      notes: p.notes as string | undefined,
       files: [],
     }));
+    
+    return { overview, phases };
+  },
+  
+  async approvePhase(projectId: number, phaseId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/plan/phases/${phaseId}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to approve phase');
+    }
+  },
+  
+  async rejectPhase(projectId: number, phaseId: string, reason?: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/plan/phases/${phaseId}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to reject phase');
+    }
   },
 
   // ========================================================================

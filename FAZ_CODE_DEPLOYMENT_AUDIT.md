@@ -477,3 +477,4 @@ curl -H "Authorization: Bearer $VERCEL_TOKEN" https://api.vercel.com/v2/user
 
 **With these fixes, Faz Code will have FULL deployment capabilities!** 🚀
 
+

@@ -611,3 +611,4 @@ BEGIN
     RAISE NOTICE 'Faz Code schema created successfully: % tables', table_count;
 END $$;
 
+

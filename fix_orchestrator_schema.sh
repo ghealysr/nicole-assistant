@@ -39,3 +39,4 @@ echo "Next steps:"
 echo "1. Test the pipeline by clicking 'Run Pipeline' on project 26 in the UI"
 echo "2. The pipeline should now complete to awaiting_qa_approval status instead of crashing"
 
+

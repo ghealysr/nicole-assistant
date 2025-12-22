@@ -48,10 +48,35 @@ export interface AgentTask {
 
 export interface PlanStep {
   id: string;
+  phaseNumber: number;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'complete' | 'skipped';
+  status: 'pending' | 'in_progress' | 'complete' | 'skipped' | 'awaiting_approval';
   files?: string[];
+  // Enhanced fields from backend
+  estimatedMinutes?: number;
+  actualMinutes?: number;
+  agentsRequired?: ('engineer' | 'qa' | 'sr_qa')[];
+  requiresApproval?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | null;
+  qaDepth?: 'basic' | 'standard' | 'thorough';
+  qaFocus?: string[];
+  startedAt?: Date;
+  completedAt?: Date;
+  approvedAt?: Date;
+  notes?: string;
+}
+
+export interface PlanOverview {
+  id: string;
+  version: number;
+  status: 'planning' | 'active' | 'paused' | 'completed' | 'abandoned';
+  currentPhaseNumber: number;
+  totalPhases: number;
+  completedPhases: number;
+  createdAt: Date;
+  approvedAt?: Date;
+  completedAt?: Date;
 }
 
 export interface Project {
@@ -95,8 +120,14 @@ interface EnjineerStore {
   
   // Plan
   plan: PlanStep[];
+  planOverview: PlanOverview | null;
+  currentPhaseId: string | null;
   setPlan: (plan: PlanStep[]) => void;
+  setPlanOverview: (overview: PlanOverview | null) => void;
   updatePlanStep: (id: string, updates: Partial<PlanStep>) => void;
+  setCurrentPhase: (phaseId: string | null) => void;
+  markPhaseComplete: (phaseId: string) => void;
+  requestPhaseApproval: (phaseId: string) => void;
   
   // Agent Tasks
   agentTasks: AgentTask[];
@@ -209,10 +240,44 @@ export const useEnjineerStore = create<EnjineerStore>((set) => ({
   
   // Plan
   plan: [],
+  planOverview: null,
+  currentPhaseId: null,
   setPlan: (plan) => set({ plan }),
+  setPlanOverview: (overview) => set({ planOverview: overview }),
   updatePlanStep: (id, updates) => set((state) => ({
     plan: state.plan.map(s => 
       s.id === id ? { ...s, ...updates } : s
+    )
+  })),
+  setCurrentPhase: (phaseId) => set((state) => {
+    // Update the current phase and set status to in_progress
+    const updatedPlan = state.plan.map(s => {
+      if (s.id === phaseId) {
+        return { ...s, status: 'in_progress' as const, startedAt: new Date() };
+      }
+      return s;
+    });
+    return { currentPhaseId: phaseId, plan: updatedPlan };
+  }),
+  markPhaseComplete: (phaseId) => set((state) => {
+    const updatedPlan = state.plan.map(s => {
+      if (s.id === phaseId) {
+        return { ...s, status: 'complete' as const, completedAt: new Date() };
+      }
+      return s;
+    });
+    // Update overview
+    const completedCount = updatedPlan.filter(s => s.status === 'complete').length;
+    const updatedOverview = state.planOverview 
+      ? { ...state.planOverview, completedPhases: completedCount }
+      : null;
+    return { plan: updatedPlan, planOverview: updatedOverview };
+  }),
+  requestPhaseApproval: (phaseId) => set((state) => ({
+    plan: state.plan.map(s => 
+      s.id === phaseId 
+        ? { ...s, status: 'awaiting_approval' as const, approvalStatus: 'pending' as const }
+        : s
     )
   })),
   

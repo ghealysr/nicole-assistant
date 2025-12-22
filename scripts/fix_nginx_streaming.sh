@@ -99,3 +99,4 @@ grep -A 20 "location /" "$NGINX_CONF" 2>/dev/null | head -25
 echo ""
 echo "=== END DIAGNOSTICS ==="
 
+

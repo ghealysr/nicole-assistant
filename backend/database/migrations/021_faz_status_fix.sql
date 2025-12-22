@@ -19,3 +19,4 @@ ALTER TABLE faz_agent_activities ADD CONSTRAINT faz_agent_activities_status_chec
 
 SELECT 'Faz status constraints updated successfully' AS result;
 
+

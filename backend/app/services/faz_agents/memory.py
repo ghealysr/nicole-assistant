@@ -216,3 +216,4 @@ Output as JSON. Be selective - only save truly reusable patterns.""")
                 next_agent=None,
             )
 
+

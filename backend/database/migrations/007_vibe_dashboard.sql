@@ -125,3 +125,4 @@ COMMENT ON COLUMN vibe_projects.config IS 'Build configuration (colors, fonts, e
 COMMENT ON COLUMN vibe_projects.api_cost IS 'Cumulative API costs for this project';
 
 
+

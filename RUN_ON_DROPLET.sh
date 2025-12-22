@@ -172,3 +172,4 @@ echo "  • QA scoring (Lighthouse + axe-core)"
 echo "  • Iteration/feedback system"
 echo ""
 
+

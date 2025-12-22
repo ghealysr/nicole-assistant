@@ -46,3 +46,4 @@ echo '   - Backend: ✅ Running and healthy'
 echo ''
 echo 'Test the Vibe dashboard by clicking the Vibe button in the sidebar!'
 
+

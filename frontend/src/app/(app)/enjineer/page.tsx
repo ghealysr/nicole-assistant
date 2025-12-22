@@ -52,6 +52,7 @@ export default function EnjineerPage() {
     setCurrentProject,
     setFiles,
     setPlan,
+    setPlanOverview,
     setLoading,
     isLoading,
     clearMessages,
@@ -121,15 +122,10 @@ export default function EnjineerPage() {
       const files = await enjineerApi.getFiles(project.id);
       setFiles(files);
       
-      // Load project plan
-      const plan = await enjineerApi.getPlan(project.id);
-      setPlan(plan.map((s, idx) => ({
-        id: s.id || String(idx),
-        title: s.title,
-        description: s.description || '',
-        status: s.status || 'pending',
-        files: s.files,
-      })));
+      // Load project plan with full phase data
+      const { overview, phases } = await enjineerApi.getPlan(project.id);
+      setPlanOverview(overview);
+      setPlan(phases);
       
       setViewState('workspace');
     } catch (error) {
@@ -138,7 +134,7 @@ export default function EnjineerPage() {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, setCurrentProject, clearMessages, setFiles, setPlan]);
+  }, [setLoading, setCurrentProject, clearMessages, setFiles, setPlan, setPlanOverview]);
 
   // Initial load
   React.useEffect(() => {

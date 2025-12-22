@@ -115,3 +115,4 @@ export function VibeCompetitorInput({ competitors, onChange }: VibeCompetitorInp
   );
 }
 
+

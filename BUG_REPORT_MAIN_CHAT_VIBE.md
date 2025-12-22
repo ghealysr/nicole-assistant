@@ -249,3 +249,4 @@ This requires significant refactoring but is essential for usability.
 - 4296f41: Added robust JSON extraction
 - 57a45f8: Restored correct Claude 4.5 model names
 
+

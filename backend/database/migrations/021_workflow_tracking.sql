@@ -175,3 +175,4 @@ GRANT SELECT ON recent_workflow_failures TO "nicole-api";
 -- Migration Complete
 -- ============================================================================
 
+

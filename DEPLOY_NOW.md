@@ -273,3 +273,4 @@ ssh root@nicole-production 'tail -f /var/log/supervisor/nicole-api-stderr.log'
 **Deployment Script:** `PHASE_1_BACKEND_DEPLOYMENT.sh`  
 **Estimated Time:** 15 minutes
 
+

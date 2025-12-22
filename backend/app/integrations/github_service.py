@@ -395,3 +395,4 @@ def get_github_service() -> GitHubService:
         )
     return _github_service
 
+

@@ -43,3 +43,4 @@ echo ""
 echo "=== Migration Complete ==="
 echo "You can now test a new research query to see images."
 
+

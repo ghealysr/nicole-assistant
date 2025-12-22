@@ -21,7 +21,7 @@ import {
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
   Image as ImageIcon, Settings, Package, Globe, Database,
-  Layout, Layers, Terminal, X
+  Layout, Layers, Terminal, X, Clock, Code
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
 
@@ -502,7 +502,7 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
 }
 
 // ============================================================================
-// Plan View Component
+// Plan View Component - Rich progress tracking with approvals
 // ============================================================================
 
 interface PlanViewProps {
@@ -510,83 +510,387 @@ interface PlanViewProps {
 }
 
 function PlanView({ plan }: PlanViewProps) {
+  const { planOverview, currentProject } = useEnjineerStore();
+  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+  const [approvingPhase, setApprovingPhase] = useState<string | null>(null);
+
+  // Toggle phase expansion
+  const togglePhase = (phaseId: string) => {
+    setExpandedPhases(prev => {
+      const next = new Set(prev);
+      if (next.has(phaseId)) {
+        next.delete(phaseId);
+      } else {
+        next.add(phaseId);
+      }
+      return next;
+    });
+  };
+
+  // Handle phase approval
+  const handleApprove = async (phaseId: string) => {
+    if (!currentProject) return;
+    setApprovingPhase(phaseId);
+    try {
+      const { enjineerAPI } = await import('@/lib/enjineer/api');
+      await enjineerAPI.approvePhase(currentProject.id, phaseId);
+      // Update local state
+      useEnjineerStore.getState().updatePlanStep(phaseId, { 
+        status: 'in_progress', 
+        approvalStatus: 'approved' 
+      });
+    } catch (err) {
+      console.error('Failed to approve phase:', err);
+    } finally {
+      setApprovingPhase(null);
+    }
+  };
+
+  // Handle phase rejection
+  const handleReject = async (phaseId: string) => {
+    if (!currentProject) return;
+    const reason = window.prompt('Reason for rejection (optional):');
+    setApprovingPhase(phaseId);
+    try {
+      const { enjineerAPI } = await import('@/lib/enjineer/api');
+      await enjineerAPI.rejectPhase(currentProject.id, phaseId, reason || undefined);
+      useEnjineerStore.getState().updatePlanStep(phaseId, { 
+        status: 'pending', 
+        approvalStatus: 'rejected' 
+      });
+    } catch (err) {
+      console.error('Failed to reject phase:', err);
+    } finally {
+      setApprovingPhase(null);
+    }
+  };
+
+  // Empty state
   if (plan.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-[#64748B] p-6 text-center">
-        <ListChecks size={32} className="mb-3 opacity-50" />
-        <p className="text-sm">No plan yet</p>
-        <p className="text-xs mt-1">Nicole will create a plan when you start a project</p>
+        <div className="relative mb-4">
+          <ListChecks size={40} className="opacity-30" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] to-transparent" />
+        </div>
+        <p className="text-sm font-medium text-[#94A3B8]">No plan yet</p>
+        <p className="text-xs mt-1 max-w-[200px]">
+          Nicole will create a detailed plan when you describe your project
+        </p>
       </div>
     );
   }
 
+  // Calculate progress
+  const completedCount = plan.filter(s => s.status === 'complete').length;
+  const progressPercent = Math.round((completedCount / plan.length) * 100);
+  const totalEstimatedMinutes = plan.reduce((sum, s) => sum + (s.estimatedMinutes || 0), 0);
+  const totalActualMinutes = plan.reduce((sum, s) => sum + (s.actualMinutes || 0), 0);
+
+  // Get status icon with enhanced visuals
   const getStatusIcon = (status: PlanStep['status']) => {
     switch (status) {
       case 'complete':
-        return <CheckCircle2 size={16} className="text-green-500" />;
+        return (
+          <div className="relative">
+            <CheckCircle2 size={18} className="text-emerald-400" />
+            <div className="absolute inset-0 animate-ping opacity-30">
+              <CheckCircle2 size={18} className="text-emerald-400" />
+            </div>
+          </div>
+        );
       case 'in_progress':
-        return <Loader2 size={16} className="text-[#8B5CF6] animate-spin" />;
+        return (
+          <div className="relative">
+            <div className="absolute inset-0 bg-violet-500/20 rounded-full animate-pulse" />
+            <Loader2 size={18} className="text-violet-400 animate-spin" />
+          </div>
+        );
+      case 'awaiting_approval':
+        return (
+          <div className="relative">
+            <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-pulse" />
+            <Clock size={18} className="text-amber-400" />
+          </div>
+        );
       case 'skipped':
-        return <Circle size={16} className="text-[#64748B] line-through" />;
+        return <Circle size={18} className="text-[#475569] opacity-50" />;
       default:
-        return <Circle size={16} className="text-[#64748B]" />;
+        return <Circle size={18} className="text-[#475569]" />;
     }
   };
 
+  // Agent badge component
+  const AgentBadge = ({ agent }: { agent: string }) => {
+    const colors: Record<string, string> = {
+      engineer: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      qa: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+      sr_qa: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    };
+    const icons: Record<string, typeof Code> = {
+      engineer: Code,
+      qa: Terminal,
+      sr_qa: Layers,
+    };
+    const Icon = icons[agent] || Code;
+    return (
+      <span className={cn(
+        "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border font-medium",
+        colors[agent] || 'bg-[#1E1E2E] text-[#94A3B8] border-[#2D2D3D]'
+      )}>
+        <Icon size={10} />
+        {agent.replace('_', ' ').toUpperCase()}
+      </span>
+    );
+  };
+
+  // Format time display
+  const formatTime = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
   return (
-    <div className="p-4 space-y-3">
-      {plan.map((step, idx) => (
-        <div
-          key={step.id}
-          className={cn(
-            "p-3 rounded-lg border transition-all duration-300",
-            step.status === 'in_progress'
-              ? "bg-[#8B5CF6]/10 border-[#8B5CF6]/30"
-              : step.status === 'complete'
-              ? "bg-green-500/10 border-green-500/20"
-              : "bg-[#12121A] border-[#1E1E2E]"
+    <div className="flex flex-col h-full">
+      {/* Progress Header */}
+      <div className="p-4 border-b border-[#1E1E2E] bg-gradient-to-b from-[#12121A] to-transparent">
+        {/* Overall progress bar */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-[#94A3B8]">Progress</span>
+          <span className="text-xs font-mono text-[#8B5CF6]">
+            {completedCount}/{plan.length} phases
+          </span>
+        </div>
+        <div className="h-2 bg-[#1E1E2E] rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all duration-500 ease-out"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-[10px] text-[#64748B]">
+            {progressPercent}% complete
+          </span>
+          {totalEstimatedMinutes > 0 && (
+            <span className="text-[10px] text-[#64748B] flex items-center gap-1">
+              <Clock size={10} />
+              {totalActualMinutes > 0 
+                ? `${formatTime(totalActualMinutes)} / ${formatTime(totalEstimatedMinutes)}`
+                : `Est. ${formatTime(totalEstimatedMinutes)}`
+              }
+            </span>
           )}
-        >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5">{getStatusIcon(step.status)}</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#64748B] font-mono">
-                  {String(idx + 1).padStart(2, '0')}
-                </span>
-                <span className={cn(
-                  "text-sm font-medium truncate",
-                  step.status === 'complete' ? "text-green-400" : "text-[#F1F5F9]"
-                )}>
-                  {step.title}
-                </span>
-              </div>
-              {step.description && (
-                <p className="text-xs text-[#64748B] mt-1 line-clamp-2">
-                  {step.description}
-                </p>
+        </div>
+        
+        {/* Plan version & status */}
+        {planOverview && (
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#1E1E2E]/50">
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full font-medium",
+              planOverview.status === 'active' 
+                ? "bg-emerald-500/20 text-emerald-400"
+                : planOverview.status === 'completed'
+                ? "bg-blue-500/20 text-blue-400"
+                : "bg-[#1E1E2E] text-[#64748B]"
+            )}>
+              {planOverview.status.toUpperCase()}
+            </span>
+            <span className="text-[10px] text-[#475569]">
+              v{planOverview.version}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Phase List */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+        {plan.map((step, idx) => {
+          const isExpanded = expandedPhases.has(step.id);
+          const isCurrent = step.status === 'in_progress' || step.status === 'awaiting_approval';
+          const needsApproval = step.status === 'awaiting_approval';
+          
+          return (
+            <div
+              key={step.id}
+              className={cn(
+                "rounded-lg border transition-all duration-300 overflow-hidden",
+                isCurrent
+                  ? "bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 border-violet-500/30 shadow-lg shadow-violet-500/5"
+                  : step.status === 'complete'
+                  ? "bg-emerald-500/5 border-emerald-500/20"
+                  : needsApproval
+                  ? "bg-amber-500/5 border-amber-500/20"
+                  : "bg-[#0F0F15] border-[#1E1E2E] hover:border-[#2D2D3D]"
               )}
-              {step.files && step.files.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {step.files.slice(0, 3).map(file => (
-                    <span
-                      key={file}
-                      className="text-[10px] px-1.5 py-0.5 bg-[#1E1E2E] rounded text-[#94A3B8] font-mono"
-                    >
-                      {file.split('/').pop()}
+            >
+              {/* Phase Header - Clickable */}
+              <button
+                onClick={() => togglePhase(step.id)}
+                className="w-full p-3 flex items-start gap-3 text-left"
+              >
+                <div className="mt-0.5 flex-shrink-0">{getStatusIcon(step.status)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#475569] font-mono bg-[#1E1E2E] px-1.5 py-0.5 rounded">
+                      {String(step.phaseNumber || idx + 1).padStart(2, '0')}
                     </span>
-                  ))}
-                  {step.files.length > 3 && (
-                    <span className="text-[10px] px-1.5 py-0.5 text-[#64748B]">
-                      +{step.files.length - 3} more
+                    <span className={cn(
+                      "text-sm font-medium truncate",
+                      step.status === 'complete' 
+                        ? "text-emerald-400" 
+                        : isCurrent 
+                        ? "text-violet-300"
+                        : "text-[#E2E8F0]"
+                    )}>
+                      {step.title}
                     </span>
+                    <ChevronDown 
+                      size={14} 
+                      className={cn(
+                        "text-[#475569] transition-transform duration-200 ml-auto flex-shrink-0",
+                        isExpanded && "rotate-180"
+                      )}
+                    />
+                  </div>
+                  
+                  {/* Time & agents row */}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {step.estimatedMinutes && (
+                      <span className="text-[10px] text-[#475569] flex items-center gap-1">
+                        <Clock size={10} />
+                        {step.actualMinutes 
+                          ? `${formatTime(step.actualMinutes)} / ${formatTime(step.estimatedMinutes)}`
+                          : formatTime(step.estimatedMinutes)
+                        }
+                      </span>
+                    )}
+                    {step.agentsRequired?.map(agent => (
+                      <AgentBadge key={agent} agent={agent} />
+                    ))}
+                    {step.requiresApproval && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        Approval Required
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              {/* Expanded Content */}
+              {isExpanded && (
+                <div className="px-3 pb-3 pt-0 border-t border-[#1E1E2E]/50 mt-0">
+                  {/* Description */}
+                  {step.description && (
+                    <p className="text-xs text-[#94A3B8] mt-3 leading-relaxed">
+                      {step.description}
+                    </p>
+                  )}
+                  
+                  {/* QA Info */}
+                  {step.qaDepth && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-[10px] text-[#475569]">QA Depth:</span>
+                      <span className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                        step.qaDepth === 'thorough' 
+                          ? "bg-red-500/20 text-red-400"
+                          : step.qaDepth === 'standard'
+                          ? "bg-amber-500/20 text-amber-400"
+                          : "bg-green-500/20 text-green-400"
+                      )}>
+                        {step.qaDepth.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* QA Focus areas */}
+                  {step.qaFocus && step.qaFocus.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {step.qaFocus.map(focus => (
+                        <span 
+                          key={focus}
+                          className="text-[10px] px-1.5 py-0.5 bg-[#1E1E2E] rounded text-[#94A3B8]"
+                        >
+                          {focus}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Files */}
+                  {step.files && step.files.length > 0 && (
+                    <div className="mt-3">
+                      <span className="text-[10px] text-[#475569] block mb-1.5">Files:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {step.files.map(file => (
+                          <span
+                            key={file}
+                            className="text-[10px] px-1.5 py-0.5 bg-[#1E1E2E] rounded text-[#94A3B8] font-mono"
+                          >
+                            {file.split('/').pop()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timestamps */}
+                  {(step.startedAt || step.completedAt) && (
+                    <div className="mt-3 text-[10px] text-[#475569] space-y-0.5">
+                      {step.startedAt && (
+                        <div>Started: {new Date(step.startedAt).toLocaleString()}</div>
+                      )}
+                      {step.completedAt && (
+                        <div>Completed: {new Date(step.completedAt).toLocaleString()}</div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
+
+              {/* Approval Actions */}
+              {needsApproval && (
+                <div className="px-3 pb-3 pt-2 border-t border-amber-500/20 bg-amber-500/5">
+                  <p className="text-xs text-amber-400 mb-2 flex items-center gap-1.5">
+                    <Clock size={12} />
+                    Awaiting your approval to proceed
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleApprove(step.id)}
+                      disabled={approvingPhase === step.id}
+                      className={cn(
+                        "flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors",
+                        "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {approvingPhase === step.id ? (
+                        <Loader2 size={12} className="animate-spin mx-auto" />
+                      ) : (
+                        "Approve"
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleReject(step.id)}
+                      disabled={approvingPhase === step.id}
+                      className={cn(
+                        "flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors",
+                        "bg-red-500/20 text-red-400 hover:bg-red-500/30",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -156,3 +156,4 @@ COMMENT ON TRIGGER trigger_vibe_projects_updated_at ON vibe_projects IS 'Auto-up
 COMMENT ON TRIGGER trigger_vibe_set_completed_at ON vibe_projects IS 'Auto-set completed_at when project reaches final status';
 
 
+
