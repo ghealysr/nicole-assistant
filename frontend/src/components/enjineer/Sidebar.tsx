@@ -4,18 +4,26 @@
  * Enjineer Sidebar Component
  * 
  * Left panel containing:
- * - Files tab: File tree browser
+ * - Files tab: File tree browser with smooth animations
  * - Plan tab: Nicole's plan steps
+ * 
+ * Features:
+ * - All folders expanded by default
+ * - Smooth streaming animations when files appear
+ * - Context menu for file operations
+ * - Comprehensive file type icons
  */
 
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   FileCode, ListChecks, ChevronRight, ChevronDown,
-  FolderOpen, Folder, File, FileJson, FileType,
-  CheckCircle2, Circle, Loader2
+  FolderOpen, Folder, File, FileJson, FileType, FileText,
+  CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
+  Image, Settings, Package, Coffee, Globe, Database,
+  Layout, Layers, Terminal, X
 } from 'lucide-react';
-import { useEnjineerStore, PlanStep } from '@/lib/enjineer/store';
+import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
 
 export function Sidebar() {
   const {
@@ -67,7 +75,7 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {sidebarTab === 'files' ? (
           <FileTree 
-            files={Array.from(files.keys())}
+            files={files}
             selectedFile={selectedFile}
             onSelectFile={(path) => {
               selectFile(path);
@@ -82,9 +90,12 @@ export function Sidebar() {
   );
 }
 
-// File Tree Component
+// ============================================================================
+// File Tree Component - Enhanced with animations and context menu
+// ============================================================================
+
 interface FileTreeProps {
-  files: string[];
+  files: Map<string, EnjineerFile>;
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
 }
@@ -94,17 +105,84 @@ interface TreeNode {
   path: string;
   type: 'file' | 'folder';
   children?: Record<string, TreeNode>;
+  isNew?: boolean;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  path: string;
+  type: 'file' | 'folder';
 }
 
 function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
-  const [expanded, setExpanded] = React.useState<Set<string>>(
-    new Set(['app', 'components', 'lib', 'src'])
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [newFiles, setNewFiles] = useState<Set<string>>(new Set());
+  const prevFilesRef = useRef<Set<string>>(new Set());
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  
+  const { deleteFile, renameFile, addFile } = useEnjineerStore();
+
+  // Track new files for animation
+  useEffect(() => {
+    const currentPaths = new Set(files.keys());
+    const previousPaths = prevFilesRef.current;
+    
+    // Find newly added files
+    const added = new Set<string>();
+    currentPaths.forEach(path => {
+      if (!previousPaths.has(path)) {
+        added.add(path);
+      }
+    });
+    
+    if (added.size > 0) {
+      setNewFiles(prev => new Set([...prev, ...added]));
+      
+      // Remove "new" status after animation
+      setTimeout(() => {
+        setNewFiles(prev => {
+          const next = new Set(prev);
+          added.forEach(p => next.delete(p));
+          return next;
+        });
+      }, 600);
+    }
+    
+    prevFilesRef.current = currentPaths;
+  }, [files]);
+
+  // Auto-expand all folders when files change
+  useEffect(() => {
+    const allFolders = new Set<string>();
+    files.forEach((_, path) => {
+      const parts = path.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        allFolders.add(parts.slice(0, i).join('/'));
+      }
+    });
+    setExpanded(allFolders);
+  }, [files]);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    
+    if (contextMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [contextMenu]);
 
   // Build tree structure
   const tree: Record<string, TreeNode> = {};
   
-  files.forEach(path => {
+  files.forEach((file, path) => {
     const parts = path.split('/');
     let current = tree;
     
@@ -117,7 +195,8 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
           name: part,
           path: fullPath,
           type: isFile ? 'file' : 'folder',
-          children: isFile ? undefined : {}
+          children: isFile ? undefined : {},
+          isNew: newFiles.has(fullPath)
         };
       }
       
@@ -137,51 +216,176 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
     setExpanded(newExpanded);
   };
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, path: string, type: 'file' | 'folder') => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      path,
+      type
+    });
+  }, []);
+
+  const handleDeleteFile = (path: string) => {
+    if (deleteFile) {
+      deleteFile(path);
+    }
+    setContextMenu(null);
+  };
+
+  const handleNewFile = (folderPath: string) => {
+    const fileName = prompt('Enter file name:');
+    if (fileName && addFile) {
+      const newPath = folderPath ? `${folderPath}/${fileName}` : fileName;
+      addFile({
+        path: newPath,
+        content: '',
+        language: getLanguageFromPath(fileName)
+      });
+    }
+    setContextMenu(null);
+  };
+
+  const handleRenameFile = (oldPath: string) => {
+    const parts = oldPath.split('/');
+    const oldName = parts.pop() || '';
+    const newName = prompt('Enter new name:', oldName);
+    if (newName && newName !== oldName && renameFile) {
+      const newPath = [...parts, newName].join('/');
+      renameFile(oldPath, newPath);
+    }
+    setContextMenu(null);
+  };
+
+  const getLanguageFromPath = (path: string): string => {
+    if (path.endsWith('.tsx') || path.endsWith('.ts')) return 'typescript';
+    if (path.endsWith('.jsx') || path.endsWith('.js')) return 'javascript';
+    if (path.endsWith('.css')) return 'css';
+    if (path.endsWith('.json')) return 'json';
+    if (path.endsWith('.html')) return 'html';
+    if (path.endsWith('.md')) return 'markdown';
+    return 'plaintext';
+  };
+
   const getFileIcon = (name: string) => {
-    if (name.endsWith('.tsx') || name.endsWith('.ts')) 
-      return <FileCode size={14} className="text-blue-400" />;
-    if (name.endsWith('.css')) 
-      return <FileType size={14} className="text-pink-400" />;
-    if (name.endsWith('.json')) 
-      return <FileJson size={14} className="text-yellow-400" />;
+    const lower = name.toLowerCase();
+    
+    // TypeScript/JavaScript
+    if (lower.endsWith('.tsx')) return <FileCode size={14} className="text-blue-400" />;
+    if (lower.endsWith('.ts')) return <FileCode size={14} className="text-blue-500" />;
+    if (lower.endsWith('.jsx')) return <FileCode size={14} className="text-yellow-400" />;
+    if (lower.endsWith('.js')) return <FileCode size={14} className="text-yellow-500" />;
+    
+    // Styles
+    if (lower.endsWith('.css')) return <FileType size={14} className="text-pink-400" />;
+    if (lower.endsWith('.scss') || lower.endsWith('.sass')) return <FileType size={14} className="text-pink-500" />;
+    if (lower.endsWith('.less')) return <FileType size={14} className="text-purple-400" />;
+    
+    // Data/Config
+    if (lower.endsWith('.json')) return <FileJson size={14} className="text-yellow-400" />;
+    if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return <Settings size={14} className="text-red-400" />;
+    if (lower.endsWith('.toml')) return <Settings size={14} className="text-orange-400" />;
+    if (lower.endsWith('.env') || lower.includes('.env.')) return <Settings size={14} className="text-green-400" />;
+    
+    // Markup
+    if (lower.endsWith('.html')) return <Globe size={14} className="text-orange-500" />;
+    if (lower.endsWith('.md') || lower.endsWith('.mdx')) return <FileText size={14} className="text-[#64748B]" />;
+    if (lower.endsWith('.xml')) return <FileText size={14} className="text-orange-400" />;
+    
+    // Images
+    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || 
+        lower.endsWith('.gif') || lower.endsWith('.svg') || lower.endsWith('.webp') ||
+        lower.endsWith('.ico')) {
+      return <Image size={14} className="text-emerald-400" />;
+    }
+    
+    // Package files
+    if (lower === 'package.json') return <Package size={14} className="text-red-400" />;
+    if (lower === 'package-lock.json' || lower === 'yarn.lock' || lower === 'pnpm-lock.yaml') {
+      return <Package size={14} className="text-[#64748B]" />;
+    }
+    
+    // Config files
+    if (lower.includes('config') || lower.startsWith('.')) {
+      return <Settings size={14} className="text-[#64748B]" />;
+    }
+    if (lower === 'dockerfile' || lower.endsWith('.dockerfile')) {
+      return <Layers size={14} className="text-blue-400" />;
+    }
+    
+    // Next.js specific
+    if (lower === 'next.config.js' || lower === 'next.config.mjs') {
+      return <Layout size={14} className="text-white" />;
+    }
+    if (lower === 'tailwind.config.js' || lower === 'tailwind.config.ts') {
+      return <FileCode size={14} className="text-cyan-400" />;
+    }
+    
+    // Database
+    if (lower.endsWith('.sql') || lower.endsWith('.prisma')) {
+      return <Database size={14} className="text-blue-300" />;
+    }
+    
+    // Shell
+    if (lower.endsWith('.sh') || lower.endsWith('.bash') || lower.endsWith('.zsh')) {
+      return <Terminal size={14} className="text-green-400" />;
+    }
+    
+    // Default
     return <File size={14} className="text-[#64748B]" />;
   };
 
   const renderNode = (node: TreeNode, level: number = 0) => {
     const isExpanded = expanded.has(node.path);
     const isSelected = selectedFile === node.path;
+    const isNew = newFiles.has(node.path);
     const paddingLeft = level * 12 + 12;
 
     if (node.type === 'folder') {
       return (
-        <div key={node.path}>
+        <div key={node.path} className={cn(
+          "transition-all duration-300 ease-out",
+          isNew && "animate-fadeSlideIn"
+        )}>
           <div
-            className="flex items-center py-1.5 px-2 hover:bg-[#1E1E2E] cursor-pointer text-sm text-[#94A3B8] select-none"
+            className="flex items-center py-1.5 px-2 hover:bg-[#1E1E2E] cursor-pointer text-sm text-[#94A3B8] select-none group"
             style={{ paddingLeft }}
             onClick={() => toggleFolder(node.path)}
+            onContextMenu={(e) => handleContextMenu(e, node.path, 'folder')}
           >
-            {isExpanded ? (
-              <ChevronDown size={14} className="mr-1 text-[#64748B]" />
-            ) : (
-              <ChevronRight size={14} className="mr-1 text-[#64748B]" />
-            )}
+            <span className="transition-transform duration-150">
+              {isExpanded ? (
+                <ChevronDown size={14} className="mr-1 text-[#64748B]" />
+              ) : (
+                <ChevronRight size={14} className="mr-1 text-[#64748B]" />
+              )}
+            </span>
             {isExpanded ? (
               <FolderOpen size={14} className="mr-2 text-[#8B5CF6]" />
             ) : (
               <Folder size={14} className="mr-2 text-[#8B5CF6]" />
             )}
-            <span className="truncate">{node.name}</span>
+            <span className="truncate flex-1">{node.name}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleNewFile(node.path); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#2E2E3E] rounded transition-opacity"
+              title="New file"
+            >
+              <Plus size={12} className="text-[#64748B]" />
+            </button>
           </div>
-          {isExpanded && node.children && (
-            <div>
-              {Object.values(node.children)
-                .sort((a, b) => {
-                  if (a.type === b.type) return a.name.localeCompare(b.name);
-                  return a.type === 'folder' ? -1 : 1;
-                })
-                .map(child => renderNode(child, level + 1))}
-            </div>
-          )}
+          <div className={cn(
+            "overflow-hidden transition-all duration-200 ease-out",
+            isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+          )}>
+            {node.children && Object.values(node.children)
+              .sort((a, b) => {
+                if (a.type === b.type) return a.name.localeCompare(b.name);
+                return a.type === 'folder' ? -1 : 1;
+              })
+              .map(child => renderNode(child, level + 1))}
+          </div>
         </div>
       );
     }
@@ -190,21 +394,31 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
       <div
         key={node.path}
         className={cn(
-          "flex items-center py-1.5 px-2 cursor-pointer text-sm select-none transition-colors",
+          "flex items-center py-1.5 px-2 cursor-pointer text-sm select-none group",
+          "transition-all duration-300 ease-out",
+          isNew && "animate-fadeSlideIn bg-[#8B5CF6]/10",
           isSelected
             ? "bg-[#1E1E2E] text-white border-l-2 border-[#8B5CF6]"
             : "text-[#94A3B8] hover:bg-[#12121A] hover:text-[#F1F5F9] border-l-2 border-transparent"
         )}
         style={{ paddingLeft: paddingLeft + 14 }}
         onClick={() => onSelectFile(node.path)}
+        onContextMenu={(e) => handleContextMenu(e, node.path, 'file')}
       >
-        <span className="mr-2">{getFileIcon(node.name)}</span>
-        <span className="truncate">{node.name}</span>
+        <span className="mr-2 transition-transform duration-150">{getFileIcon(node.name)}</span>
+        <span className="truncate flex-1">{node.name}</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleDeleteFile(node.path); }}
+          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#2E2E3E] rounded transition-opacity"
+          title="Delete file"
+        >
+          <Trash2 size={12} className="text-[#64748B] hover:text-red-400" />
+        </button>
       </div>
     );
   };
 
-  if (files.length === 0) {
+  if (files.size === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-[#64748B] p-6 text-center">
         <FileCode size={32} className="mb-3 opacity-50" />
@@ -215,18 +429,81 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
   }
 
   return (
-    <div className="py-2">
-      {Object.values(tree)
-        .sort((a, b) => {
-          if (a.type === b.type) return a.name.localeCompare(b.name);
-          return a.type === 'folder' ? -1 : 1;
-        })
-        .map(node => renderNode(node))}
-    </div>
+    <>
+      <div className="py-2">
+        {Object.values(tree)
+          .sort((a, b) => {
+            if (a.type === b.type) return a.name.localeCompare(b.name);
+            return a.type === 'folder' ? -1 : 1;
+          })
+          .map(node => renderNode(node))}
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed bg-[#1E1E2E] border border-[#2E2E3E] rounded-lg shadow-xl py-1 z-50 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenu.type === 'folder' && (
+            <button
+              onClick={() => handleNewFile(contextMenu.path)}
+              className="w-full px-3 py-2 text-left text-sm text-[#F1F5F9] hover:bg-[#2E2E3E] flex items-center gap-2"
+            >
+              <Plus size={14} />
+              New File
+            </button>
+          )}
+          <button
+            onClick={() => handleRenameFile(contextMenu.path)}
+            className="w-full px-3 py-2 text-left text-sm text-[#F1F5F9] hover:bg-[#2E2E3E] flex items-center gap-2"
+          >
+            <Edit3 size={14} />
+            Rename
+          </button>
+          <button
+            onClick={() => handleDeleteFile(contextMenu.path)}
+            className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#2E2E3E] flex items-center gap-2"
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+          <div className="border-t border-[#2E2E3E] my-1" />
+          <button
+            onClick={() => setContextMenu(null)}
+            className="w-full px-3 py-2 text-left text-sm text-[#64748B] hover:bg-[#2E2E3E] flex items-center gap-2"
+          >
+            <X size={14} />
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Animation styles */}
+      <style jsx global>{`
+        @keyframes fadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateX(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        .animate-fadeSlideIn {
+          animation: fadeSlideIn 0.3s ease-out forwards;
+        }
+      `}</style>
+    </>
   );
 }
 
+// ============================================================================
 // Plan View Component
+// ============================================================================
+
 interface PlanViewProps {
   plan: PlanStep[];
 }
@@ -261,7 +538,7 @@ function PlanView({ plan }: PlanViewProps) {
         <div
           key={step.id}
           className={cn(
-            "p-3 rounded-lg border transition-colors",
+            "p-3 rounded-lg border transition-all duration-300",
             step.status === 'in_progress'
               ? "bg-[#8B5CF6]/10 border-[#8B5CF6]/30"
               : step.status === 'complete'
@@ -312,4 +589,3 @@ function PlanView({ plan }: PlanViewProps) {
     </div>
   );
 }
-

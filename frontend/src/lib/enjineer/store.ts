@@ -82,6 +82,8 @@ interface EnjineerStore {
   selectFile: (path: string | null) => void;
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
+  deleteFile: (path: string) => void;
+  renameFile: (oldPath: string, newPath: string) => void;
   
   // Chat with Nicole
   messages: ChatMessage[];
@@ -169,6 +171,26 @@ export const useEnjineerStore = create<EnjineerStore>((set) => ({
       ? (newOpenFiles[newOpenFiles.length - 1] || null)
       : state.selectedFile;
     return { openFiles: newOpenFiles, selectedFile: newSelected };
+  }),
+  deleteFile: (path) => set((state) => {
+    const newFiles = new Map(state.files);
+    newFiles.delete(path);
+    const newOpenFiles = state.openFiles.filter(f => f !== path);
+    const newSelected = state.selectedFile === path 
+      ? (newOpenFiles[newOpenFiles.length - 1] || null)
+      : state.selectedFile;
+    return { files: newFiles, openFiles: newOpenFiles, selectedFile: newSelected };
+  }),
+  renameFile: (oldPath, newPath) => set((state) => {
+    const newFiles = new Map(state.files);
+    const file = newFiles.get(oldPath);
+    if (file) {
+      newFiles.delete(oldPath);
+      newFiles.set(newPath, { ...file, path: newPath });
+    }
+    const newOpenFiles = state.openFiles.map(f => f === oldPath ? newPath : f);
+    const newSelected = state.selectedFile === oldPath ? newPath : state.selectedFile;
+    return { files: newFiles, openFiles: newOpenFiles, selectedFile: newSelected };
   }),
   
   // Chat
