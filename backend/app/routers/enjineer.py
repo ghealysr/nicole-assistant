@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from app.database import db, get_tiger_pool
@@ -1120,6 +1120,290 @@ async def deploy_project(
         "url": None,
         "createdAt": deployment["created_at"].isoformat()
     }
+
+
+# ============================================================================
+# Preview Endpoints
+# ============================================================================
+
+class PreviewBundle(BaseModel):
+    """Bundled preview data for frontend rendering."""
+    project_id: int
+    project_type: str  # 'static', 'react', 'nextjs', 'html'
+    entry_file: str
+    files: dict  # path -> content
+    dependencies: dict  # package name -> version
+
+
+def detect_project_type(files: dict) -> tuple[str, str]:
+    """
+    Detect project type from file structure.
+    Returns (project_type, entry_file)
+    """
+    file_paths = list(files.keys())
+    
+    # Check for package.json to detect React/Next.js
+    if 'package.json' in file_paths or '/package.json' in file_paths:
+        pkg_content = files.get('package.json') or files.get('/package.json', '{}')
+        try:
+            pkg = json.loads(pkg_content)
+            deps = {**pkg.get('dependencies', {}), **pkg.get('devDependencies', {})}
+            
+            if 'next' in deps:
+                # Next.js project
+                for entry in ['/app/page.tsx', '/pages/index.tsx', '/pages/index.js', 
+                              'app/page.tsx', 'pages/index.tsx']:
+                    if entry in file_paths or entry.lstrip('/') in file_paths:
+                        return ('nextjs', entry)
+                return ('nextjs', '/app/page.tsx')
+            
+            if 'react' in deps:
+                # React project
+                for entry in ['/src/App.tsx', '/src/App.jsx', '/src/App.js',
+                              'src/App.tsx', 'src/App.jsx', 'src/App.js',
+                              '/App.tsx', '/App.jsx', '/App.js']:
+                    if entry in file_paths or entry.lstrip('/') in file_paths:
+                        return ('react', entry)
+                return ('react', '/src/App.tsx')
+        except json.JSONDecodeError:
+            pass
+    
+    # Check for index.html (static site)
+    for entry in ['/index.html', 'index.html', '/public/index.html']:
+        if entry in file_paths or entry.lstrip('/') in file_paths:
+            return ('static', entry)
+    
+    # Default to HTML with first HTML file found
+    html_files = [f for f in file_paths if f.endswith('.html')]
+    if html_files:
+        return ('html', html_files[0])
+    
+    # If we have .tsx or .jsx files, assume React
+    react_files = [f for f in file_paths if f.endswith(('.tsx', '.jsx'))]
+    if react_files:
+        return ('react', react_files[0])
+    
+    # Last resort: return first file
+    return ('html', file_paths[0] if file_paths else '/index.html')
+
+
+def extract_dependencies(files: dict) -> dict:
+    """Extract dependencies from package.json if present."""
+    pkg_content = files.get('package.json') or files.get('/package.json')
+    if not pkg_content:
+        return {}
+    
+    try:
+        pkg = json.loads(pkg_content)
+        return pkg.get('dependencies', {})
+    except json.JSONDecodeError:
+        return {}
+
+
+@router.get("/projects/{project_id}/preview/bundle")
+async def get_preview_bundle(
+    project_id: int,
+    user = Depends(get_current_user)
+):
+    """
+    Get bundled project files for preview rendering.
+    
+    Returns all files, detected project type, and dependencies
+    for client-side preview using Sandpack or direct iframe.
+    """
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        files = await conn.fetch(
+            "SELECT path, content FROM enjineer_files WHERE project_id = $1",
+            project_id
+        )
+    
+    if not files:
+        return {
+            "project_id": project_id,
+            "project_type": "html",
+            "entry_file": "/index.html",
+            "files": {
+                "/index.html": """<!DOCTYPE html>
+<html>
+<head><title>Empty Project</title></head>
+<body><h1>No files yet</h1><p>Ask Nicole to create your project files.</p></body>
+</html>"""
+            },
+            "dependencies": {}
+        }
+    
+    # Build file map
+    file_map = {}
+    for f in files:
+        path = f["path"]
+        # Normalize path to start with /
+        if not path.startswith('/'):
+            path = '/' + path
+        file_map[path] = f["content"] or ""
+    
+    project_type, entry_file = detect_project_type(file_map)
+    dependencies = extract_dependencies(file_map)
+    
+    return {
+        "project_id": project_id,
+        "project_type": project_type,
+        "entry_file": entry_file,
+        "files": file_map,
+        "dependencies": dependencies
+    }
+
+
+@router.get("/projects/{project_id}/preview/html")
+async def get_preview_html(
+    project_id: int,
+    user = Depends(get_current_user)
+):
+    """
+    Get a complete HTML preview for static projects.
+    
+    For static HTML projects, this returns a self-contained HTML document
+    with all CSS and JS inlined for iframe rendering.
+    """
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        files = await conn.fetch(
+            "SELECT path, content FROM enjineer_files WHERE project_id = $1",
+            project_id
+        )
+    
+    if not files:
+        return HTMLResponse("""<!DOCTYPE html>
+<html>
+<head><title>Empty Project</title></head>
+<body><h1>No files yet</h1><p>Ask Nicole to create your project files.</p></body>
+</html>""")
+    
+    # Build file map
+    file_map = {f["path"]: f["content"] or "" for f in files}
+    
+    # Find index.html
+    html_content = None
+    for path in ['/index.html', 'index.html', '/public/index.html']:
+        if path in file_map:
+            html_content = file_map[path]
+            break
+    
+    if not html_content:
+        # If no index.html, look for any HTML file
+        for path, content in file_map.items():
+            if path.endswith('.html'):
+                html_content = content
+                break
+    
+    if not html_content:
+        # Create a simple preview showing all files
+        files_list = '\n'.join(f'<li>{path}</li>' for path in sorted(file_map.keys()))
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><title>Project Preview</title>
+<style>body {{ font-family: system-ui; padding: 2rem; background: #0a0a0f; color: #e2e8f0; }}</style>
+</head>
+<body>
+<h1>Project Files</h1>
+<ul>{files_list}</ul>
+<p>No index.html found. This is a React or component-based project - use the Sandpack preview.</p>
+</body>
+</html>"""
+    else:
+        # Inline CSS files
+        for path, content in file_map.items():
+            if path.endswith('.css'):
+                # Simple CSS inlining - replace link tags
+                css_inline = f'<style>/* {path} */\n{content}</style>'
+                # Add before </head>
+                if '</head>' in html_content:
+                    html_content = html_content.replace('</head>', f'{css_inline}\n</head>')
+        
+        # Inline JS files at end of body
+        for path, content in file_map.items():
+            if path.endswith('.js') and not path.endswith('.min.js'):
+                js_inline = f'<script>/* {path} */\n{content}</script>'
+                if '</body>' in html_content:
+                    html_content = html_content.replace('</body>', f'{js_inline}\n</body>')
+    
+    return HTMLResponse(html_content)
+
+
+@router.get("/projects/{project_id}/preview/file/{file_path:path}")
+async def get_preview_file(
+    project_id: int,
+    file_path: str,
+    user = Depends(get_current_user)
+):
+    """
+    Serve an individual file from the project.
+    
+    Used by preview iframe for loading assets, scripts, etc.
+    """
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    path = f"/{file_path}" if not file_path.startswith("/") else file_path
+    
+    async with pool.acquire() as conn:
+        file = await conn.fetchrow(
+            "SELECT content, language FROM enjineer_files WHERE project_id = $1 AND path = $2",
+            project_id, path
+        )
+    
+    if not file:
+        # Try without leading slash
+        async with pool.acquire() as conn:
+            file = await conn.fetchrow(
+                "SELECT content, language FROM enjineer_files WHERE project_id = $1 AND path = $2",
+                project_id, file_path
+            )
+    
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    content = file["content"] or ""
+    
+    # Determine content type from extension
+    ext = os.path.splitext(file_path)[1].lower()
+    content_types = {
+        ".html": "text/html",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".json": "application/json",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".tsx": "application/typescript",
+        ".ts": "application/typescript",
+        ".jsx": "application/javascript",
+        ".md": "text/markdown",
+    }
+    
+    content_type = content_types.get(ext, "text/plain")
+    
+    return Response(
+        content=content.encode('utf-8'),
+        media_type=content_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache"
+        }
+    )
 
 
 # ============================================================================

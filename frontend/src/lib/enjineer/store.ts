@@ -123,6 +123,10 @@ interface EnjineerStore {
   setLoading: (loading: boolean) => void;
   error: string | null;
   setError: (error: string | null) => void;
+  
+  // Preview refresh trigger - increment to force preview refresh
+  previewRefreshTrigger: number;
+  triggerPreviewRefresh: () => void;
 }
 
 export const useEnjineerStore = create<EnjineerStore>((set) => ({
@@ -225,5 +229,11 @@ export const useEnjineerStore = create<EnjineerStore>((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
   error: null,
   setError: (error) => set({ error }),
+  
+  // Preview refresh
+  previewRefreshTrigger: 0,
+  triggerPreviewRefresh: () => set((state) => ({ 
+    previewRefreshTrigger: state.previewRefreshTrigger + 1 
+  })),
 }));
 

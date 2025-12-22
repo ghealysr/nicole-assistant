@@ -350,7 +350,56 @@ export const enjineerApi = {
     if (!res.ok) throw new Error('Failed to deploy');
     return res.json();
   },
+
+  // ========================================================================
+  // Preview - Local sandbox preview without deployment
+  // ========================================================================
+  
+  /**
+   * Get preview bundle with all project files for Sandpack/iframe rendering.
+   */
+  async getPreviewBundle(projectId: number): Promise<PreviewBundle> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/bundle`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to get preview bundle');
+    return res.json();
+  },
+
+  /**
+   * Get static HTML preview (for simple HTML/CSS/JS projects).
+   */
+  async getPreviewHtml(projectId: number): Promise<string> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/html`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to get preview HTML');
+    return res.text();
+  },
+
+  /**
+   * Get URL for preview HTML endpoint (for iframe src).
+   */
+  getPreviewHtmlUrl(projectId: number): string {
+    const token = typeof window !== 'undefined' 
+      ? localStorage.getItem('nicole_google_token') || 
+        localStorage.getItem('nicole_token') || 
+        localStorage.getItem('auth_token')
+      : null;
+    // Note: For iframe src, we'll need to use a different approach since we can't add auth headers
+    // The frontend will fetch the HTML content and use srcdoc instead
+    return `${API_BASE}/enjineer/projects/${projectId}/preview/html`;
+  },
 };
+
+// Preview Bundle type
+export interface PreviewBundle {
+  project_id: number;
+  project_type: 'static' | 'react' | 'nextjs' | 'html';
+  entry_file: string;
+  files: Record<string, string>;
+  dependencies: Record<string, string>;
+}
 
 // Helper function
 function getLanguageFromPath(path: string): string {

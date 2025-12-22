@@ -6,14 +6,13 @@
  * Center panel containing:
  * - File tabs at top
  * - Code editor (Monaco) / Preview / Terminal tabs
+ * - Sandpack-powered preview for React projects
+ * - Static HTML preview for simple sites
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { 
-  X, Code, Eye, Terminal, Smartphone, Tablet, Monitor,
-  Play, RefreshCw
-} from 'lucide-react';
+import { X, Code, Eye, Terminal, RefreshCw } from 'lucide-react';
 import { useEnjineerStore } from '@/lib/enjineer/store';
 import dynamic from 'next/dynamic';
 
@@ -25,6 +24,19 @@ const MonacoEditor = dynamic(
     loading: () => (
       <div className="flex items-center justify-center h-full bg-[#0D0D12] text-[#64748B]">
         Loading editor...
+      </div>
+    )
+  }
+);
+
+// Dynamic import for PreviewPane
+const PreviewPane = dynamic(
+  () => import('./PreviewPane').then(mod => mod.PreviewPane),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full bg-[#0D0D12] text-[#64748B]">
+        Loading preview...
       </div>
     )
   }
@@ -44,9 +56,21 @@ export function MainArea() {
     updateFile,
     terminalOutput,
     currentProject,
+    previewRefreshTrigger,
+    triggerPreviewRefresh,
   } = useEnjineerStore();
 
   const currentFile = selectedFile ? files.get(selectedFile) ?? null : null;
+  
+  // Local refresh key combined with store trigger for full control
+  const [localRefreshKey, setLocalRefreshKey] = useState(0);
+  const combinedRefreshKey = previewRefreshTrigger + localRefreshKey;
+  
+  // Refresh preview when switching to preview tab or when explicitly requested
+  const refreshPreview = useCallback(() => {
+    setLocalRefreshKey(k => k + 1);
+    triggerPreviewRefresh();
+  }, [triggerPreviewRefresh]);
 
   return (
     <div className="flex-1 bg-[#0A0A0F] flex flex-col min-w-0">
@@ -67,7 +91,10 @@ export function MainArea() {
             Code
           </button>
           <button
-            onClick={() => setMainTab('preview')}
+            onClick={() => {
+              setMainTab('preview');
+              refreshPreview(); // Refresh when switching to preview
+            }}
             className={cn(
               "px-3 py-1.5 text-xs font-medium rounded transition-colors flex items-center gap-1.5",
               mainTab === 'preview'
@@ -92,45 +119,15 @@ export function MainArea() {
           </button>
         </div>
 
-        {/* Right: Preview controls (only show in preview mode) */}
+        {/* Right: Preview refresh (only in preview mode - other controls are in PreviewPane) */}
         {mainTab === 'preview' && (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-[#12121A] rounded p-0.5">
-              <button
-                onClick={() => setPreviewMode('mobile')}
-                className={cn(
-                  "p-1.5 rounded transition-colors",
-                  previewMode === 'mobile' ? "bg-[#1E1E2E] text-white" : "text-[#64748B] hover:text-white"
-                )}
-                title="Mobile"
-              >
-                <Smartphone size={14} />
-              </button>
-              <button
-                onClick={() => setPreviewMode('tablet')}
-                className={cn(
-                  "p-1.5 rounded transition-colors",
-                  previewMode === 'tablet' ? "bg-[#1E1E2E] text-white" : "text-[#64748B] hover:text-white"
-                )}
-                title="Tablet"
-              >
-                <Tablet size={14} />
-              </button>
-              <button
-                onClick={() => setPreviewMode('desktop')}
-                className={cn(
-                  "p-1.5 rounded transition-colors",
-                  previewMode === 'desktop' ? "bg-[#1E1E2E] text-white" : "text-[#64748B] hover:text-white"
-                )}
-                title="Desktop"
-              >
-                <Monitor size={14} />
-              </button>
-            </div>
-            <button className="p-1.5 text-[#64748B] hover:text-white transition-colors" title="Refresh">
-              <RefreshCw size={14} />
-            </button>
-          </div>
+          <button 
+            onClick={refreshPreview}
+            className="p-1.5 text-[#64748B] hover:text-white transition-colors"
+            title="Refresh Preview"
+          >
+            <RefreshCw size={14} />
+          </button>
         )}
       </div>
 
@@ -183,7 +180,12 @@ export function MainArea() {
           />
         )}
         {mainTab === 'preview' && (
-          <PreviewPanel previewMode={previewMode} projectUrl={currentProject?.status === 'deployed' ? '' : undefined} />
+          <PreviewPane 
+            projectId={currentProject?.id ?? null} 
+            previewMode={previewMode}
+            onModeChange={setPreviewMode}
+            refreshTrigger={combinedRefreshKey}
+          />
         )}
         {mainTab === 'terminal' && (
           <TerminalPanel output={terminalOutput} />
@@ -232,46 +234,6 @@ function CodePanel({ file, onContentChange }: CodePanelProps) {
         smoothScrolling: true,
       }}
     />
-  );
-}
-
-// Preview Panel Component
-interface PreviewPanelProps {
-  previewMode: 'mobile' | 'tablet' | 'desktop';
-  projectUrl?: string;
-}
-
-function PreviewPanel({ previewMode, projectUrl }: PreviewPanelProps) {
-  const widthMap = {
-    mobile: 'max-w-[375px]',
-    tablet: 'max-w-[768px]',
-    desktop: 'max-w-full',
-  };
-
-  if (!projectUrl) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-[#0A0A0F] text-[#64748B]">
-        <Eye size={48} className="mb-4 opacity-30" />
-        <p className="text-sm">No preview available</p>
-        <p className="text-xs mt-1">Deploy the project to see a live preview</p>
-        <button className="mt-4 px-4 py-2 bg-[#8B5CF6] text-white rounded-lg text-sm font-medium hover:bg-[#7C3AED] transition-colors flex items-center gap-2">
-          <Play size={14} />
-          Deploy
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full flex items-center justify-center bg-[#0A0A0F] p-4">
-      <div className={cn('w-full h-full transition-all', widthMap[previewMode])}>
-        <iframe
-          src={projectUrl}
-          className="w-full h-full rounded-lg border border-[#1E1E2E] bg-white"
-          title="Preview"
-        />
-      </div>
-    </div>
   );
 }
 
