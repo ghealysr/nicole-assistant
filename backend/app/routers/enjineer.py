@@ -149,12 +149,12 @@ def get_user_id_from_context(user) -> int:
     raise HTTPException(status_code=401, detail="Not authenticated - no user_id")
 
 
-async def verify_project_access(pool, project_id: str, user_id: str) -> dict:
+async def verify_project_access(pool, project_id: int, user_id: int) -> dict:
     """Verify user has access to project and return project data."""
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
             "SELECT * FROM enjineer_projects WHERE id = $1 AND user_id = $2",
-            int(project_id), user_id
+            project_id, user_id
         )
     
     if not project:
@@ -235,7 +235,7 @@ async def list_projects(
                 SELECT * FROM enjineer_projects 
                 WHERE user_id = $1
                 ORDER BY updated_at DESC
-                LIMIT $3 OFFSET $4
+                LIMIT $2 OFFSET $3
                 """,
                 user_id, limit, offset
             )
@@ -259,7 +259,7 @@ async def list_projects(
 
 @router.get("/projects/{project_id}")
 async def get_project(
-    project_id: str,
+    project_id: int,
     user = Depends(get_current_user)
 ):
     """Get project details with files and current plan."""
@@ -271,7 +271,7 @@ async def get_project(
         # Get files
         files = await conn.fetch(
             "SELECT * FROM enjineer_files WHERE project_id = $1 ORDER BY path",
-            int(project_id)
+            project_id
         )
         
         # Get current plan
@@ -281,13 +281,13 @@ async def get_project(
             WHERE project_id = $1 AND status NOT IN ('abandoned', 'completed')
             ORDER BY created_at DESC LIMIT 1
             """,
-            int(project_id)
+            project_id
         )
         
         # Get pending approvals
         approvals = await conn.fetch(
             "SELECT * FROM enjineer_approvals WHERE project_id = $1 AND status = 'pending'",
-            int(project_id)
+            project_id
         )
     
     return {
@@ -337,7 +337,7 @@ async def get_project(
 
 @router.patch("/projects/{project_id}")
 async def update_project(
-    project_id: str,
+    project_id: int,
     request: UpdateProjectRequest,
     user = Depends(get_current_user)
 ):
@@ -375,7 +375,7 @@ async def update_project(
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
     
-    values.append(int(project_id))
+    values.append(project_id)
     
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
@@ -404,7 +404,7 @@ async def update_project(
 
 @router.delete("/projects/{project_id}")
 async def delete_project(
-    project_id: str,
+    project_id: int,
     user = Depends(get_current_user)
 ):
     """Soft delete a project (set status to abandoned)."""
@@ -415,7 +415,7 @@ async def delete_project(
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE enjineer_projects SET status = 'abandoned' WHERE id = $1",
-            int(project_id)
+            project_id
         )
     
     return {"success": True}
@@ -427,7 +427,7 @@ async def delete_project(
 
 @router.get("/projects/{project_id}/files")
 async def list_files(
-    project_id: str,
+    project_id: int,
     path_prefix: Optional[str] = None,
     user = Depends(get_current_user)
 ):
@@ -444,12 +444,12 @@ async def list_files(
                 WHERE project_id = $1 AND path LIKE $2
                 ORDER BY path
                 """,
-                int(project_id), f"{path_prefix}%"
+                project_id, f"{path_prefix}%"
             )
         else:
             files = await conn.fetch(
                 "SELECT * FROM enjineer_files WHERE project_id = $1 ORDER BY path",
-                int(project_id)
+                project_id
             )
     
     return [
@@ -471,7 +471,7 @@ async def list_files(
 
 @router.post("/projects/{project_id}/files")
 async def create_file(
-    project_id: str,
+    project_id: int,
     request: CreateFileRequest,
     user = Depends(get_current_user)
 ):
@@ -487,7 +487,7 @@ async def create_file(
         # Check if file exists
         existing = await conn.fetchrow(
             "SELECT id FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            int(project_id), request.path
+            project_id, request.path
         )
         
         if existing:
@@ -500,7 +500,7 @@ async def create_file(
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
-            int(project_id), request.path, request.content, language, "user", checksum
+            project_id, request.path, request.content, language, "user", checksum
         )
         
         # Create initial version
@@ -530,7 +530,7 @@ async def create_file(
 
 @router.get("/projects/{project_id}/files/{file_path:path}")
 async def get_file(
-    project_id: str,
+    project_id: int,
     file_path: str,
     user = Depends(get_current_user)
 ):
@@ -542,7 +542,7 @@ async def get_file(
     async with pool.acquire() as conn:
         file = await conn.fetchrow(
             "SELECT * FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            int(project_id), f"/{file_path}" if not file_path.startswith("/") else file_path
+            project_id, f"/{file_path}" if not file_path.startswith("/") else file_path
         )
     
     if not file:
@@ -564,7 +564,7 @@ async def get_file(
 
 @router.put("/projects/{project_id}/files/{file_path:path}")
 async def update_file(
-    project_id: str,
+    project_id: int,
     file_path: str,
     request: UpdateFileRequest,
     user = Depends(get_current_user)
@@ -580,7 +580,7 @@ async def update_file(
     async with pool.acquire() as conn:
         file = await conn.fetchrow(
             "SELECT * FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            int(project_id), path
+            project_id, path
         )
         
         if not file:
@@ -633,7 +633,7 @@ async def update_file(
 
 @router.delete("/projects/{project_id}/files/{file_path:path}")
 async def delete_file(
-    project_id: str,
+    project_id: int,
     file_path: str,
     force: bool = False,
     user = Depends(get_current_user)
@@ -648,7 +648,7 @@ async def delete_file(
     async with pool.acquire() as conn:
         result = await conn.execute(
             "DELETE FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            int(project_id), path
+            project_id, path
         )
     
     if result == "DELETE 0":
@@ -663,7 +663,7 @@ async def delete_file(
 
 @router.post("/projects/{project_id}/chat")
 async def send_message(
-    project_id: str,
+    project_id: int,
     request: SendMessageRequest,
     user = Depends(get_current_user)
 ):
@@ -679,7 +679,7 @@ async def send_message(
             INSERT INTO enjineer_messages (project_id, role, content, attachments, metadata)
             VALUES ($1, 'user', $2, $3, $4)
             """,
-            int(project_id), request.message, request.attachments or [], {}
+            project_id, request.message, request.attachments or [], {}
         )
     
     async def generate_response():
@@ -688,7 +688,7 @@ async def send_message(
             # Import here to avoid circular dependency
             from app.services.enjineer_nicole import EnjineerNicole
             
-            nicole = EnjineerNicole(int(project_id), user_id)
+            nicole = EnjineerNicole(project_id, user_id)
             
             full_response = ""
             
@@ -712,7 +712,7 @@ async def send_message(
                     INSERT INTO enjineer_messages (project_id, role, content, metadata)
                     VALUES ($1, 'assistant', $2, $3)
                     """,
-                    int(project_id), full_response, {}
+                    project_id, full_response, {}
                 )
             
             yield "data: {'type': 'done'}\n\n"
@@ -734,7 +734,7 @@ async def send_message(
 
 @router.get("/projects/{project_id}/chat/history")
 async def get_chat_history(
-    project_id: str,
+    project_id: int,
     limit: int = Query(default=50, le=200),
     before: Optional[str] = None,
     user = Depends(get_current_user)
@@ -753,7 +753,7 @@ async def get_chat_history(
                 ORDER BY created_at DESC
                 LIMIT $3
                 """,
-                int(project_id), datetime.fromisoformat(before), limit
+                project_id, datetime.fromisoformat(before), limit
             )
         else:
             messages = await conn.fetch(
@@ -763,7 +763,7 @@ async def get_chat_history(
                 ORDER BY created_at DESC
                 LIMIT $2
                 """,
-                int(project_id), limit
+                project_id, limit
             )
     
     # Reverse to get chronological order
@@ -789,7 +789,7 @@ async def get_chat_history(
 
 @router.get("/projects/{project_id}/approvals/pending")
 async def get_pending_approvals(
-    project_id: str,
+    project_id: int,
     user = Depends(get_current_user)
 ):
     """Get pending approvals for project."""
@@ -804,7 +804,7 @@ async def get_pending_approvals(
             WHERE project_id = $1 AND status = 'pending'
             ORDER BY requested_at
             """,
-            int(project_id)
+            project_id
         )
     
     return [
@@ -824,8 +824,8 @@ async def get_pending_approvals(
 
 @router.post("/projects/{project_id}/approvals/{approval_id}/approve")
 async def approve_request(
-    project_id: str,
-    approval_id: str,
+    project_id: int,
+    approval_id: int,
     request: ApprovalActionRequest,
     user = Depends(get_current_user)
 ):
@@ -842,7 +842,7 @@ async def approve_request(
             WHERE id = $2 AND project_id = $3 AND status = 'pending'
             RETURNING *
             """,
-            request.note, int(approval_id), int(project_id)
+            request.note, approval_id, project_id
         )
     
     if not approval:
@@ -864,8 +864,8 @@ async def approve_request(
 
 @router.post("/projects/{project_id}/approvals/{approval_id}/reject")
 async def reject_request(
-    project_id: str,
-    approval_id: str,
+    project_id: int,
+    approval_id: int,
     request: ApprovalActionRequest,
     user = Depends(get_current_user)
 ):
@@ -885,7 +885,7 @@ async def reject_request(
             WHERE id = $2 AND project_id = $3 AND status = 'pending'
             RETURNING *
             """,
-            request.reason, int(approval_id), int(project_id)
+            request.reason, approval_id, project_id
         )
     
     if not approval:
