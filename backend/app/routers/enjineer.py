@@ -1531,7 +1531,11 @@ async def get_preview_html(
     <script>
         // Global error handler
         window.onerror = function(msg, url, lineNo, columnNo, error) {{
-            showError('JavaScript Error', msg + '\\n\\nLine: ' + lineNo + ', Column: ' + columnNo);
+            var fullMessage = msg;
+            if (error && error.stack) {{
+                fullMessage += '\\n\\nStack:\\n' + error.stack;
+            }}
+            showError('JavaScript Error', fullMessage + '\\n\\nLine: ' + lineNo + ', Column: ' + columnNo);
             return true;
         }};
         
@@ -1540,9 +1544,30 @@ async def get_preview_html(
             var errorDiv = document.getElementById('error-display');
             errorDiv.style.display = 'block';
             errorDiv.className = 'preview-error';
-            errorDiv.innerHTML = '<h2>' + title + '</h2><pre>' + message + '</pre>' +
+            errorDiv.innerHTML = '<h2>' + title + '</h2><pre>' + escapeHtml(message) + '</pre>' +
                 '<p style="color:#888;margin-top:2rem;">Check browser console (F12) for more details.</p>';
         }}
+        
+        function escapeHtml(text) {{
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
+        
+        // Override Babel's error handling to show detailed errors
+        window.addEventListener('load', function() {{
+            if (window.Babel) {{
+                var originalTransform = window.Babel.transform;
+                window.Babel.transform = function(code, options) {{
+                    try {{
+                        return originalTransform.call(this, code, options);
+                    }} catch (e) {{
+                        showError('Babel Transform Error', e.message + '\\n\\nThis usually means there is invalid JSX/JavaScript in the component code.');
+                        throw e;
+                    }}
+                }};
+            }}
+        }});
     </script>
     
     <script type="text/babel" data-presets="react">
