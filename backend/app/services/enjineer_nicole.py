@@ -1004,7 +1004,20 @@ class EnjineerNicole:
                     elif block.type == "tool_use":
                         tool_id = block.id
                         tool_name = block.name
-                        tool_input = block.input
+                        
+                        # Ensure tool_input is a dict (some SDK versions return string)
+                        raw_input = block.input
+                        if isinstance(raw_input, str):
+                            try:
+                                tool_input = json.loads(raw_input)
+                            except json.JSONDecodeError:
+                                logger.error(f"[Enjineer] Failed to parse tool input: {raw_input[:100]}")
+                                tool_input = {}
+                        elif isinstance(raw_input, dict):
+                            tool_input = raw_input
+                        else:
+                            logger.error(f"[Enjineer] Unexpected tool input type: {type(raw_input)}")
+                            tool_input = {}
                         
                         assistant_content.append({
                             "type": "tool_use",
@@ -1042,11 +1055,13 @@ class EnjineerNicole:
                         
                         # Special handling for approval requests
                         if tool_name == "request_approval" and result.get("success"):
-                            yield {
-                                "type": "approval_required",
-                                "approval_id": result["result"]["approval_id"],
-                                "title": result["result"]["title"]
-                            }
+                            inner_result = result.get("result", {})
+                            if isinstance(inner_result, dict):
+                                yield {
+                                    "type": "approval_required",
+                                    "approval_id": inner_result.get("approval_id", ""),
+                                    "title": inner_result.get("title", "Approval Required")
+                                }
                         
                         # Add tool result for continuation
                         tool_results.append({
