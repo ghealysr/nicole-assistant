@@ -71,22 +71,25 @@ export default function EnjineerPage() {
             files: s.files,
           })));
         } else {
-          // No projects, show welcome state
-          setCurrentProject(null);
+          // No projects exist - auto-create one
+          console.log('[Enjineer] No projects found, creating new project...');
+          const newProject = await enjineerApi.createProject(
+            'New Project',
+            'Start building with Nicole'
+          );
+          setCurrentProject({
+            id: newProject.id,
+            name: newProject.name,
+            description: newProject.description,
+            status: newProject.status,
+            createdAt: newProject.createdAt,
+            updatedAt: newProject.updatedAt,
+          });
         }
       } catch (error) {
         console.error('[Enjineer] Failed to load projects:', error);
-        // Set to demo mode if backend unavailable
-        if (!currentProject) {
-          setCurrentProject({
-            id: 0,
-            name: 'New Project',
-            description: 'Start building with Nicole',
-            status: 'draft',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
+        // Show error state - don't create fake project
+        setCurrentProject(null);
       } finally {
         setLoading(false);
       }

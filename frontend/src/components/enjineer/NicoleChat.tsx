@@ -62,11 +62,11 @@ export function NicoleChat() {
 
   const handleSend = async () => {
     if (!input.trim() || isNicoleThinking) return;
-    if (!currentProject) {
+    if (!currentProject || !currentProject.id || currentProject.id === 0) {
       addMessage({
         id: crypto.randomUUID(),
         role: 'system',
-        content: 'Please select or create a project first.',
+        content: 'Creating project... please wait a moment and try again.',
         timestamp: new Date(),
       });
       return;

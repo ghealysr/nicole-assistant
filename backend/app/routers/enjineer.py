@@ -688,7 +688,7 @@ async def send_message(
             # Import here to avoid circular dependency
             from app.services.enjineer_nicole import EnjineerNicole
             
-            nicole = EnjineerNicole(project_id, user_id)
+            nicole = EnjineerNicole(int(project_id), user_id)
             
             full_response = ""
             
