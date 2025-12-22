@@ -7,16 +7,57 @@
 
 import { EnjineerFile, PlanStep, Project } from './store';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+/**
+ * Get the API base URL with proper validation.
+ * Ensures we always hit the correct API domain.
+ */
+function getApiBase(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  
+  // Production default
+  const PRODUCTION_API = 'https://api.nicole.alphawavetech.com';
+  
+  if (!envUrl) {
+    return PRODUCTION_API;
+  }
+  
+  // Normalize: ensure https:// prefix
+  let url = envUrl.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+  
+  // Remove trailing slash
+  url = url.replace(/\/$/, '');
+  
+  // Validate it looks like a proper API URL
+  // Must include 'api.' subdomain for production
+  if (url.includes('nicole.alphawavetech.com') && !url.includes('api.')) {
+    console.warn('[Enjineer API] URL missing api. subdomain, using production default');
+    return PRODUCTION_API;
+  }
+  
+  return url;
+}
 
+const API_BASE = getApiBase();
+
+/**
+ * Get authentication headers with token.
+ * Primary token key is 'nicole_token' (set by Google OAuth flow).
+ */
 function getAuthHeaders(): HeadersInit {
-  // Check multiple token keys for compatibility
-  const token = typeof window !== 'undefined' 
-    ? (localStorage.getItem('nicole_token') || 
-       localStorage.getItem('auth_token') || 
-       localStorage.getItem('nicole_google_token') ||
-       localStorage.getItem('token'))
-    : null;
+  if (typeof window === 'undefined') {
+    return { 'Content-Type': 'application/json' };
+  }
+  
+  // Primary key used by alphawave_utils.ts
+  const token = localStorage.getItem('nicole_token');
+  
+  if (!token) {
+    console.warn('[Enjineer API] No auth token found in localStorage');
+  }
+  
   return {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -69,13 +110,21 @@ export const enjineerApi = {
     });
     if (!res.ok) throw new Error('Failed to get project');
     const data = await res.json();
+    
+    // Backend returns {project: {...}, files: [...], plan: {...}, pending_approvals: [...]}
+    // ProjectResponse fields use snake_case
+    const project = data.project;
+    if (!project) {
+      throw new Error('Invalid project response: missing project data');
+    }
+    
     return {
-      id: data.project.id,
-      name: data.project.name,
-      description: data.project.description,
-      status: data.project.status,
-      createdAt: new Date(data.project.created_at),
-      updatedAt: new Date(data.project.updated_at),
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      createdAt: new Date(project.created_at),
+      updatedAt: new Date(project.updated_at),
     };
   },
 
@@ -259,14 +308,15 @@ export const enjineerApi = {
     const data = await res.json();
     
     // Backend returns {plan: {...}, phases: [...]}
+    // phases have: id, phaseNumber, name, notes, status, estimatedMinutes, etc.
     const phases = data.phases || [];
     if (phases.length === 0) return [];
     
     return phases.map((p: Record<string, unknown>) => ({
-      id: p.id as string || crypto.randomUUID(),
-      title: p.name as string,
-      description: p.notes as string || '',
-      status: p.status as string || 'pending',
+      id: (p.id as string) || crypto.randomUUID(),
+      title: (p.name as string) || `Phase ${p.phaseNumber}`,
+      description: (p.notes as string) || '',
+      status: (p.status as string) || 'pending',
       files: [],
     }));
   },

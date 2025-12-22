@@ -920,9 +920,12 @@ async def get_plan(
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
+        # Schema: enjineer_plans has 'version' and 'content', NOT 'name'
         plan = await conn.fetchrow(
             """
-            SELECT * FROM enjineer_plans 
+            SELECT id, project_id, version, content, status, current_phase_number,
+                   created_at, approved_at, completed_at
+            FROM enjineer_plans 
             WHERE project_id = $1 AND status NOT IN ('abandoned', 'completed')
             ORDER BY created_at DESC LIMIT 1
             """,
@@ -933,25 +936,42 @@ async def get_plan(
             return {"plan": None, "phases": []}
         
         # Get phases for this plan
+        # Schema: enjineer_plan_phases has 'phase_number' not 'phase_order'
         phases = await conn.fetch(
-            "SELECT * FROM enjineer_plan_phases WHERE plan_id = $1 ORDER BY phase_order",
+            """
+            SELECT id, plan_id, phase_number, name, status, estimated_minutes,
+                   actual_minutes, agents_required, qa_depth, qa_focus,
+                   requires_approval, approval_status, started_at, completed_at,
+                   approved_at, notes
+            FROM enjineer_plan_phases 
+            WHERE plan_id = $1 
+            ORDER BY phase_number
+            """,
             plan["id"]
         )
     
     return {
         "plan": {
             "id": plan["id"],
-            "name": plan["name"],
+            "version": plan["version"],
             "status": plan["status"],
-            "created_at": plan["created_at"].isoformat(),
+            "currentPhase": plan["current_phase_number"],
+            "createdAt": plan["created_at"].isoformat(),
+            "approvedAt": plan["approved_at"].isoformat() if plan["approved_at"] else None,
         },
         "phases": [
             {
                 "id": str(p["id"]),
+                "phaseNumber": p["phase_number"],
                 "name": p["name"],
                 "notes": p["notes"],
                 "status": p["status"],
-                "order": p["phase_order"],
+                "estimatedMinutes": p["estimated_minutes"],
+                "actualMinutes": p["actual_minutes"],
+                "agentsRequired": p["agents_required"] or [],
+                "qaDepth": p["qa_depth"],
+                "requiresApproval": p["requires_approval"],
+                "approvalStatus": p["approval_status"],
             }
             for p in phases
         ]
@@ -977,28 +997,33 @@ async def dispatch_agent(
     user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     
-    valid_agents = ['engineer', 'qa', 'sr_qa']
+    # Validate agent type matches DB constraint
+    valid_agents = ['engineer', 'qa', 'sr_qa', 'nicole']
     if agent not in valid_agents:
         raise HTTPException(status_code=400, detail=f"Invalid agent. Must be one of: {valid_agents}")
     
     pool = await get_tiger_pool()
     
     # Create agent execution record
+    # Schema: instruction TEXT NOT NULL (not 'task')
     async with pool.acquire() as conn:
         execution = await conn.fetchrow(
             """
-            INSERT INTO enjineer_agent_executions (project_id, agent_type, task, status)
+            INSERT INTO enjineer_agent_executions (project_id, agent_type, instruction, status)
             VALUES ($1, $2, $3, 'pending')
-            RETURNING id
+            RETURNING id, status, created_at
             """,
             project_id, agent, request.task
         )
     
-    logger.info(f"Dispatched {agent} agent for project {project_id}")
+    logger.info(f"Dispatched {agent} agent for project {project_id}, execution_id={execution['id']}")
     
-    # TODO: Actually dispatch the agent via background task
-    # For now, just return the task ID
-    return {"taskId": str(execution["id"]), "agent": agent, "status": "pending"}
+    return {
+        "taskId": str(execution["id"]),
+        "agent": agent,
+        "status": execution["status"],
+        "createdAt": execution["created_at"].isoformat()
+    }
 
 
 # ============================================================================
@@ -1019,31 +1044,37 @@ async def deploy_project(
     user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     
-    if request.environment not in ['preview', 'production']:
-        raise HTTPException(status_code=400, detail="Invalid environment")
+    # Validate environment matches DB constraint
+    valid_environments = ['preview', 'staging', 'production']
+    if request.environment not in valid_environments:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid environment. Must be one of: {valid_environments}"
+        )
     
     pool = await get_tiger_pool()
     
     # Create deployment record
+    # Schema requires: platform TEXT NOT NULL
     async with pool.acquire() as conn:
         deployment = await conn.fetchrow(
             """
-            INSERT INTO enjineer_deployments (project_id, environment, status)
-            VALUES ($1, $2, 'pending')
-            RETURNING id
+            INSERT INTO enjineer_deployments (project_id, platform, environment, status)
+            VALUES ($1, 'vercel', $2, 'pending')
+            RETURNING id, status, created_at
             """,
             project_id, request.environment
         )
     
-    logger.info(f"Started {request.environment} deployment for project {project_id}")
+    logger.info(f"Started {request.environment} deployment for project {project_id}, deployment_id={deployment['id']}")
     
-    # TODO: Trigger actual Vercel deployment via background task
-    # For now, return placeholder
     return {
         "deploymentId": str(deployment["id"]),
+        "platform": "vercel",
         "environment": request.environment,
-        "status": "pending",
-        "url": None  # Will be populated when deployment completes
+        "status": deployment["status"],
+        "url": None,
+        "createdAt": deployment["created_at"].isoformat()
     }
 
 
