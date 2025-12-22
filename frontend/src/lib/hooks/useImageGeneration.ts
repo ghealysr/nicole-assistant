@@ -86,8 +86,8 @@ export interface CreateJobParams {
   preset_id?: number;
 }
 
-// API helper
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+// API helper - Hardcoded for reliability (env vars are baked at build time)
+const API_BASE = 'https://api.nicole.alphawavetech.com';
 
 async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getStoredToken();
