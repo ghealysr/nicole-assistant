@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  Smartphone, Tablet, Monitor, RefreshCw, AlertCircle, 
+  Smartphone, Tablet, Monitor, AlertCircle, 
   Loader2, Maximize2, Minimize2, ExternalLink, Rocket, Trash2
 } from 'lucide-react';
 import { enjineerApi } from '@/lib/enjineer/api';
@@ -47,7 +47,8 @@ export function PreviewPane({
   previewMode,
   onModeChange,
   className,
-  refreshTrigger = 0
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  refreshTrigger: _refreshTrigger = 0
 }: PreviewPaneProps) {
   const [state, setState] = useState<PreviewState>({ type: 'idle' });
   const [isFullscreen, setIsFullscreen] = useState(false);
