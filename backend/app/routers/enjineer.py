@@ -1395,43 +1395,72 @@ async def get_preview_html(
 </html>""")
     
     # Clean up the component code for browser execution
-    # Remove TypeScript types (basic transformation)
-    component_code = main_component
+    def clean_component_code(code: str) -> str:
+        """Remove imports, TypeScript syntax, and exports for browser execution."""
+        lines = code.split('\n')
+        cleaned_lines = []
+        in_multiline_import = False
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Skip empty lines at the start
+            if not stripped and not cleaned_lines:
+                continue
+            
+            # Handle multiline imports
+            if in_multiline_import:
+                if ';' in line or ('}' in line and 'from' in line):
+                    in_multiline_import = False
+                continue
+            
+            # Skip import statements (single line)
+            if stripped.startswith('import '):
+                # Check if it's a multiline import (has { but no } or no ;)
+                if '{' in line and '}' not in line:
+                    in_multiline_import = True
+                continue
+            
+            # Skip 'use client' and 'use server' directives
+            if stripped in ('"use client"', "'use client'", '"use server"', "'use server'"):
+                continue
+            
+            cleaned_lines.append(line)
+        
+        result = '\n'.join(cleaned_lines)
+        
+        # Remove TypeScript-specific syntax
+        result = re.sub(r': React\.FC(<[^>]*>)?', '', result)
+        result = re.sub(r': React\.ReactNode', '', result)
+        result = re.sub(r': React\.CSSProperties', '', result)
+        result = re.sub(r': string(\[\])?', '', result)
+        result = re.sub(r': number(\[\])?', '', result)
+        result = re.sub(r': boolean', '', result)
+        result = re.sub(r': any', '', result)
+        result = re.sub(r': void', '', result)
+        result = re.sub(r': \w+Props', '', result)
+        result = re.sub(r'<\w+Props>', '', result)
+        result = re.sub(r'<[A-Z]\w*(\s*,\s*[A-Z]\w*)*>', '', result)  # Generic types
+        result = re.sub(r'interface \w+ \{[^}]*\}', '', result, flags=re.DOTALL)
+        result = re.sub(r'type \w+ = [^;]+;', '', result)
+        
+        # Handle export statements
+        result = re.sub(r'export default function (\w+)', r'function \1', result)
+        result = re.sub(r'export default ', '', result)
+        result = re.sub(r'export function (\w+)', r'function \1', result)
+        result = re.sub(r'export const (\w+)', r'const \1', result)
+        result = re.sub(r'export \{[^}]*\};?', '', result)  # Remove export { } statements
+        
+        return result
     
-    # Remove TypeScript-specific syntax
-    component_code = re.sub(r': React\.FC(<[^>]*>)?', '', component_code)
-    component_code = re.sub(r': \w+(\[\])?(\s*[,\)\}=])', r'\2', component_code)
-    component_code = re.sub(r'<[A-Z]\w*(\s*,\s*[A-Z]\w*)*>', '', component_code)  # Generic types
-    component_code = re.sub(r'interface \w+ \{[^}]*\}', '', component_code)
-    component_code = re.sub(r'type \w+ = [^;]+;', '', component_code)
-    
-    # Remove imports (we'll provide React globally)
-    component_code = re.sub(r"import .* from ['\"].*['\"];?\n?", '', component_code)
-    component_code = re.sub(r"import ['\"].*['\"];?\n?", '', component_code)
-    
-    # Handle export default
-    component_code = re.sub(r'export default function (\w+)', r'function \1', component_code)
-    component_code = re.sub(r'export default ', '', component_code)
-    component_code = re.sub(r'export function (\w+)', r'function \1', component_code)
-    component_code = re.sub(r'export const (\w+)', r'const \1', component_code)
+    component_code = clean_component_code(main_component)
     
     # Collect any additional components that might be needed
     additional_components = []
     for path, content in file_map.items():
         if path.endswith(('.tsx', '.jsx')) and content != main_component:
             if 'export' in content and ('function' in content or 'const' in content):
-                cleaned = content
-                cleaned = re.sub(r': React\.FC(<[^>]*>)?', '', cleaned)
-                cleaned = re.sub(r': \w+(\[\])?(\s*[,\)\}=])', r'\2', cleaned)
-                cleaned = re.sub(r'<[A-Z]\w*(\s*,\s*[A-Z]\w*)*>', '', cleaned)
-                cleaned = re.sub(r'interface \w+ \{[^}]*\}', '', cleaned)
-                cleaned = re.sub(r'type \w+ = [^;]+;', '', cleaned)
-                cleaned = re.sub(r"import .* from ['\"].*['\"];?\n?", '', cleaned)
-                cleaned = re.sub(r"import ['\"].*['\"];?\n?", '', cleaned)
-                cleaned = re.sub(r'export default function (\w+)', r'function \1', cleaned)
-                cleaned = re.sub(r'export default ', '', cleaned)
-                cleaned = re.sub(r'export function (\w+)', r'function \1', cleaned)
-                cleaned = re.sub(r'export const (\w+)', r'const \1', cleaned)
+                cleaned = clean_component_code(content)
                 additional_components.append(f"// {path}\n{cleaned}")
     
     # Escape the code for safe inclusion in HTML
