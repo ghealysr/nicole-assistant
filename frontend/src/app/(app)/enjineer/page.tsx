@@ -8,21 +8,38 @@
  * 
  * This is a Cursor-like coding environment where Nicole is the
  * conversational coding partner.
+ * 
+ * View States:
+ * - loading: Initial load
+ * - projects: Show all projects (can switch or create new)
+ * - intake: Create new project form
+ * - workspace: Main IDE view
  */
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, PanelLeftClose, PanelLeft, MessageSquare, X,
-  Sparkles, Image as ImageIcon, Loader2, Rocket
+  Sparkles, Image as ImageIcon, Loader2, Rocket, FolderOpen,
+  Plus, Clock, ChevronRight, Grid3X3
 } from 'lucide-react';
 import { Sidebar } from '@/components/enjineer/Sidebar';
 import { MainArea } from '@/components/enjineer/MainArea';
 import { NicoleChat } from '@/components/enjineer/NicoleChat';
-import { useEnjineerStore } from '@/lib/enjineer/store';
+import { useEnjineerStore, Project } from '@/lib/enjineer/store';
 
 // View states
-type ViewState = 'loading' | 'intake' | 'workspace';
+type ViewState = 'loading' | 'projects' | 'intake' | 'workspace';
+
+// Cached project list type
+interface ProjectListItem {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export default function EnjineerPage() {
   const router = useRouter();
@@ -37,10 +54,14 @@ export default function EnjineerPage() {
     setPlan,
     setLoading,
     isLoading,
+    clearMessages,
   } = useEnjineerStore();
 
   // View state management
   const [viewState, setViewState] = React.useState<ViewState>('loading');
+  
+  // Project list state
+  const [projects, setProjects] = React.useState<ProjectListItem[]>([]);
   
   // Intake form state
   const [projectName, setProjectName] = React.useState('');
@@ -50,58 +71,93 @@ export default function EnjineerPage() {
   const [imagePreview, setImagePreview] = React.useState<string | null>(null);
   const [isCreating, setIsCreating] = React.useState(false);
 
-  // Load projects from backend
+  /**
+   * Load all projects from backend.
+   * Called on initial mount and after creating a project.
+   */
+  const loadProjectList = React.useCallback(async () => {
+    try {
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      const projectList = await enjineerApi.listProjects();
+      
+      setProjects(projectList.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        status: p.status,
+        createdAt: new Date(p.createdAt),
+        updatedAt: new Date(p.updatedAt),
+      })));
+      
+      return projectList;
+    } catch (error) {
+      console.error('[Enjineer] Failed to load projects:', error);
+      return [];
+    }
+  }, []);
+
+  /**
+   * Load a specific project into the workspace.
+   */
+  const loadProject = React.useCallback(async (project: ProjectListItem) => {
+    try {
+      setLoading(true);
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      
+      // Set current project
+      setCurrentProject({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        status: project.status,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      });
+      
+      // Clear previous chat messages
+      clearMessages();
+      
+      // Load project files
+      const files = await enjineerApi.getFiles(project.id);
+      setFiles(files);
+      
+      // Load project plan
+      const plan = await enjineerApi.getPlan(project.id);
+      setPlan(plan.map((s, idx) => ({
+        id: s.id || String(idx),
+        title: s.title,
+        description: s.description || '',
+        status: s.status || 'pending',
+        files: s.files,
+      })));
+      
+      setViewState('workspace');
+    } catch (error) {
+      console.error('[Enjineer] Failed to load project:', error);
+      alert('Failed to load project. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [setLoading, setCurrentProject, clearMessages, setFiles, setPlan]);
+
+  // Initial load
   React.useEffect(() => {
-    async function loadProjects() {
-      try {
-        setLoading(true);
-        const { enjineerApi } = await import('@/lib/enjineer/api');
-        
-        // Try to get existing projects
-        const projects = await enjineerApi.listProjects();
-        
-        if (projects.length > 0) {
-          // Load most recent project
-          const project = projects[0];
-          setCurrentProject({
-            id: project.id,
-            name: project.name,
-            description: project.description,
-            status: project.status,
-            createdAt: new Date(project.createdAt),
-            updatedAt: new Date(project.updatedAt),
-          });
-          
-          // Load project files
-          const files = await enjineerApi.getFiles(project.id);
-          setFiles(files);
-          
-          // Load project plan
-          const plan = await enjineerApi.getPlan(project.id);
-          setPlan(plan.map((s, idx) => ({
-            id: s.id || String(idx),
-            title: s.title,
-            description: s.description || '',
-            status: s.status || 'pending',
-            files: s.files,
-          })));
-          
-          setViewState('workspace');
-        } else {
-          // No projects exist - show intake screen
-          setViewState('intake');
-        }
-      } catch (error) {
-        console.error('[Enjineer] Failed to load projects:', error);
-        // Show intake screen on error (allows creating new project)
+    async function init() {
+      setLoading(true);
+      const projectList = await loadProjectList();
+      
+      if (projectList.length === 0) {
+        // No projects - show intake screen
         setViewState('intake');
-      } finally {
-        setLoading(false);
+      } else {
+        // Show project list to choose
+        setViewState('projects');
       }
+      setLoading(false);
     }
     
-    loadProjects();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    init();
+  }, [loadProjectList, setLoading]);
 
   // Handle image upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +172,15 @@ export default function EnjineerPage() {
     }
   };
 
+  // Handle showing new project form
+  const handleNewProject = () => {
+    setProjectName('');
+    setProjectDescription('');
+    setReferenceImage(null);
+    setImagePreview(null);
+    setViewState('intake');
+  };
+
   // Handle project creation
   const handleCreateProject = async () => {
     if (!projectDescription.trim()) return;
@@ -127,6 +192,9 @@ export default function EnjineerPage() {
       const name = projectName.trim() || 'New Project';
       const newProject = await enjineerApi.createProject(name, projectDescription);
       
+      // Clear messages for fresh start
+      clearMessages();
+      
       setCurrentProject({
         id: newProject.id,
         name: newProject.name,
@@ -136,10 +204,8 @@ export default function EnjineerPage() {
         updatedAt: newProject.updatedAt,
       });
       
-      // TODO: Upload reference image if provided
-      // if (referenceImage && newProject.id) {
-      //   await enjineerApi.uploadReferenceImage(newProject.id, referenceImage);
-      // }
+      // Refresh project list
+      await loadProjectList();
       
       setViewState('workspace');
     } catch (error) {
@@ -148,6 +214,12 @@ export default function EnjineerPage() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  // Handle going back to project list from workspace
+  const handleSwitchProject = async () => {
+    await loadProjectList();
+    setViewState('projects');
   };
 
   // Loading state
@@ -164,6 +236,122 @@ export default function EnjineerPage() {
     );
   }
 
+  // Project List view - select or create projects
+  if (viewState === 'projects') {
+    return (
+      <div className="h-screen bg-[#0A0A0F] flex flex-col">
+        {/* Header */}
+        <header className="h-14 bg-[#0D0D12] border-b border-[#1E1E2E] flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/chat')}
+              className="flex items-center gap-2 text-[#64748B] hover:text-white transition-colors text-sm"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+            <div className="w-px h-6 bg-[#1E1E2E]" />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8B5CF6] to-[#6366F1] flex items-center justify-center">
+                <Grid3X3 size={16} className="text-white" />
+              </div>
+              <h1 className="text-lg font-semibold text-white">Projects</h1>
+            </div>
+          </div>
+          
+          <button
+            onClick={handleNewProject}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] hover:from-[#7C3AED] hover:to-[#5558DD] rounded-lg text-white font-medium text-sm transition-all"
+          >
+            <Plus size={16} />
+            New Project
+          </button>
+        </header>
+
+        {/* Project Grid */}
+        <div className="flex-1 overflow-auto p-6">
+          {projects.length === 0 ? (
+            // Empty state
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[#12121A] border border-[#1E1E2E] flex items-center justify-center">
+                  <FolderOpen size={36} className="text-[#64748B]" />
+                </div>
+                <h2 className="text-xl font-semibold text-white mb-2">No projects yet</h2>
+                <p className="text-[#94A3B8] mb-6">
+                  Create your first project and let Nicole help you build it.
+                </p>
+                <button
+                  onClick={handleNewProject}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] hover:from-[#7C3AED] hover:to-[#5558DD] rounded-xl text-white font-medium transition-all"
+                >
+                  <Plus size={18} />
+                  Create Project
+                </button>
+              </div>
+            </div>
+          ) : (
+            // Project cards grid
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => loadProject(project)}
+                  className="group text-left bg-[#12121A] border border-[#1E1E2E] hover:border-[#8B5CF6]/50 rounded-xl p-5 transition-all hover:shadow-lg hover:shadow-[#8B5CF6]/5"
+                >
+                  {/* Project Icon */}
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8B5CF6]/20 to-[#6366F1]/20 border border-[#8B5CF6]/30 flex items-center justify-center mb-4 group-hover:border-[#8B5CF6]/50 transition-colors">
+                    <Sparkles size={20} className="text-[#8B5CF6]" />
+                  </div>
+                  
+                  {/* Project Name */}
+                  <h3 className="font-semibold text-white mb-1 group-hover:text-[#8B5CF6] transition-colors truncate">
+                    {project.name}
+                  </h3>
+                  
+                  {/* Description */}
+                  <p className="text-sm text-[#94A3B8] line-clamp-2 mb-4 min-h-[40px]">
+                    {project.description || 'No description'}
+                  </p>
+                  
+                  {/* Footer */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+                      <Clock size={12} />
+                      <span>
+                        {project.updatedAt.toLocaleDateString(undefined, { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 text-[#8B5CF6] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-xs font-medium">Open</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
+                  
+                  {/* Status badge */}
+                  <div className="mt-3 pt-3 border-t border-[#1E1E2E]">
+                    <span className={`
+                      inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                      ${project.status === 'active' ? 'bg-green-500/10 text-green-400' :
+                        project.status === 'complete' ? 'bg-blue-500/10 text-blue-400' :
+                        'bg-[#8B5CF6]/10 text-[#8B5CF6]'}
+                    `}>
+                      {project.status || 'New'}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Intake/Project Creation screen
   if (viewState === 'intake') {
     return (
@@ -171,11 +359,11 @@ export default function EnjineerPage() {
         {/* Header */}
         <header className="h-12 bg-[#0D0D12] border-b border-[#1E1E2E] flex items-center px-4 shrink-0">
           <button
-            onClick={() => router.push('/chat')}
+            onClick={() => projects.length > 0 ? setViewState('projects') : router.push('/chat')}
             className="flex items-center gap-2 text-[#64748B] hover:text-white transition-colors text-sm"
           >
             <ArrowLeft size={16} />
-            <span>Back to Chat</span>
+            <span>{projects.length > 0 ? 'Back to Projects' : 'Back to Chat'}</span>
           </button>
         </header>
 
@@ -309,22 +497,25 @@ export default function EnjineerPage() {
       <header className="h-12 bg-[#0D0D12] border-b border-[#1E1E2E] flex items-center justify-between px-4 shrink-0">
         {/* Left: Navigation & Project */}
         <div className="flex items-center gap-4">
+          {/* Switch Project Button */}
           <button
-            onClick={() => router.push('/chat')}
-            className="flex items-center gap-2 text-[#64748B] hover:text-white transition-colors text-sm"
+            onClick={handleSwitchProject}
+            className="flex items-center gap-2 text-[#64748B] hover:text-white transition-colors text-sm group"
+            title="Switch Project"
           >
-            <ArrowLeft size={16} />
-            <span>Exit</span>
+            <Grid3X3 size={16} />
+            <span className="hidden sm:inline">Projects</span>
           </button>
           
           <div className="w-px h-6 bg-[#1E1E2E]" />
           
+          {/* Current Project */}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8B5CF6] to-[#6366F1] flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
+              <Sparkles size={14} className="text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-white">
+              <h1 className="text-sm font-semibold text-white max-w-[200px] truncate">
                 {currentProject?.name || 'Enjineer'}
               </h1>
               <p className="text-[10px] text-[#64748B]">
@@ -332,6 +523,18 @@ export default function EnjineerPage() {
               </p>
             </div>
           </div>
+          
+          <div className="w-px h-6 bg-[#1E1E2E] hidden sm:block" />
+          
+          {/* New Project Button */}
+          <button
+            onClick={handleNewProject}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#64748B] hover:text-white hover:bg-[#1E1E2E] rounded-lg transition-colors"
+            title="New Project"
+          >
+            <Plus size={14} />
+            <span>New</span>
+          </button>
         </div>
 
         {/* Right: Panel Controls */}

@@ -195,6 +195,33 @@ export const enjineerApi = {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    /**
+     * Parse SSE event data.
+     * Backend now sends proper JSON, but we maintain backwards compatibility
+     * with Python-style format just in case.
+     */
+    const parseEventData = (dataStr: string): ChatEvent | null => {
+      if (!dataStr || dataStr === '[DONE]') return null;
+      
+      // First, try parsing as-is (proper JSON from updated backend)
+      try {
+        return JSON.parse(dataStr) as ChatEvent;
+      } catch {
+        // Fallback: handle legacy Python-style format
+        try {
+          const jsonStr = dataStr
+            .replace(/'/g, '"')
+            .replace(/True/g, 'true')
+            .replace(/False/g, 'false')
+            .replace(/None/g, 'null');
+          return JSON.parse(jsonStr) as ChatEvent;
+        } catch (e) {
+          console.warn('[Enjineer API] Failed to parse SSE event:', dataStr, e);
+          return null;
+        }
+      }
+    };
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -208,27 +235,8 @@ export const enjineerApi = {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6).trim();
-          if (!dataStr || dataStr === '[DONE]') continue;
-          
-          try {
-            // Parse the SSE data - handle both single quotes and double quotes
-            const jsonStr = dataStr
-              .replace(/'/g, '"')
-              .replace(/True/g, 'true')
-              .replace(/False/g, 'false')
-              .replace(/None/g, 'null');
-            
-            const event = JSON.parse(jsonStr) as ChatEvent;
-            onEvent(event);
-          } catch (e) {
-            // Try direct parse if replacement fails
-            try {
-              const event = JSON.parse(dataStr) as ChatEvent;
-              onEvent(event);
-            } catch {
-              console.warn('[Enjineer API] Failed to parse SSE event:', dataStr, e);
-            }
-          }
+          const event = parseEventData(dataStr);
+          if (event) onEvent(event);
         }
       }
     }
@@ -236,15 +244,8 @@ export const enjineerApi = {
     // Process any remaining buffer
     if (buffer.trim() && buffer.startsWith('data: ')) {
       const dataStr = buffer.slice(6).trim();
-      if (dataStr && dataStr !== '[DONE]') {
-        try {
-          const jsonStr = dataStr.replace(/'/g, '"');
-          const event = JSON.parse(jsonStr) as ChatEvent;
-          onEvent(event);
-        } catch {
-          // Ignore
-        }
-      }
+      const event = parseEventData(dataStr);
+      if (event) onEvent(event);
     }
   },
 

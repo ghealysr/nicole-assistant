@@ -4,6 +4,7 @@ AI-powered development environment endpoints
 """
 
 import hashlib
+import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -683,43 +684,86 @@ async def send_message(
         )
     
     async def generate_response():
-        """Generate SSE response stream."""
+        """
+        Generate Server-Sent Events (SSE) response stream.
+        
+        All events are properly JSON-encoded to ensure frontend parsing works correctly.
+        Events follow the SSE specification: "data: <json>\n\n"
+        """
         try:
-            # Import here to avoid circular dependency
             from app.services.enjineer_nicole import EnjineerNicole
             
             nicole = EnjineerNicole(project_id, user_id)
-            
             full_response = ""
             
             async for event in nicole.process_message(request.message, request.attachments):
-                if event["type"] == "text":
-                    full_response += event["content"]
-                    yield f"data: {{'type': 'text', 'content': {repr(event['content'])}}}\n\n"
-                elif event["type"] == "thinking":
-                    yield f"data: {{'type': 'thinking', 'content': {repr(event['content'])}}}\n\n"
-                elif event["type"] == "tool_use":
-                    yield f"data: {{'type': 'tool_use', 'tool': '{event['tool']}', 'input': {event['input']}}}\n\n"
-                elif event["type"] == "code":
-                    yield f"data: {{'type': 'code', 'path': '{event['path']}', 'content': {repr(event['content'])}}}\n\n"
-                elif event["type"] == "approval_required":
-                    yield f"data: {{'type': 'approval_required', 'approval_id': '{event['approval_id']}'}}\n\n"
-            
-            # Save assistant message
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO enjineer_messages (project_id, role, content, metadata)
-                    VALUES ($1, 'assistant', $2, $3)
-                    """,
-                    project_id, full_response, {}
-                )
-            
-            yield "data: {'type': 'done'}\n\n"
+                event_type = event.get("type", "unknown")
+                
+                # Build SSE payload based on event type
+                if event_type == "text":
+                    content = event.get("content", "")
+                    full_response += content
+                    payload = {"type": "text", "content": content}
+                    
+                elif event_type == "thinking":
+                    payload = {"type": "thinking", "content": event.get("content", "")}
+                    
+                elif event_type == "tool_use":
+                    payload = {
+                        "type": "tool_use",
+                        "tool": event.get("tool", "unknown"),
+                        "input": event.get("input", {}),
+                        "status": event.get("status", "running")
+                    }
+                    
+                elif event_type == "tool_result":
+                    payload = {
+                        "type": "tool_result",
+                        "tool": event.get("tool", "unknown"),
+                        "result": event.get("result", {})
+                    }
+                    
+                elif event_type == "code":
+                    payload = {
+                        "type": "code",
+                        "path": event.get("path", ""),
+                        "content": event.get("content", ""),
+                        "action": event.get("action", "created")
+                    }
+                    
+                elif event_type == "approval_required":
+                    payload = {
+                        "type": "approval_required",
+                        "approval_id": event.get("approval_id", ""),
+                        "title": event.get("title", "Action requires approval")
+                    }
+                    
+                elif event_type == "error":
+                    payload = {"type": "error", "content": event.get("content", "Unknown error")}
+                    
+                elif event_type == "done":
+                    # Final event - save the full response first
+                    async with pool.acquire() as conn:
+                        await conn.execute(
+                            """
+                            INSERT INTO enjineer_messages (project_id, role, content, metadata)
+                            VALUES ($1, 'assistant', $2, $3)
+                            """,
+                            project_id, full_response, {}
+                        )
+                    payload = {"type": "done"}
+                    
+                else:
+                    # Pass through unknown events
+                    payload = event
+                
+                # Emit properly JSON-encoded SSE event
+                yield f"data: {json.dumps(payload)}\n\n"
             
         except Exception as e:
-            logger.error(f"Error in Nicole response: {e}")
-            yield f"data: {{'type': 'error', 'message': {repr(str(e))}}}\n\n"
+            logger.error(f"Error in Nicole response: {e}", exc_info=True)
+            error_payload = {"type": "error", "content": str(e)}
+            yield f"data: {json.dumps(error_payload)}\n\n"
     
     return StreamingResponse(
         generate_response(),
