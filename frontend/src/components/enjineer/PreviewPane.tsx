@@ -287,19 +287,49 @@ export function PreviewPane({
           </div>
         )}
 
-        {/* Ready State - Show iframe */}
+        {/* Ready State - Show preview link (iframes blocked by Vercel X-Frame-Options) */}
         {state.type === 'ready' && (
-          <div 
-            className="transition-all duration-300 bg-white rounded-lg shadow-2xl overflow-hidden border border-[#2E2E3E]"
-            style={getContainerStyle()}
-          >
-            <iframe
-              ref={iframeRef}
-              src={state.deployment.url}
-              className="w-full h-full border-0"
-              title="Preview"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            />
+          <div className="flex flex-col items-center gap-6 text-center max-w-lg">
+            <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/20 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-xl bg-[#10B981] flex items-center justify-center">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold text-white mb-2">Preview Ready! 🎉</h3>
+              <p className="text-sm text-[#64748B] mb-4">
+                Your project has been deployed successfully.
+              </p>
+              <div className="bg-[#1E1E2E] rounded-lg px-4 py-2 text-xs text-[#8B5CF6] font-mono break-all">
+                {state.deployment.url}
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <a
+                href={state.deployment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3 rounded-lg font-medium bg-[#8B5CF6] hover:bg-[#7C3AED] text-white transition-all flex items-center gap-2"
+              >
+                <ExternalLink size={18} />
+                Open Preview
+              </a>
+              <button
+                onClick={deleteDeployment}
+                className="px-4 py-3 rounded-lg font-medium bg-[#1E1E2E] hover:bg-[#2E2E3E] text-[#64748B] hover:text-[#EF4444] transition-all flex items-center gap-2"
+                title="Delete this preview deployment"
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+            
+            <p className="text-xs text-[#64748B]">
+              Preview deployments are temporary and can be deleted anytime.
+            </p>
           </div>
         )}
 
