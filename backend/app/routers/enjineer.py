@@ -906,6 +906,148 @@ async def reject_request(
 
 
 # ============================================================================
+# Plan Endpoints
+# ============================================================================
+
+@router.get("/projects/{project_id}/plan")
+async def get_plan(
+    project_id: int,
+    user = Depends(get_current_user)
+):
+    """Get the current plan for a project."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        plan = await conn.fetchrow(
+            """
+            SELECT * FROM enjineer_plans 
+            WHERE project_id = $1 AND status NOT IN ('abandoned', 'completed')
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            project_id
+        )
+        
+        if not plan:
+            return {"plan": None, "phases": []}
+        
+        # Get phases for this plan
+        phases = await conn.fetch(
+            "SELECT * FROM enjineer_plan_phases WHERE plan_id = $1 ORDER BY phase_order",
+            plan["id"]
+        )
+    
+    return {
+        "plan": {
+            "id": plan["id"],
+            "name": plan["name"],
+            "status": plan["status"],
+            "created_at": plan["created_at"].isoformat(),
+        },
+        "phases": [
+            {
+                "id": str(p["id"]),
+                "name": p["name"],
+                "notes": p["notes"],
+                "status": p["status"],
+                "order": p["phase_order"],
+            }
+            for p in phases
+        ]
+    }
+
+
+# ============================================================================
+# Agent Dispatch Endpoints
+# ============================================================================
+
+class AgentTaskRequest(BaseModel):
+    task: str = Field(..., min_length=1)
+
+
+@router.post("/projects/{project_id}/agents/{agent}")
+async def dispatch_agent(
+    project_id: int,
+    agent: str,
+    request: AgentTaskRequest,
+    user = Depends(get_current_user)
+):
+    """Dispatch an agent to work on a task."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    valid_agents = ['engineer', 'qa', 'sr_qa']
+    if agent not in valid_agents:
+        raise HTTPException(status_code=400, detail=f"Invalid agent. Must be one of: {valid_agents}")
+    
+    pool = await get_tiger_pool()
+    
+    # Create agent execution record
+    async with pool.acquire() as conn:
+        execution = await conn.fetchrow(
+            """
+            INSERT INTO enjineer_agent_executions (project_id, agent_type, task, status)
+            VALUES ($1, $2, $3, 'pending')
+            RETURNING id
+            """,
+            project_id, agent, request.task
+        )
+    
+    logger.info(f"Dispatched {agent} agent for project {project_id}")
+    
+    # TODO: Actually dispatch the agent via background task
+    # For now, just return the task ID
+    return {"taskId": str(execution["id"]), "agent": agent, "status": "pending"}
+
+
+# ============================================================================
+# Deploy Endpoints
+# ============================================================================
+
+class DeployRequest(BaseModel):
+    environment: str = Field(default="preview")
+
+
+@router.post("/projects/{project_id}/deploy")
+async def deploy_project(
+    project_id: int,
+    request: DeployRequest,
+    user = Depends(get_current_user)
+):
+    """Deploy the project to Vercel."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    if request.environment not in ['preview', 'production']:
+        raise HTTPException(status_code=400, detail="Invalid environment")
+    
+    pool = await get_tiger_pool()
+    
+    # Create deployment record
+    async with pool.acquire() as conn:
+        deployment = await conn.fetchrow(
+            """
+            INSERT INTO enjineer_deployments (project_id, environment, status)
+            VALUES ($1, $2, 'pending')
+            RETURNING id
+            """,
+            project_id, request.environment
+        )
+    
+    logger.info(f"Started {request.environment} deployment for project {project_id}")
+    
+    # TODO: Trigger actual Vercel deployment via background task
+    # For now, return placeholder
+    return {
+        "deploymentId": str(deployment["id"]),
+        "environment": request.environment,
+        "status": "pending",
+        "url": None  # Will be populated when deployment completes
+    }
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 

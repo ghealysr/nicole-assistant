@@ -88,7 +88,9 @@ export const enjineerApi = {
       throw new Error(`Failed to list projects: ${error}`);
     }
     const data = await res.json();
-    return (data.projects || []).map((p: Record<string, unknown>) => ({
+    // Backend returns array directly, not {projects: [...]}
+    const projects = Array.isArray(data) ? data : (data.projects || []);
+    return projects.map((p: Record<string, unknown>) => ({
       id: p.id as number,
       name: p.name as string,
       description: p.description as string | undefined,
@@ -108,7 +110,9 @@ export const enjineerApi = {
     });
     if (!res.ok) throw new Error('Failed to get files');
     const data = await res.json();
-    return (data.files || []).map((f: Record<string, unknown>) => ({
+    // Backend returns array directly, not {files: [...]}
+    const files = Array.isArray(data) ? data : (data.files || []);
+    return files.map((f: Record<string, unknown>) => ({
       path: f.path as string,
       content: f.content as string,
       language: f.language as string || getLanguageFromPath(f.path as string),
@@ -253,10 +257,11 @@ export const enjineerApi = {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.plan) return [];
     
-    // Map phases to PlanStep format
-    const phases = data.plan.phases || [];
+    // Backend returns {plan: {...}, phases: [...]}
+    const phases = data.phases || [];
+    if (phases.length === 0) return [];
+    
     return phases.map((p: Record<string, unknown>) => ({
       id: p.id as string || crypto.randomUUID(),
       title: p.name as string,
