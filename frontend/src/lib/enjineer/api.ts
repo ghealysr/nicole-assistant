@@ -10,7 +10,13 @@ import { EnjineerFile, PlanStep, Project } from './store';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://alphawave-api.online';
 
 function getAuthHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  // Check multiple token keys for compatibility
+  const token = typeof window !== 'undefined' 
+    ? (localStorage.getItem('nicole_token') || 
+       localStorage.getItem('auth_token') || 
+       localStorage.getItem('nicole_google_token') ||
+       localStorage.getItem('token'))
+    : null;
   return {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
