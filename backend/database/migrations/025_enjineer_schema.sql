@@ -1,12 +1,27 @@
 -- ============================================================================
 -- ENJINEER DATABASE SCHEMA
 -- Migration 025: Core tables for the Enjineer AI coding dashboard
+-- Uses INTEGER types consistent with Tiger user system
 -- ============================================================================
 
+-- Drop existing tables if they exist (for clean re-apply)
+DROP TABLE IF EXISTS enjineer_messages CASCADE;
+DROP TABLE IF EXISTS enjineer_sessions CASCADE;
+DROP TABLE IF EXISTS enjineer_assets CASCADE;
+DROP TABLE IF EXISTS enjineer_deployments CASCADE;
+DROP TABLE IF EXISTS enjineer_approvals CASCADE;
+DROP TABLE IF EXISTS enjineer_qa_reports CASCADE;
+DROP TABLE IF EXISTS enjineer_agent_executions CASCADE;
+DROP TABLE IF EXISTS enjineer_file_versions CASCADE;
+DROP TABLE IF EXISTS enjineer_files CASCADE;
+DROP TABLE IF EXISTS enjineer_plan_phases CASCADE;
+DROP TABLE IF EXISTS enjineer_plans CASCADE;
+DROP TABLE IF EXISTS enjineer_projects CASCADE;
+
 -- Projects table
-CREATE TABLE IF NOT EXISTS enjineer_projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
+CREATE TABLE enjineer_projects (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
     tech_stack JSONB DEFAULT '{}',
@@ -20,9 +35,9 @@ CREATE TABLE IF NOT EXISTS enjineer_projects (
 );
 
 -- Plan versions
-CREATE TABLE IF NOT EXISTS enjineer_plans (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_plans (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     version TEXT NOT NULL,
     content TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft'
@@ -35,9 +50,9 @@ CREATE TABLE IF NOT EXISTS enjineer_plans (
 );
 
 -- Plan phases
-CREATE TABLE IF NOT EXISTS enjineer_plan_phases (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    plan_id UUID NOT NULL REFERENCES enjineer_plans(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_plan_phases (
+    id SERIAL PRIMARY KEY,
+    plan_id INTEGER NOT NULL REFERENCES enjineer_plans(id) ON DELETE CASCADE,
     phase_number INTEGER NOT NULL,
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending'
@@ -57,9 +72,9 @@ CREATE TABLE IF NOT EXISTS enjineer_plan_phases (
 );
 
 -- Virtual file system
-CREATE TABLE IF NOT EXISTS enjineer_files (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_files (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     path TEXT NOT NULL,
     content TEXT,
     language TEXT,
@@ -74,9 +89,9 @@ CREATE TABLE IF NOT EXISTS enjineer_files (
 );
 
 -- File version history
-CREATE TABLE IF NOT EXISTS enjineer_file_versions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    file_id UUID NOT NULL REFERENCES enjineer_files(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_file_versions (
+    id SERIAL PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES enjineer_files(id) ON DELETE CASCADE,
     version INTEGER NOT NULL,
     content TEXT NOT NULL,
     modified_by TEXT NOT NULL,
@@ -87,10 +102,10 @@ CREATE TABLE IF NOT EXISTS enjineer_file_versions (
 );
 
 -- Agent executions
-CREATE TABLE IF NOT EXISTS enjineer_agent_executions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
-    plan_id UUID REFERENCES enjineer_plans(id),
+CREATE TABLE enjineer_agent_executions (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+    plan_id INTEGER REFERENCES enjineer_plans(id),
     phase_number INTEGER,
     agent_type TEXT NOT NULL CHECK (agent_type IN ('qa', 'engineer', 'sr_qa', 'nicole')),
     instruction TEXT NOT NULL,
@@ -110,11 +125,11 @@ CREATE TABLE IF NOT EXISTS enjineer_agent_executions (
 );
 
 -- QA reports
-CREATE TABLE IF NOT EXISTS enjineer_qa_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
-    execution_id UUID REFERENCES enjineer_agent_executions(id),
-    plan_id UUID REFERENCES enjineer_plans(id),
+CREATE TABLE enjineer_qa_reports (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+    execution_id INTEGER REFERENCES enjineer_agent_executions(id),
+    plan_id INTEGER REFERENCES enjineer_plans(id),
     phase_number INTEGER,
     trigger_type TEXT NOT NULL CHECK (trigger_type IN ('phase_complete', 'manual', 'pre_deploy', 'scheduled')),
     qa_depth TEXT NOT NULL,
@@ -130,13 +145,13 @@ CREATE TABLE IF NOT EXISTS enjineer_qa_reports (
 );
 
 -- Approvals
-CREATE TABLE IF NOT EXISTS enjineer_approvals (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_approvals (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     approval_type TEXT NOT NULL 
         CHECK (approval_type IN ('plan', 'phase', 'agent', 'deploy', 'destructive', 'qa_override')),
     reference_type TEXT,
-    reference_id UUID,
+    reference_id INTEGER,
     title TEXT NOT NULL,
     description TEXT,
     context JSONB DEFAULT '{}',
@@ -149,9 +164,9 @@ CREATE TABLE IF NOT EXISTS enjineer_approvals (
 );
 
 -- Deployments
-CREATE TABLE IF NOT EXISTS enjineer_deployments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_deployments (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     platform TEXT NOT NULL CHECK (platform IN ('vercel', 'digitalocean', 'other')),
     platform_deployment_id TEXT,
     environment TEXT DEFAULT 'production' CHECK (environment IN ('preview', 'staging', 'production')),
@@ -167,9 +182,9 @@ CREATE TABLE IF NOT EXISTS enjineer_deployments (
 );
 
 -- Assets
-CREATE TABLE IF NOT EXISTS enjineer_assets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_assets (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     asset_type TEXT NOT NULL 
         CHECK (asset_type IN ('inspiration', 'generated', 'screenshot', 'reference')),
     url TEXT NOT NULL,
@@ -180,10 +195,10 @@ CREATE TABLE IF NOT EXISTS enjineer_assets (
 );
 
 -- Session state (for resume)
-CREATE TABLE IF NOT EXISTS enjineer_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL,
+CREATE TABLE enjineer_sessions (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
     state JSONB NOT NULL DEFAULT '{}',
     last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -191,9 +206,9 @@ CREATE TABLE IF NOT EXISTS enjineer_sessions (
 );
 
 -- Chat messages (for conversation history)
-CREATE TABLE IF NOT EXISTS enjineer_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
+CREATE TABLE enjineer_messages (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES enjineer_projects(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT NOT NULL,
     attachments JSONB DEFAULT '[]',
@@ -202,20 +217,20 @@ CREATE TABLE IF NOT EXISTS enjineer_messages (
 );
 
 -- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_enjineer_projects_user ON enjineer_projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_projects_status ON enjineer_projects(status);
-CREATE INDEX IF NOT EXISTS idx_enjineer_plans_project ON enjineer_plans(project_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_plans_status ON enjineer_plans(project_id, status);
-CREATE INDEX IF NOT EXISTS idx_enjineer_files_project ON enjineer_files(project_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_files_path ON enjineer_files(project_id, path);
-CREATE INDEX IF NOT EXISTS idx_enjineer_files_locked ON enjineer_files(project_id) WHERE locked_by IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_enjineer_agent_executions_project ON enjineer_agent_executions(project_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_agent_executions_status ON enjineer_agent_executions(project_id, status);
-CREATE INDEX IF NOT EXISTS idx_enjineer_qa_reports_project ON enjineer_qa_reports(project_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_approvals_pending ON enjineer_approvals(project_id, status) WHERE status = 'pending';
-CREATE INDEX IF NOT EXISTS idx_enjineer_deployments_project ON enjineer_deployments(project_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_sessions_project ON enjineer_sessions(project_id, user_id);
-CREATE INDEX IF NOT EXISTS idx_enjineer_messages_project ON enjineer_messages(project_id);
+CREATE INDEX idx_enjineer_projects_user ON enjineer_projects(user_id);
+CREATE INDEX idx_enjineer_projects_status ON enjineer_projects(status);
+CREATE INDEX idx_enjineer_plans_project ON enjineer_plans(project_id);
+CREATE INDEX idx_enjineer_plans_status ON enjineer_plans(project_id, status);
+CREATE INDEX idx_enjineer_files_project ON enjineer_files(project_id);
+CREATE INDEX idx_enjineer_files_path ON enjineer_files(project_id, path);
+CREATE INDEX idx_enjineer_files_locked ON enjineer_files(project_id) WHERE locked_by IS NOT NULL;
+CREATE INDEX idx_enjineer_agent_executions_project ON enjineer_agent_executions(project_id);
+CREATE INDEX idx_enjineer_agent_executions_status ON enjineer_agent_executions(project_id, status);
+CREATE INDEX idx_enjineer_qa_reports_project ON enjineer_qa_reports(project_id);
+CREATE INDEX idx_enjineer_approvals_pending ON enjineer_approvals(project_id, status) WHERE status = 'pending';
+CREATE INDEX idx_enjineer_deployments_project ON enjineer_deployments(project_id);
+CREATE INDEX idx_enjineer_sessions_project ON enjineer_sessions(project_id, user_id);
+CREATE INDEX idx_enjineer_messages_project ON enjineer_messages(project_id);
 
 -- Triggers for updated_at
 CREATE OR REPLACE FUNCTION enjineer_update_updated_at()
@@ -235,4 +250,3 @@ DROP TRIGGER IF EXISTS enjineer_files_updated_at ON enjineer_files;
 CREATE TRIGGER enjineer_files_updated_at
     BEFORE UPDATE ON enjineer_files
     FOR EACH ROW EXECUTE FUNCTION enjineer_update_updated_at();
-

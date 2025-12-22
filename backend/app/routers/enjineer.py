@@ -8,14 +8,13 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Optional, List
-from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.database import db, get_tiger_pool
-from app.integrations.alphawave_utils import get_user_id_from_token, get_auth_headers
+from app.middleware.alphawave_auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +69,8 @@ class ApprovalActionRequest(BaseModel):
 
 
 class ProjectResponse(BaseModel):
-    id: str
-    user_id: str
+    id: int
+    user_id: int
     name: str
     description: Optional[str]
     tech_stack: dict
@@ -83,8 +82,8 @@ class ProjectResponse(BaseModel):
 
 
 class FileResponse(BaseModel):
-    id: str
-    project_id: str
+    id: int
+    project_id: int
     path: str
     content: str
     language: str
@@ -96,8 +95,8 @@ class FileResponse(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    id: str
-    project_id: str
+    id: int
+    project_id: int
     role: str
     content: str
     attachments: list
@@ -106,8 +105,8 @@ class MessageResponse(BaseModel):
 
 
 class ApprovalResponse(BaseModel):
-    id: str
-    project_id: str
+    id: int
+    project_id: int
     approval_type: str
     title: str
     description: Optional[str]
@@ -141,18 +140,13 @@ def detect_language(path: str) -> str:
     return ext_map.get(ext, "plaintext")
 
 
-async def get_current_user_id(authorization: str = None) -> str:
-    """Extract user ID from authorization header."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
-    user_id = get_user_id_from_token(token)
-    
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    return user_id
+def get_user_id_from_context(user) -> int:
+    """Extract user ID from authenticated user context as integer."""
+    # user is a UserContext object from alphawave_auth middleware
+    # Use tiger_user_id (integer) from the Tiger Postgres users table
+    if hasattr(user, 'tiger_user_id') and user.tiger_user_id:
+        return user.tiger_user_id
+    raise HTTPException(status_code=401, detail="Not authenticated - no tiger_user_id")
 
 
 async def verify_project_access(pool, project_id: str, user_id: str) -> dict:
@@ -160,7 +154,7 @@ async def verify_project_access(pool, project_id: str, user_id: str) -> dict:
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
             "SELECT * FROM enjineer_projects WHERE id = $1 AND user_id = $2",
-            UUID(project_id), UUID(user_id)
+            int(project_id), user_id
         )
     
     if not project:
@@ -176,10 +170,10 @@ async def verify_project_access(pool, project_id: str, user_id: str) -> dict:
 @router.post("/projects", response_model=ProjectResponse)
 async def create_project(
     request: CreateProjectRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Create a new Enjineer project."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
@@ -189,7 +183,7 @@ async def create_project(
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
-            UUID(user_id),
+            user_id,
             request.name,
             request.description,
             request.tech_stack or {},
@@ -200,8 +194,8 @@ async def create_project(
     logger.info(f"Created Enjineer project: {project['id']}")
     
     return ProjectResponse(
-        id=str(project["id"]),
-        user_id=str(project["user_id"]),
+        id=project["id"],
+        user_id=project["user_id"],
         name=project["name"],
         description=project["description"],
         tech_stack=project["tech_stack"] or {},
@@ -218,10 +212,10 @@ async def list_projects(
     status: Optional[str] = None,
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """List user's Enjineer projects."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
@@ -233,7 +227,7 @@ async def list_projects(
                 ORDER BY updated_at DESC
                 LIMIT $3 OFFSET $4
                 """,
-                UUID(user_id), status, limit, offset
+                user_id, status, limit, offset
             )
         else:
             projects = await conn.fetch(
@@ -243,13 +237,13 @@ async def list_projects(
                 ORDER BY updated_at DESC
                 LIMIT $3 OFFSET $4
                 """,
-                UUID(user_id), limit, offset
+                user_id, limit, offset
             )
     
     return [
         ProjectResponse(
-            id=str(p["id"]),
-            user_id=str(p["user_id"]),
+            id=p["id"],
+            user_id=p["user_id"],
             name=p["name"],
             description=p["description"],
             tech_stack=p["tech_stack"] or {},
@@ -266,10 +260,10 @@ async def list_projects(
 @router.get("/projects/{project_id}")
 async def get_project(
     project_id: str,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Get project details with files and current plan."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     project = await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -277,7 +271,7 @@ async def get_project(
         # Get files
         files = await conn.fetch(
             "SELECT * FROM enjineer_files WHERE project_id = $1 ORDER BY path",
-            UUID(project_id)
+            int(project_id)
         )
         
         # Get current plan
@@ -287,19 +281,19 @@ async def get_project(
             WHERE project_id = $1 AND status NOT IN ('abandoned', 'completed')
             ORDER BY created_at DESC LIMIT 1
             """,
-            UUID(project_id)
+            int(project_id)
         )
         
         # Get pending approvals
         approvals = await conn.fetch(
             "SELECT * FROM enjineer_approvals WHERE project_id = $1 AND status = 'pending'",
-            UUID(project_id)
+            int(project_id)
         )
     
     return {
         "project": ProjectResponse(
-            id=str(project["id"]),
-            user_id=str(project["user_id"]),
+            id=project["id"],
+            user_id=project["user_id"],
             name=project["name"],
             description=project["description"],
             tech_stack=project["tech_stack"] or {},
@@ -311,8 +305,8 @@ async def get_project(
         ),
         "files": [
             FileResponse(
-                id=str(f["id"]),
-                project_id=str(f["project_id"]),
+                id=f["id"],
+                project_id=f["project_id"],
                 path=f["path"],
                 content=f["content"] or "",
                 language=f["language"] or "plaintext",
@@ -327,8 +321,8 @@ async def get_project(
         "plan": dict(plan) if plan else None,
         "pending_approvals": [
             ApprovalResponse(
-                id=str(a["id"]),
-                project_id=str(a["project_id"]),
+                id=a["id"],
+                project_id=a["project_id"],
                 approval_type=a["approval_type"],
                 title=a["title"],
                 description=a["description"],
@@ -345,10 +339,10 @@ async def get_project(
 async def update_project(
     project_id: str,
     request: UpdateProjectRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Update project details."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -381,7 +375,7 @@ async def update_project(
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
     
-    values.append(UUID(project_id))
+    values.append(int(project_id))
     
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
@@ -395,8 +389,8 @@ async def update_project(
         )
     
     return ProjectResponse(
-        id=str(project["id"]),
-        user_id=str(project["user_id"]),
+        id=project["id"],
+        user_id=project["user_id"],
         name=project["name"],
         description=project["description"],
         tech_stack=project["tech_stack"] or {},
@@ -411,17 +405,17 @@ async def update_project(
 @router.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Soft delete a project (set status to abandoned)."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE enjineer_projects SET status = 'abandoned' WHERE id = $1",
-            UUID(project_id)
+            int(project_id)
         )
     
     return {"success": True}
@@ -435,10 +429,10 @@ async def delete_project(
 async def list_files(
     project_id: str,
     path_prefix: Optional[str] = None,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """List project files."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -450,18 +444,18 @@ async def list_files(
                 WHERE project_id = $1 AND path LIKE $2
                 ORDER BY path
                 """,
-                UUID(project_id), f"{path_prefix}%"
+                int(project_id), f"{path_prefix}%"
             )
         else:
             files = await conn.fetch(
                 "SELECT * FROM enjineer_files WHERE project_id = $1 ORDER BY path",
-                UUID(project_id)
+                int(project_id)
             )
     
     return [
         FileResponse(
-            id=str(f["id"]),
-            project_id=str(f["project_id"]),
+            id=f["id"],
+            project_id=f["project_id"],
             path=f["path"],
             content=f["content"] or "",
             language=f["language"] or "plaintext",
@@ -479,10 +473,10 @@ async def list_files(
 async def create_file(
     project_id: str,
     request: CreateFileRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Create a new file."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -493,7 +487,7 @@ async def create_file(
         # Check if file exists
         existing = await conn.fetchrow(
             "SELECT id FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            UUID(project_id), request.path
+            int(project_id), request.path
         )
         
         if existing:
@@ -506,7 +500,7 @@ async def create_file(
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
-            UUID(project_id), request.path, request.content, language, "user", checksum
+            int(project_id), request.path, request.content, language, "user", checksum
         )
         
         # Create initial version
@@ -521,8 +515,8 @@ async def create_file(
     logger.info(f"Created file: {request.path} in project {project_id}")
     
     return FileResponse(
-        id=str(file["id"]),
-        project_id=str(file["project_id"]),
+        id=file["id"],
+        project_id=file["project_id"],
         path=file["path"],
         content=file["content"] or "",
         language=file["language"] or "plaintext",
@@ -538,25 +532,25 @@ async def create_file(
 async def get_file(
     project_id: str,
     file_path: str,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Get file content."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
         file = await conn.fetchrow(
             "SELECT * FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            UUID(project_id), f"/{file_path}" if not file_path.startswith("/") else file_path
+            int(project_id), f"/{file_path}" if not file_path.startswith("/") else file_path
         )
     
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
     
     return FileResponse(
-        id=str(file["id"]),
-        project_id=str(file["project_id"]),
+        id=file["id"],
+        project_id=file["project_id"],
         path=file["path"],
         content=file["content"] or "",
         language=file["language"] or "plaintext",
@@ -573,10 +567,10 @@ async def update_file(
     project_id: str,
     file_path: str,
     request: UpdateFileRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Update file content."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -586,7 +580,7 @@ async def update_file(
     async with pool.acquire() as conn:
         file = await conn.fetchrow(
             "SELECT * FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            UUID(project_id), path
+            int(project_id), path
         )
         
         if not file:
@@ -624,8 +618,8 @@ async def update_file(
         )
     
     return FileResponse(
-        id=str(updated["id"]),
-        project_id=str(updated["project_id"]),
+        id=updated["id"],
+        project_id=updated["project_id"],
         path=updated["path"],
         content=updated["content"] or "",
         language=updated["language"] or "plaintext",
@@ -642,10 +636,10 @@ async def delete_file(
     project_id: str,
     file_path: str,
     force: bool = False,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Delete a file."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -654,7 +648,7 @@ async def delete_file(
     async with pool.acquire() as conn:
         result = await conn.execute(
             "DELETE FROM enjineer_files WHERE project_id = $1 AND path = $2",
-            UUID(project_id), path
+            int(project_id), path
         )
     
     if result == "DELETE 0":
@@ -671,10 +665,10 @@ async def delete_file(
 async def send_message(
     project_id: str,
     request: SendMessageRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Send message to Nicole and stream response."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -685,7 +679,7 @@ async def send_message(
             INSERT INTO enjineer_messages (project_id, role, content, attachments, metadata)
             VALUES ($1, 'user', $2, $3, $4)
             """,
-            UUID(project_id), request.message, request.attachments or [], {}
+            int(project_id), request.message, request.attachments or [], {}
         )
     
     async def generate_response():
@@ -718,7 +712,7 @@ async def send_message(
                     INSERT INTO enjineer_messages (project_id, role, content, metadata)
                     VALUES ($1, 'assistant', $2, $3)
                     """,
-                    UUID(project_id), full_response, {}
+                    int(project_id), full_response, {}
                 )
             
             yield "data: {'type': 'done'}\n\n"
@@ -743,10 +737,10 @@ async def get_chat_history(
     project_id: str,
     limit: int = Query(default=50, le=200),
     before: Optional[str] = None,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Get conversation history."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -759,7 +753,7 @@ async def get_chat_history(
                 ORDER BY created_at DESC
                 LIMIT $3
                 """,
-                UUID(project_id), datetime.fromisoformat(before), limit
+                int(project_id), datetime.fromisoformat(before), limit
             )
         else:
             messages = await conn.fetch(
@@ -769,7 +763,7 @@ async def get_chat_history(
                 ORDER BY created_at DESC
                 LIMIT $2
                 """,
-                UUID(project_id), limit
+                int(project_id), limit
             )
     
     # Reverse to get chronological order
@@ -777,8 +771,8 @@ async def get_chat_history(
     
     return [
         MessageResponse(
-            id=str(m["id"]),
-            project_id=str(m["project_id"]),
+            id=m["id"],
+            project_id=m["project_id"],
             role=m["role"],
             content=m["content"],
             attachments=m["attachments"] or [],
@@ -796,10 +790,10 @@ async def get_chat_history(
 @router.get("/projects/{project_id}/approvals/pending")
 async def get_pending_approvals(
     project_id: str,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Get pending approvals for project."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -810,13 +804,13 @@ async def get_pending_approvals(
             WHERE project_id = $1 AND status = 'pending'
             ORDER BY requested_at
             """,
-            UUID(project_id)
+            int(project_id)
         )
     
     return [
         ApprovalResponse(
-            id=str(a["id"]),
-            project_id=str(a["project_id"]),
+            id=a["id"],
+            project_id=a["project_id"],
             approval_type=a["approval_type"],
             title=a["title"],
             description=a["description"],
@@ -833,10 +827,10 @@ async def approve_request(
     project_id: str,
     approval_id: str,
     request: ApprovalActionRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Approve a pending request."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -848,7 +842,7 @@ async def approve_request(
             WHERE id = $2 AND project_id = $3 AND status = 'pending'
             RETURNING *
             """,
-            request.note, UUID(approval_id), UUID(project_id)
+            request.note, int(approval_id), int(project_id)
         )
     
     if not approval:
@@ -857,8 +851,8 @@ async def approve_request(
     logger.info(f"Approved: {approval['title']}")
     
     return ApprovalResponse(
-        id=str(approval["id"]),
-        project_id=str(approval["project_id"]),
+        id=approval["id"],
+        project_id=approval["project_id"],
         approval_type=approval["approval_type"],
         title=approval["title"],
         description=approval["description"],
@@ -873,10 +867,10 @@ async def reject_request(
     project_id: str,
     approval_id: str,
     request: ApprovalActionRequest,
-    authorization: str = None
+    user = Depends(get_current_user)
 ):
     """Reject a pending request."""
-    user_id = await get_current_user_id(authorization)
+    user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
     pool = await get_tiger_pool()
     
@@ -891,7 +885,7 @@ async def reject_request(
             WHERE id = $2 AND project_id = $3 AND status = 'pending'
             RETURNING *
             """,
-            request.reason, UUID(approval_id), UUID(project_id)
+            request.reason, int(approval_id), int(project_id)
         )
     
     if not approval:
@@ -900,8 +894,8 @@ async def reject_request(
     logger.info(f"Rejected: {approval['title']} - Reason: {request.reason}")
     
     return ApprovalResponse(
-        id=str(approval["id"]),
-        project_id=str(approval["project_id"]),
+        id=approval["id"],
+        project_id=approval["project_id"],
         approval_type=approval["approval_type"],
         title=approval["title"],
         description=approval["description"],
