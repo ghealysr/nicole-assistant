@@ -16,17 +16,18 @@ const API_BASE = 'https://api.nicole.alphawavetech.com';
 /**
  * Get authentication headers with token.
  * Checks all possible token storage keys used by the auth system.
+ * Order matters: nicole_google_token is the primary key used by Google OAuth.
  */
 function getAuthHeaders(): HeadersInit {
   if (typeof window === 'undefined') {
     return { 'Content-Type': 'application/json' };
   }
   
-  // Check all token keys used by alphawave_utils.ts
+  // Check token keys in priority order (Google OAuth token first, then legacy)
   const token = 
-    localStorage.getItem('nicole_token') ||
-    localStorage.getItem('auth_token') ||
-    localStorage.getItem('nicole_google_token');
+    localStorage.getItem('nicole_google_token') ||  // Primary: Google OAuth ID token
+    localStorage.getItem('nicole_token') ||          // Legacy Nicole token
+    localStorage.getItem('auth_token');              // Generic fallback
   
   if (!token) {
     console.warn('[Enjineer API] No auth token found in localStorage');
