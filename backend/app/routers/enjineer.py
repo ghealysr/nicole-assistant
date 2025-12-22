@@ -1956,25 +1956,34 @@ async def deploy_preview(
         raise HTTPException(status_code=400, detail="No deployable files (all files were binary)")
     
     # Inject vercel.json to allow iframe embedding in Nicole dashboard
-    # This sets headers to allow framing from alphawavetech.com domains
+    # Uses Content-Security-Policy frame-ancestors (X-Frame-Options ALLOW-FROM is deprecated)
     vercel_config = {
         "headers": [
             {
                 "source": "/(.*)",
                 "headers": [
                     {
-                        "key": "X-Frame-Options",
-                        "value": "ALLOW-FROM https://nicole.alphawavetech.com"
+                        "key": "Content-Security-Policy",
+                        "value": "frame-ancestors 'self' https://*.alphawavetech.com https://*.vercel.app http://localhost:* https://localhost:*"
                     },
                     {
-                        "key": "Content-Security-Policy",
-                        "value": "frame-ancestors 'self' https://*.alphawavetech.com https://*.vercel.app https://localhost:*"
+                        "key": "X-Frame-Options",
+                        "value": "SAMEORIGIN"
                     }
                 ]
             }
         ]
     }
-    file_map["vercel.json"] = json.dumps(vercel_config, indent=2)
+    # Merge with existing vercel.json if present
+    if "vercel.json" in file_map:
+        try:
+            existing = json.loads(file_map["vercel.json"])
+            existing["headers"] = vercel_config["headers"]
+            file_map["vercel.json"] = json.dumps(existing, indent=2)
+        except:
+            file_map["vercel.json"] = json.dumps(vercel_config, indent=2)
+    else:
+        file_map["vercel.json"] = json.dumps(vercel_config, indent=2)
     
     # Detect project type if not specified
     framework = request.framework if request else None
