@@ -1263,10 +1263,12 @@ async def get_preview_html(
     user = Depends(get_current_user)
 ):
     """
-    Get a complete HTML preview for static projects.
+    Get a complete HTML preview for ANY project type.
     
-    For static HTML projects, this returns a self-contained HTML document
-    with all CSS and JS inlined for iframe rendering.
+    - Static HTML: Returns with CSS/JS inlined
+    - React/Next.js: Returns a self-contained HTML with React CDN and Babel for JSX
+    
+    This allows previewing React/Next.js projects without deployment.
     """
     user_id = get_user_id_from_context(user)
     await verify_project_access(await get_tiger_pool(), project_id, user_id)
@@ -1282,58 +1284,224 @@ async def get_preview_html(
         return HTMLResponse("""<!DOCTYPE html>
 <html>
 <head><title>Empty Project</title></head>
-<body><h1>No files yet</h1><p>Ask Nicole to create your project files.</p></body>
+<body style="font-family: system-ui; background: #0a0a0f; color: #e2e8f0; padding: 2rem;">
+<h1>No files yet</h1><p>Ask Nicole to create your project files.</p></body>
 </html>""")
     
     # Build file map
     file_map = {f["path"]: f["content"] or "" for f in files}
     
-    # Find index.html
-    html_content = None
-    for path in ['/index.html', 'index.html', '/public/index.html']:
-        if path in file_map:
-            html_content = file_map[path]
+    # Detect project type
+    project_type, entry_file = detect_project_type(file_map)
+    
+    # =========================================================================
+    # STATIC HTML PROJECTS
+    # =========================================================================
+    if project_type in ['static', 'html']:
+        html_content = None
+        for path in ['/index.html', 'index.html', '/public/index.html']:
+            if path in file_map:
+                html_content = file_map[path]
+                break
+        
+        if not html_content:
+            for path, content in file_map.items():
+                if path.endswith('.html'):
+                    html_content = content
+                    break
+        
+        if html_content:
+            # Inline CSS files
+            for path, content in file_map.items():
+                if path.endswith('.css'):
+                    css_inline = f'<style>/* {path} */\n{content}</style>'
+                    if '</head>' in html_content:
+                        html_content = html_content.replace('</head>', f'{css_inline}\n</head>')
+            
+            # Inline JS files
+            for path, content in file_map.items():
+                if path.endswith('.js') and not path.endswith('.min.js'):
+                    js_inline = f'<script>/* {path} */\n{content}</script>'
+                    if '</body>' in html_content:
+                        html_content = html_content.replace('</body>', f'{js_inline}\n</body>')
+            
+            return HTMLResponse(html_content)
+    
+    # =========================================================================
+    # REACT / NEXT.JS PROJECTS - Generate preview with React CDN + Babel
+    # =========================================================================
+    
+    # Collect all CSS
+    all_css = []
+    for path, content in file_map.items():
+        if path.endswith('.css'):
+            all_css.append(f"/* {path} */\n{content}")
+    
+    # Find the main component to render
+    main_component = None
+    main_component_name = "App"
+    
+    # Priority order for finding main component
+    component_paths = [
+        '/app/page.tsx', '/app/page.jsx', '/app/page.js',
+        '/pages/index.tsx', '/pages/index.jsx', '/pages/index.js',
+        '/src/App.tsx', '/src/App.jsx', '/src/App.js',
+        '/App.tsx', '/App.jsx', '/App.js',
+        'app/page.tsx', 'app/page.jsx', 'app/page.js',
+        'pages/index.tsx', 'pages/index.jsx', 'pages/index.js',
+        'src/App.tsx', 'src/App.jsx', 'src/App.js',
+        'App.tsx', 'App.jsx', 'App.js',
+    ]
+    
+    for comp_path in component_paths:
+        normalized = comp_path if comp_path.startswith('/') else f'/{comp_path}'
+        if normalized in file_map or comp_path in file_map:
+            main_component = file_map.get(normalized) or file_map.get(comp_path)
+            # Determine component name based on path
+            if 'page.' in comp_path:
+                main_component_name = "Page"
+            else:
+                main_component_name = "App"
             break
     
-    if not html_content:
-        # If no index.html, look for any HTML file
+    if not main_component:
+        # Find any .tsx or .jsx file
         for path, content in file_map.items():
-            if path.endswith('.html'):
-                html_content = content
+            if path.endswith(('.tsx', '.jsx', '.js')) and 'export' in content:
+                main_component = content
+                # Extract component name from export
+                if 'export default function' in content:
+                    match = re.search(r'export default function (\w+)', content)
+                    if match:
+                        main_component_name = match.group(1)
+                elif 'export default' in content:
+                    main_component_name = "App"
                 break
     
-    if not html_content:
-        # Create a simple preview showing all files
+    if not main_component:
+        # No component found - show file list
         files_list = '\n'.join(f'<li>{path}</li>' for path in sorted(file_map.keys()))
-        html_content = f"""<!DOCTYPE html>
+        return HTMLResponse(f"""<!DOCTYPE html>
 <html>
-<head><title>Project Preview</title>
+<head><title>Project Files</title>
 <style>body {{ font-family: system-ui; padding: 2rem; background: #0a0a0f; color: #e2e8f0; }}</style>
 </head>
 <body>
 <h1>Project Files</h1>
 <ul>{files_list}</ul>
-<p>No index.html found. This is a React or component-based project - use the Sandpack preview.</p>
+<p>No renderable component found.</p>
+</body>
+</html>""")
+    
+    # Clean up the component code for browser execution
+    # Remove TypeScript types (basic transformation)
+    component_code = main_component
+    
+    # Remove TypeScript-specific syntax
+    component_code = re.sub(r': React\.FC(<[^>]*>)?', '', component_code)
+    component_code = re.sub(r': \w+(\[\])?(\s*[,\)\}=])', r'\2', component_code)
+    component_code = re.sub(r'<[A-Z]\w*(\s*,\s*[A-Z]\w*)*>', '', component_code)  # Generic types
+    component_code = re.sub(r'interface \w+ \{[^}]*\}', '', component_code)
+    component_code = re.sub(r'type \w+ = [^;]+;', '', component_code)
+    
+    # Remove imports (we'll provide React globally)
+    component_code = re.sub(r"import .* from ['\"].*['\"];?\n?", '', component_code)
+    component_code = re.sub(r"import ['\"].*['\"];?\n?", '', component_code)
+    
+    # Handle export default
+    component_code = re.sub(r'export default function (\w+)', r'function \1', component_code)
+    component_code = re.sub(r'export default ', '', component_code)
+    component_code = re.sub(r'export function (\w+)', r'function \1', component_code)
+    component_code = re.sub(r'export const (\w+)', r'const \1', component_code)
+    
+    # Collect any additional components that might be needed
+    additional_components = []
+    for path, content in file_map.items():
+        if path.endswith(('.tsx', '.jsx')) and content != main_component:
+            if 'export' in content and ('function' in content or 'const' in content):
+                cleaned = content
+                cleaned = re.sub(r': React\.FC(<[^>]*>)?', '', cleaned)
+                cleaned = re.sub(r': \w+(\[\])?(\s*[,\)\}=])', r'\2', cleaned)
+                cleaned = re.sub(r'<[A-Z]\w*(\s*,\s*[A-Z]\w*)*>', '', cleaned)
+                cleaned = re.sub(r'interface \w+ \{[^}]*\}', '', cleaned)
+                cleaned = re.sub(r'type \w+ = [^;]+;', '', cleaned)
+                cleaned = re.sub(r"import .* from ['\"].*['\"];?\n?", '', cleaned)
+                cleaned = re.sub(r"import ['\"].*['\"];?\n?", '', cleaned)
+                cleaned = re.sub(r'export default function (\w+)', r'function \1', cleaned)
+                cleaned = re.sub(r'export default ', '', cleaned)
+                cleaned = re.sub(r'export function (\w+)', r'function \1', cleaned)
+                cleaned = re.sub(r'export const (\w+)', r'const \1', cleaned)
+                additional_components.append(f"// {path}\n{cleaned}")
+    
+    # Build the preview HTML
+    preview_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview</title>
+    
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons (commonly used) -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    
+    <style>
+        /* Reset */
+        *, *::before, *::after {{ box-sizing: border-box; }}
+        body {{ margin: 0; font-family: system-ui, -apple-system, sans-serif; }}
+        
+        /* Project CSS */
+        {chr(10).join(all_css)}
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel" data-presets="react">
+        // Provide common hooks and utilities
+        const {{ useState, useEffect, useRef, useCallback, useMemo, useContext, createContext }} = React;
+        
+        // Mock Next.js components
+        const Link = ({{ href, children, className, ...props }}) => (
+            <a href={{href}} className={{className}} {{...props}}>{{children}}</a>
+        );
+        const Image = ({{ src, alt, width, height, className, ...props }}) => (
+            <img src={{src}} alt={{alt}} width={{width}} height={{height}} className={{className}} {{...props}} />
+        );
+        const Head = ({{ children }}) => null; // Head is server-side only
+        
+        // Mock framer-motion
+        const motion = new Proxy({{}}, {{
+            get: (target, prop) => ({{ children, className, ...props }}) => 
+                React.createElement(prop, {{ className, ...props }}, children)
+        }});
+        
+        // Helper for cn (classnames utility)
+        const cn = (...classes) => classes.filter(Boolean).join(' ');
+        
+        // Additional components
+        {chr(10).join(additional_components)}
+        
+        // Main component
+        {component_code}
+        
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<{main_component_name} />);
+    </script>
 </body>
 </html>"""
-    else:
-        # Inline CSS files
-        for path, content in file_map.items():
-            if path.endswith('.css'):
-                # Simple CSS inlining - replace link tags
-                css_inline = f'<style>/* {path} */\n{content}</style>'
-                # Add before </head>
-                if '</head>' in html_content:
-                    html_content = html_content.replace('</head>', f'{css_inline}\n</head>')
-        
-        # Inline JS files at end of body
-        for path, content in file_map.items():
-            if path.endswith('.js') and not path.endswith('.min.js'):
-                js_inline = f'<script>/* {path} */\n{content}</script>'
-                if '</body>' in html_content:
-                    html_content = html_content.replace('</body>', f'{js_inline}\n</body>')
     
-    return HTMLResponse(html_content)
+    return HTMLResponse(preview_html)
 
 
 @router.get("/projects/{project_id}/preview/file/{file_path:path}")
