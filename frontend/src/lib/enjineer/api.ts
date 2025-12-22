@@ -381,13 +381,8 @@ export const enjineerApi = {
    * Get URL for preview HTML endpoint (for iframe src).
    */
   getPreviewHtmlUrl(projectId: number): string {
-    const token = typeof window !== 'undefined' 
-      ? localStorage.getItem('nicole_google_token') || 
-        localStorage.getItem('nicole_token') || 
-        localStorage.getItem('auth_token')
-      : null;
-    // Note: For iframe src, we'll need to use a different approach since we can't add auth headers
-    // The frontend will fetch the HTML content and use srcdoc instead
+    // Note: For iframe src, we use srcdoc approach since we can't add auth headers to iframe src
+    // The frontend fetches the HTML content via getPreviewHtml() and sets it as srcdoc
     return `${API_BASE}/enjineer/projects/${projectId}/preview/html`;
   },
 };

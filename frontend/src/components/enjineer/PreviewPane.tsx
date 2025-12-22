@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Smartphone, Tablet, Monitor, RefreshCw, AlertCircle, 
-  Loader2, Terminal, ExternalLink, Maximize2, Minimize2,
+  Loader2, Terminal, Maximize2, Minimize2,
   Play, Pause
 } from 'lucide-react';
 import { enjineerApi, PreviewBundle } from '@/lib/enjineer/api';
