@@ -479,6 +479,326 @@ class VercelService:
             logger.error("[VERCEL] Error deleting deployment: %s", e)
             return False
 
+    async def create_project_for_files(
+        self,
+        name: str,
+        framework: str = "nextjs"
+    ) -> Optional[VercelProject]:
+        """
+        Create a Vercel project for file-based deployments (no GitHub).
+        
+        Used by Enjineer to create persistent projects that receive
+        multiple deployments over time.
+        
+        Args:
+            name: Project name (will be used in URLs)
+            framework: Framework preset (nextjs, react, static)
+            
+        Returns:
+            VercelProject on success, None on failure
+        """
+        if not self.is_configured:
+            logger.warning("[VERCEL] Not configured, skipping project creation")
+            return None
+        
+        client = await self._get_client()
+        
+        # Determine build settings based on framework
+        build_settings = {}
+        if framework == "nextjs":
+            build_settings = {
+                "framework": "nextjs",
+                "buildCommand": "npm run build",
+                "outputDirectory": ".next",
+                "installCommand": "npm install"
+            }
+        elif framework == "react":
+            build_settings = {
+                "framework": "create-react-app",
+                "buildCommand": "npm run build",
+                "outputDirectory": "build",
+                "installCommand": "npm install"
+            }
+        # Static sites don't need build settings
+        
+        payload = {
+            "name": name,
+            **build_settings
+        }
+        
+        try:
+            params = self._add_team_param({})
+            response = await client.post("/v10/projects", json=payload, params=params)
+            
+            if response.status_code in (200, 201):
+                data = response.json()
+                project = VercelProject(
+                    id=data["id"],
+                    name=data["name"],
+                    account_id=data["accountId"],
+                    link=data.get("link"),
+                )
+                logger.info("[VERCEL] Created file-based project: %s (id=%s)", project.name, project.id)
+                return project
+            elif response.status_code == 409:
+                # Project already exists, fetch it
+                logger.info("[VERCEL] Project %s already exists, fetching...", name)
+                return await self.get_project(name)
+            else:
+                logger.error(
+                    "[VERCEL] Failed to create project: %s - %s",
+                    response.status_code,
+                    response.text
+                )
+                return None
+                
+        except Exception as e:
+            logger.error("[VERCEL] Error creating project: %s", e, exc_info=True)
+            return None
+
+    async def deploy_to_project(
+        self,
+        project_name: str,
+        files: Dict[str, str],
+        target: str = "preview",
+        framework: str = "nextjs"
+    ) -> Optional[VercelDeployment]:
+        """
+        Deploy files to an existing Vercel project.
+        
+        This ensures deployments go to the same project, keeping
+        the same domain aliases and settings.
+        
+        Args:
+            project_name: Existing Vercel project name
+            files: Dict of {path: content} for all project files
+            target: Deployment target ('preview' or 'production')
+            framework: Framework preset
+            
+        Returns:
+            VercelDeployment on success, None on failure
+        """
+        if not self.is_configured:
+            logger.warning("[VERCEL] Not configured, skipping deployment")
+            return None
+        
+        client = await self._get_client()
+        
+        try:
+            # Build files array for Vercel API
+            vercel_files = []
+            for path, content in files.items():
+                clean_path = path.lstrip('/')
+                if not clean_path:
+                    continue
+                vercel_files.append({
+                    "file": clean_path,
+                    "data": content
+                })
+            
+            if not vercel_files:
+                logger.error("[VERCEL] No files to deploy")
+                return None
+            
+            # Build settings based on framework
+            project_settings = {}
+            if framework == "nextjs":
+                project_settings = {
+                    "framework": "nextjs",
+                    "buildCommand": "npm run build",
+                    "outputDirectory": ".next",
+                    "installCommand": "npm install"
+                }
+            elif framework == "react":
+                project_settings = {
+                    "framework": "create-react-app",
+                    "buildCommand": "npm run build",
+                    "outputDirectory": "build",
+                    "installCommand": "npm install"
+                }
+            
+            payload = {
+                "name": project_name,  # Deploy to existing project
+                "files": vercel_files,
+                "target": target,
+                "projectSettings": project_settings
+            }
+            
+            params = self._add_team_param({})
+            response = await client.post("/v13/deployments", json=payload, params=params)
+            
+            if response.status_code in (200, 201):
+                data = response.json()
+                deployment = VercelDeployment(
+                    id=data["id"],
+                    url=f"https://{data.get('url', '')}",
+                    state=data.get("readyState", "BUILDING"),
+                    created_at=data.get("createdAt", 0),
+                )
+                logger.info("[VERCEL] Deployed to project %s: %s", project_name, deployment.url)
+                return deployment
+            else:
+                logger.error(
+                    "[VERCEL] Failed to deploy to project: %s - %s",
+                    response.status_code,
+                    response.text
+                )
+                return None
+                
+        except Exception as e:
+            logger.error("[VERCEL] Error deploying to project: %s", e, exc_info=True)
+            return None
+
+    async def set_deployment_alias(
+        self,
+        deployment_id: str,
+        alias: str
+    ) -> bool:
+        """
+        Assign a custom domain alias to a deployment.
+        
+        This makes the deployment accessible at the specified domain.
+        The domain must already be configured in Vercel.
+        
+        Args:
+            deployment_id: The deployment to alias
+            alias: The domain to point to this deployment
+            
+        Returns:
+            True on success, False on failure
+        """
+        if not self.is_configured:
+            return False
+        
+        client = await self._get_client()
+        
+        try:
+            params = self._add_team_param({})
+            payload = {"alias": alias}
+            
+            response = await client.post(
+                f"/v2/deployments/{deployment_id}/aliases",
+                json=payload,
+                params=params
+            )
+            
+            if response.status_code in (200, 201):
+                logger.info("[VERCEL] Set alias %s for deployment %s", alias, deployment_id)
+                return True
+            else:
+                logger.error(
+                    "[VERCEL] Failed to set alias: %s - %s",
+                    response.status_code,
+                    response.text
+                )
+                return False
+                
+        except Exception as e:
+            logger.error("[VERCEL] Error setting alias: %s", e)
+            return False
+
+    async def list_project_deployments(
+        self,
+        project_name: str,
+        limit: int = 20
+    ) -> list:
+        """
+        List recent deployments for a project.
+        
+        Used for cleanup and management.
+        
+        Args:
+            project_name: Vercel project name
+            limit: Maximum number of deployments to return
+            
+        Returns:
+            List of deployment dicts
+        """
+        if not self.is_configured:
+            return []
+        
+        client = await self._get_client()
+        
+        try:
+            params = self._add_team_param({"projectId": project_name, "limit": limit})
+            response = await client.get("/v6/deployments", params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("deployments", [])
+            return []
+            
+        except Exception as e:
+            logger.error("[VERCEL] Error listing deployments: %s", e)
+            return []
+
+    async def cleanup_old_deployments(
+        self,
+        project_name: str,
+        keep_count: int = 3
+    ) -> int:
+        """
+        Delete old deployments, keeping only the most recent ones.
+        
+        Args:
+            project_name: Vercel project name
+            keep_count: Number of recent deployments to keep
+            
+        Returns:
+            Number of deployments deleted
+        """
+        deployments = await self.list_project_deployments(project_name, limit=50)
+        
+        if len(deployments) <= keep_count:
+            return 0
+        
+        # Sort by creation time (newest first) and skip the ones to keep
+        sorted_deps = sorted(deployments, key=lambda d: d.get("createdAt", 0), reverse=True)
+        to_delete = sorted_deps[keep_count:]
+        
+        deleted = 0
+        for dep in to_delete:
+            dep_id = dep.get("uid") or dep.get("id")
+            if dep_id and await self.delete_deployment(dep_id):
+                deleted += 1
+        
+        logger.info("[VERCEL] Cleaned up %d old deployments from %s", deleted, project_name)
+        return deleted
+
+    async def delete_project(self, project_name: str) -> bool:
+        """
+        Delete a Vercel project and all its deployments.
+        
+        Args:
+            project_name: Project name to delete
+            
+        Returns:
+            True on success, False on failure
+        """
+        if not self.is_configured:
+            return False
+        
+        client = await self._get_client()
+        
+        try:
+            params = self._add_team_param({})
+            response = await client.delete(f"/v9/projects/{project_name}", params=params)
+            
+            success = response.status_code in (200, 204)
+            if success:
+                logger.info("[VERCEL] Deleted project: %s", project_name)
+            else:
+                logger.warning(
+                    "[VERCEL] Failed to delete project %s: %s",
+                    project_name,
+                    response.text
+                )
+            return success
+            
+        except Exception as e:
+            logger.error("[VERCEL] Error deleting project: %s", e)
+            return False
+
 
 # Global instance (lazy-loaded with settings)
 _vercel_service: Optional[VercelService] = None

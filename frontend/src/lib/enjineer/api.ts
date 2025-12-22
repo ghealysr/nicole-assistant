@@ -387,15 +387,18 @@ export const enjineerApi = {
   },
 
   // ========================================================================
-  // Vercel Preview Deployments
+  // Vercel Preview & Production Deployments
   // ========================================================================
 
   /**
    * Deploy project to Vercel for live preview.
+   * Uses persistent Vercel project per Enjineer project.
+   * Domain: project-{id}.enjineer.alphawavetech.com
    */
   async deployPreview(projectId: number, framework?: string): Promise<{
     deployment_id: string;
     url: string;
+    preview_domain: string | null;
     status: string;
     message: string;
   }> {
@@ -408,6 +411,30 @@ export const enjineerApi = {
       const error = await res.text();
       throw new Error(`Failed to deploy preview: ${error}`);
     }
+    return res.json();
+  },
+
+  /**
+   * Get current preview info for a project.
+   * Returns persistent preview domain and latest deployment info.
+   */
+  async getPreviewInfo(projectId: number): Promise<{
+    preview: {
+      domain: string | null;
+      last_deployment_id: string | null;
+      last_url: string | null;
+      last_deployed_at: string | null;
+    };
+    production: {
+      domain: string | null;
+      last_url: string | null;
+      last_deployed_at: string | null;
+    };
+  }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to get preview info');
     return res.json();
   },
 
@@ -436,6 +463,40 @@ export const enjineerApi = {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to delete preview');
+  },
+
+  /**
+   * Clean up old preview deployments, keeping only the most recent.
+   */
+  async cleanupPreviews(projectId: number, keepCount: number = 1): Promise<{ message: string }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/preview/cleanup?keep_count=${keepCount}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to cleanup previews');
+    return res.json();
+  },
+
+  /**
+   * Deploy project to production with optional custom domain.
+   */
+  async deployProduction(projectId: number, domain?: string): Promise<{
+    deployment_id: string;
+    url: string;
+    custom_domain: string | null;
+    status: string;
+    message: string;
+  }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/production/deploy`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ domain }),
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to deploy to production: ${error}`);
+    }
+    return res.json();
   },
 };
 

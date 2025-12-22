@@ -3,15 +3,21 @@
 /**
  * Enjineer Preview Pane
  * 
- * Live preview via Vercel preview deployments.
- * Deploys project files to Vercel for real preview, with automatic cleanup.
+ * Live preview via Vercel preview deployments with persistent URLs.
+ * Each project gets a permanent preview domain: project-{id}.enjineer.alphawavetech.com
+ * 
+ * Features:
+ * - Persistent preview URLs
+ * - Auto-cleanup of old deployments
+ * - Production deployment with custom domain support
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Smartphone, Tablet, Monitor, AlertCircle, 
-  Loader2, Maximize2, Minimize2, ExternalLink, Rocket, Trash2
+  Loader2, Maximize2, Minimize2, ExternalLink, Rocket, 
+  Globe, CheckCircle2, Clock
 } from 'lucide-react';
 import { enjineerApi } from '@/lib/enjineer/api';
 
@@ -23,17 +29,23 @@ interface PreviewPaneProps {
   refreshTrigger?: number;
 }
 
-interface DeploymentState {
+interface DeploymentInfo {
   id: string;
   url: string;
-  status: 'building' | 'ready' | 'error';
+}
+
+interface PreviewInfo {
+  domain: string | null;
+  lastUrl: string | null;
+  lastDeployedAt: string | null;
 }
 
 type PreviewState = 
-  | { type: 'idle' }
+  | { type: 'loading' }
+  | { type: 'idle'; existingPreview: PreviewInfo | null }
   | { type: 'deploying' }
-  | { type: 'building'; deployment: DeploymentState }
-  | { type: 'ready'; deployment: DeploymentState }
+  | { type: 'building'; deployment: DeploymentInfo; previewDomain: string | null }
+  | { type: 'ready'; deployment: DeploymentInfo; previewDomain: string | null }
   | { type: 'error'; message: string };
 
 export function PreviewPane({ 
@@ -41,12 +53,38 @@ export function PreviewPane({
   previewMode,
   onModeChange,
   className,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  refreshTrigger: _refreshTrigger = 0
+  refreshTrigger = 0
 }: PreviewPaneProps) {
-  const [state, setState] = useState<PreviewState>({ type: 'idle' });
+  const [state, setState] = useState<PreviewState>({ type: 'loading' });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load existing preview info on mount or project change
+  useEffect(() => {
+    const loadPreviewInfo = async () => {
+      if (!projectId) {
+        setState({ type: 'idle', existingPreview: null });
+        return;
+      }
+
+      try {
+        const info = await enjineerApi.getPreviewInfo(projectId);
+        setState({ 
+          type: 'idle', 
+          existingPreview: info.preview.last_url ? {
+            domain: info.preview.domain,
+            lastUrl: info.preview.last_url,
+            lastDeployedAt: info.preview.last_deployed_at
+          } : null
+        });
+      } catch (error) {
+        console.warn('Failed to load preview info:', error);
+        setState({ type: 'idle', existingPreview: null });
+      }
+    };
+
+    loadPreviewInfo();
+  }, [projectId, refreshTrigger]);
 
   // Stop polling when component unmounts
   useEffect(() => {
@@ -60,7 +98,7 @@ export function PreviewPane({
   // Deploy preview
   const deployPreview = useCallback(async () => {
     if (!projectId) {
-      setState({ type: 'idle' });
+      setState({ type: 'idle', existingPreview: null });
       return;
     }
 
@@ -69,13 +107,16 @@ export function PreviewPane({
     try {
       const result = await enjineerApi.deployPreview(projectId);
       
-      const deployment: DeploymentState = {
+      const deployment: DeploymentInfo = {
         id: result.deployment_id,
-        url: result.url,
-        status: 'building'
+        url: result.url
       };
       
-      setState({ type: 'building', deployment });
+      setState({ 
+        type: 'building', 
+        deployment,
+        previewDomain: result.preview_domain
+      });
       
       // Poll for deployment status
       pollIntervalRef.current = setInterval(async () => {
@@ -89,7 +130,8 @@ export function PreviewPane({
             }
             setState({ 
               type: 'ready', 
-              deployment: { ...deployment, status: 'ready', url: status.url }
+              deployment: { id: deployment.id, url: status.url },
+              previewDomain: result.preview_domain
             });
           } else if (status.status === 'ERROR' || status.status === 'CANCELED') {
             if (pollIntervalRef.current) {
@@ -98,13 +140,13 @@ export function PreviewPane({
             }
             setState({ 
               type: 'error', 
-              message: 'Deployment failed. Check your project files.' 
+              message: 'Deployment failed. Check your project files for errors.' 
             });
           }
         } catch (error) {
           console.error('Error polling deployment status:', error);
         }
-      }, 3000); // Poll every 3 seconds
+      }, 3000);
       
     } catch (error) {
       console.error('Deploy error:', error);
@@ -115,25 +157,25 @@ export function PreviewPane({
     }
   }, [projectId]);
 
-  // Delete deployment
-  const deleteDeployment = useCallback(async () => {
-    if (state.type !== 'ready' && state.type !== 'building') return;
-    
-    const deploymentId = state.deployment.id;
-    
-    try {
-      await enjineerApi.deletePreview(projectId!, deploymentId);
-      setState({ type: 'idle' });
-    } catch (error) {
-      console.error('Error deleting deployment:', error);
-    }
-  }, [projectId, state]);
+  // Open URL in new tab
+  const openUrl = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
-  // Open in new tab
-  const handleOpenInNewTab = () => {
-    if (state.type === 'ready') {
-      window.open(state.deployment.url, '_blank');
-    }
+  // Format relative time
+  const formatRelativeTime = (isoString: string | null) => {
+    if (!isoString) return null;
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
   };
 
   return (
@@ -166,7 +208,7 @@ export function PreviewPane({
             ))}
           </div>
           
-          {state.type === 'ready' && (
+          {(state.type === 'ready' || state.type === 'idle' && state.existingPreview) && (
             <span className="text-xs text-[#64748B]">
               {previewMode === 'mobile' && '375px'}
               {previewMode === 'tablet' && '768px'}
@@ -177,25 +219,6 @@ export function PreviewPane({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
-          {state.type === 'ready' && (
-            <>
-              <button
-                onClick={handleOpenInNewTab}
-                className="p-1.5 text-[#64748B] hover:text-white transition-colors"
-                title="Open in new tab"
-              >
-                <ExternalLink size={14} />
-              </button>
-              <button
-                onClick={deleteDeployment}
-                className="p-1.5 text-[#64748B] hover:text-[#EF4444] transition-colors"
-                title="Delete preview deployment"
-              >
-                <Trash2 size={14} />
-              </button>
-            </>
-          )}
-          
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1.5 text-[#64748B] hover:text-white transition-colors"
@@ -208,32 +231,97 @@ export function PreviewPane({
 
       {/* Preview Area */}
       <div className="flex-1 overflow-hidden bg-[#12121A] flex items-center justify-center p-4">
-        {/* Idle State - Show deploy button */}
+        {/* Loading State */}
+        {state.type === 'loading' && (
+          <div className="flex flex-col items-center gap-3 text-[#64748B]">
+            <Loader2 size={32} className="animate-spin text-[#8B5CF6]" />
+            <span className="text-sm">Loading preview info...</span>
+          </div>
+        )}
+
+        {/* Idle State - Show deploy button or existing preview */}
         {state.type === 'idle' && (
-          <div className="flex flex-col items-center gap-4 text-center max-w-md">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#8B5CF6]/20 to-[#6366F1]/20 flex items-center justify-center">
-              <Rocket size={40} className="text-[#8B5CF6]" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white mb-2">Preview Your Project</h3>
-              <p className="text-sm text-[#64748B]">
-                Deploy a live preview to see your project in action. 
-                Previews are temporary and can be deleted anytime.
-              </p>
-            </div>
-            <button
-              onClick={deployPreview}
-              disabled={!projectId}
-              className={cn(
-                "px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2",
-                projectId 
-                  ? "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white" 
-                  : "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
-              )}
-            >
-              <Rocket size={18} />
-              Deploy Preview
-            </button>
+          <div className="flex flex-col items-center gap-6 text-center max-w-md">
+            {state.existingPreview ? (
+              <>
+                {/* Existing preview available */}
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/20 flex items-center justify-center">
+                  <Globe size={40} className="text-[#10B981]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white mb-2">Preview Available</h3>
+                  <p className="text-sm text-[#64748B] mb-3">
+                    Your project has an existing preview deployment.
+                  </p>
+                  
+                  {/* Domain Badge */}
+                  {state.existingPreview.domain && (
+                    <div className="bg-[#1E1E2E] rounded-lg px-4 py-2 text-xs text-[#10B981] font-mono break-all mb-2">
+                      {state.existingPreview.domain}
+                    </div>
+                  )}
+                  
+                  {/* Last deployed time */}
+                  {state.existingPreview.lastDeployedAt && (
+                    <div className="flex items-center justify-center gap-1 text-xs text-[#64748B]">
+                      <Clock size={12} />
+                      <span>Updated {formatRelativeTime(state.existingPreview.lastDeployedAt)}</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex gap-3">
+                  <a
+                    href={state.existingPreview.domain || state.existingPreview.lastUrl!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-6 py-3 rounded-lg font-medium bg-[#10B981] hover:bg-[#059669] text-white transition-all flex items-center gap-2"
+                  >
+                    <ExternalLink size={18} />
+                    View Preview
+                  </a>
+                  <button
+                    onClick={deployPreview}
+                    disabled={!projectId}
+                    className="px-6 py-3 rounded-lg font-medium bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white transition-all flex items-center gap-2"
+                  >
+                    <Rocket size={18} />
+                    Update
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* No preview yet */}
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#8B5CF6]/20 to-[#6366F1]/20 flex items-center justify-center">
+                  <Rocket size={40} className="text-[#8B5CF6]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white mb-2">Preview Your Project</h3>
+                  <p className="text-sm text-[#64748B]">
+                    Deploy to see your project live. Each project gets a permanent preview URL.
+                  </p>
+                </div>
+                <button
+                  onClick={deployPreview}
+                  disabled={!projectId}
+                  className={cn(
+                    "px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2",
+                    projectId 
+                      ? "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white" 
+                      : "bg-[#1E1E2E] text-[#64748B] cursor-not-allowed"
+                  )}
+                >
+                  <Rocket size={18} />
+                  Deploy Preview
+                </button>
+                
+                {/* Persistent URL hint */}
+                <div className="text-xs text-[#64748B] bg-[#1E1E2E]/50 px-4 py-2 rounded-lg">
+                  <span className="text-[#8B5CF6]">project-{projectId}</span>.enjineer.alphawavetech.com
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -252,7 +340,7 @@ export function PreviewPane({
               <div className="w-20 h-20 rounded-2xl bg-[#8B5CF6]/10 flex items-center justify-center">
                 <Loader2 size={36} className="animate-spin text-[#8B5CF6]" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#F59E0B] flex items-center justify-center">
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#F59E0B] flex items-center justify-center animate-pulse">
                 <span className="text-xs">⏳</span>
               </div>
             </div>
@@ -262,20 +350,26 @@ export function PreviewPane({
                 This usually takes 30-60 seconds...
               </p>
             </div>
-            <div className="text-xs text-[#64748B] bg-[#1E1E2E] px-3 py-1.5 rounded-full">
-              Deployment: {state.deployment.id.slice(0, 12)}...
+            
+            {/* Progress indicator */}
+            <div className="w-48 h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] animate-pulse" style={{ width: '60%' }} />
             </div>
+            
+            {state.previewDomain && (
+              <div className="text-xs text-[#64748B] bg-[#1E1E2E] px-3 py-1.5 rounded-full">
+                {state.previewDomain}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Ready State - Show preview link (iframes blocked by Vercel X-Frame-Options) */}
+        {/* Ready State */}
         {state.type === 'ready' && (
           <div className="flex flex-col items-center gap-6 text-center max-w-lg">
             <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/20 flex items-center justify-center">
               <div className="w-16 h-16 rounded-xl bg-[#10B981] flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+                <CheckCircle2 size={32} className="text-white" />
               </div>
             </div>
             
@@ -284,47 +378,57 @@ export function PreviewPane({
               <p className="text-sm text-[#64748B] mb-4">
                 Your project has been deployed successfully.
               </p>
-              <div className="bg-[#1E1E2E] rounded-lg px-4 py-2 text-xs text-[#8B5CF6] font-mono break-all">
-                {state.deployment.url}
-              </div>
+              
+              {/* Persistent Domain */}
+              {state.previewDomain && (
+                <button
+                  onClick={() => openUrl(state.previewDomain!)}
+                  className="group bg-[#1E1E2E] hover:bg-[#2E2E3E] rounded-lg px-4 py-3 w-full transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-left">
+                      <div className="text-xs text-[#64748B] mb-1">Persistent URL</div>
+                      <div className="text-sm text-[#10B981] font-mono break-all">
+                        {state.previewDomain}
+                      </div>
+                    </div>
+                    <ExternalLink size={16} className="text-[#64748B] group-hover:text-white transition-colors" />
+                  </div>
+                </button>
+              )}
             </div>
             
             <div className="flex gap-3">
-              <a
-                href={state.deployment.url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => openUrl(state.previewDomain || state.deployment.url)}
                 className="px-6 py-3 rounded-lg font-medium bg-[#8B5CF6] hover:bg-[#7C3AED] text-white transition-all flex items-center gap-2"
               >
                 <ExternalLink size={18} />
                 Open Preview
-              </a>
-              <button
-                onClick={deleteDeployment}
-                className="px-4 py-3 rounded-lg font-medium bg-[#1E1E2E] hover:bg-[#2E2E3E] text-[#64748B] hover:text-[#EF4444] transition-all flex items-center gap-2"
-                title="Delete this preview deployment"
-              >
-                <Trash2 size={18} />
               </button>
             </div>
             
             <p className="text-xs text-[#64748B]">
-              Preview deployments are temporary and can be deleted anytime.
+              This URL will always show your latest preview deployment.
             </p>
           </div>
         )}
 
         {/* Error State */}
         {state.type === 'error' && (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-4 max-w-md text-center">
             <div className="w-16 h-16 rounded-xl bg-[#EF4444]/10 flex items-center justify-center">
               <AlertCircle size={32} className="text-[#EF4444]" />
             </div>
-            <p className="text-sm text-[#EF4444]">{state.message}</p>
+            <div>
+              <h3 className="text-lg font-medium text-[#EF4444] mb-2">Deployment Failed</h3>
+              <p className="text-sm text-[#64748B]">{state.message}</p>
+            </div>
             <button
               onClick={deployPreview}
-              className="mt-2 px-4 py-2 bg-[#1E1E2E] text-white rounded-lg text-sm hover:bg-[#2E2E3E] transition-colors"
+              className="px-6 py-3 bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white rounded-lg font-medium transition-colors flex items-center gap-2"
             >
+              <Rocket size={18} />
               Try Again
             </button>
           </div>
@@ -332,14 +436,21 @@ export function PreviewPane({
       </div>
 
       {/* Status bar */}
-      {state.type === 'ready' && (
+      {(state.type === 'ready' || state.type === 'building') && (
         <div className="h-6 bg-[#0D0D12] border-t border-[#1E1E2E] flex items-center px-3 text-xs text-[#64748B]">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
-            Live Preview
+            <span className={cn(
+              "w-2 h-2 rounded-full",
+              state.type === 'ready' ? "bg-[#10B981]" : "bg-[#F59E0B] animate-pulse"
+            )}></span>
+            {state.type === 'ready' ? 'Live' : 'Building'}
           </span>
           <span className="mx-2">•</span>
-          <span className="truncate">{state.deployment.url}</span>
+          <span className="truncate">
+            {state.type === 'ready' 
+              ? (state.previewDomain || state.deployment.url)
+              : 'Deploying to Vercel...'}
+          </span>
         </div>
       )}
     </div>
