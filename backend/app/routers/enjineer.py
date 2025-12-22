@@ -143,10 +143,10 @@ def detect_language(path: str) -> str:
 def get_user_id_from_context(user) -> int:
     """Extract user ID from authenticated user context as integer."""
     # user is a UserContext object from alphawave_auth middleware
-    # Use tiger_user_id (integer) from the Tiger Postgres users table
-    if hasattr(user, 'tiger_user_id') and user.tiger_user_id:
-        return user.tiger_user_id
-    raise HTTPException(status_code=401, detail="Not authenticated - no tiger_user_id")
+    # The middleware sets user.user_id = tiger_user_id (the integer from Tiger Postgres)
+    if hasattr(user, 'user_id') and user.user_id:
+        return user.user_id
+    raise HTTPException(status_code=401, detail="Not authenticated - no user_id")
 
 
 async def verify_project_access(pool, project_id: str, user_id: str) -> dict:
