@@ -379,7 +379,7 @@ class EnjineerNicole:
             plan = await conn.fetchrow(
                 """
                 SELECT * FROM enjineer_plans 
-                WHERE project_id = $1 AND status IN ('draft', 'in_progress', 'awaiting_approval')
+                WHERE project_id = $1 AND status IN ('active', 'draft', 'in_progress', 'awaiting_approval')
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 self.project_id
@@ -531,8 +531,14 @@ class EnjineerNicole:
     
     async def _create_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new file in the project."""
-        path = input_data["path"]
-        content = input_data["content"]
+        path = input_data.get("path")
+        content = input_data.get("content")
+        
+        if not path:
+            return {"success": False, "error": "File path is required"}
+        if content is None:
+            return {"success": False, "error": "File content is required"}
+            
         language = input_data.get("language") or self._detect_language(path)
         checksum = hashlib.sha256(content.encode()).hexdigest()
         
@@ -574,8 +580,14 @@ class EnjineerNicole:
     
     async def _update_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing file."""
-        path = input_data["path"]
-        content = input_data["content"]
+        path = input_data.get("path")
+        content = input_data.get("content")
+        
+        if not path:
+            return {"success": False, "error": "File path is required"}
+        if content is None:
+            return {"success": False, "error": "File content is required"}
+            
         commit_message = input_data.get("commit_message", "Updated by Nicole")
         checksum = hashlib.sha256(content.encode()).hexdigest()
         
@@ -626,7 +638,10 @@ class EnjineerNicole:
     
     async def _delete_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a file from the project."""
-        path = input_data["path"]
+        path = input_data.get("path")
+        if not path:
+            return {"success": False, "error": "File path is required"}
+            
         reason = input_data.get("reason", "No reason provided")
         
         if not path.startswith("/"):
@@ -653,9 +668,15 @@ class EnjineerNicole:
     
     async def _create_plan(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create an implementation plan with phases."""
-        name = input_data["name"]
+        name = input_data.get("name")
+        if not name:
+            return {"success": False, "error": "Plan name is required"}
+        
         description = input_data.get("description", "")
         phases_data = input_data.get("phases", [])
+        
+        if not phases_data:
+            return {"success": False, "error": "At least one phase is required"}
         
         plan_id = str(uuid4())
         
@@ -697,9 +718,17 @@ class EnjineerNicole:
     
     async def _update_plan_step(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a plan phase status."""
-        plan_id = input_data["plan_id"]
-        phase_number = input_data["phase_number"]
-        status = input_data["status"]
+        plan_id = input_data.get("plan_id")
+        phase_number = input_data.get("phase_number")
+        status = input_data.get("status")
+        
+        if not plan_id:
+            return {"success": False, "error": "plan_id is required"}
+        if phase_number is None:
+            return {"success": False, "error": "phase_number is required"}
+        if not status:
+            return {"success": False, "error": "status is required"}
+            
         notes = input_data.get("notes")
         
         async with pool.acquire() as conn:
