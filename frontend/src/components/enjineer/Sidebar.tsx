@@ -241,7 +241,8 @@ function FileTree({ files, selectedFile, onSelectFile }: FileTreeProps) {
       addFile({
         path: newPath,
         content: '',
-        language: getLanguageFromPath(fileName)
+        language: getLanguageFromPath(fileName),
+        isModified: false
       });
     }
     setContextMenu(null);
