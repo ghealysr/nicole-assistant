@@ -26,7 +26,7 @@ import {
 import { Sidebar } from '@/components/enjineer/Sidebar';
 import { MainArea } from '@/components/enjineer/MainArea';
 import { NicoleChat } from '@/components/enjineer/NicoleChat';
-import { useEnjineerStore, Project } from '@/lib/enjineer/store';
+import { useEnjineerStore } from '@/lib/enjineer/store';
 
 // View states
 type ViewState = 'loading' | 'projects' | 'intake' | 'workspace';
