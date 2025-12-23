@@ -2155,6 +2155,18 @@ async def deploy_preview(
             deployment.id, deployment.url, project_id
         )
     
+    # Assign the custom domain alias to this specific deployment
+    # This is CRITICAL - without this, the custom domain won't point to the new deployment
+    if preview_domain:
+        try:
+            alias_set = await vercel.set_deployment_alias(deployment.id, preview_domain)
+            if alias_set:
+                logger.info(f"[PREVIEW] Assigned alias {preview_domain} to deployment {deployment.id}")
+            else:
+                logger.warning(f"[PREVIEW] Failed to assign alias {preview_domain} to deployment")
+        except Exception as e:
+            logger.warning(f"[PREVIEW] Alias assignment failed (non-critical): {e}")
+    
     # Cleanup old deployments in background (keep last 3)
     try:
         await vercel.cleanup_old_deployments(vercel_project_name, keep_count=3)
