@@ -186,7 +186,18 @@ export default function EnjineerPage() {
       const { enjineerApi } = await import('@/lib/enjineer/api');
       
       const name = projectName.trim() || 'New Project';
-      const newProject = await enjineerApi.createProject(name, projectDescription);
+      
+      // Collect inspiration images as base64 data URLs
+      const inspirationImages: string[] = [];
+      if (imagePreview) {
+        inspirationImages.push(imagePreview);
+      }
+      
+      const newProject = await enjineerApi.createProject(
+        name, 
+        projectDescription,
+        inspirationImages.length > 0 ? inspirationImages : undefined
+      );
       
       // Clear messages for fresh start
       clearMessages();

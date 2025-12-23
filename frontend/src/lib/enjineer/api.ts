@@ -84,11 +84,23 @@ export const enjineerApi = {
   // Project Management
   // ========================================================================
   
-  async createProject(name: string, description: string): Promise<Project> {
+  /**
+   * Create a new project with optional inspiration images.
+   * Images are sent as base64 data URLs for Claude Vision analysis.
+   */
+  async createProject(
+    name: string, 
+    description: string,
+    inspirationImages?: string[]  // Array of base64 data URLs
+  ): Promise<Project> {
     const res = await fetch(`${API_BASE}/enjineer/projects`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({ 
+        name, 
+        description,
+        inspiration_images: inspirationImages || []
+      }),
     });
     if (!res.ok) {
       const error = await res.text();

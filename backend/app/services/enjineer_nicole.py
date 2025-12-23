@@ -53,58 +53,86 @@ You're helping a user build their web application in a Cursor-like environment. 
 - `request_approval`: Ask the user for permission before major actions
 - `deploy`: Deploy the project to Vercel
 
-## CRITICAL: How to Use Plans
+## CRITICAL: The Complete Build Pipeline
 
-**ALWAYS create a plan FIRST** when the user asks you to build something significant. Here's the workflow:
+**You MUST follow this exact workflow for every project:**
 
-1. **When user describes what they want to build**:
-   - Immediately call `create_plan` with clear phases
-   - Each phase should have: phase_number, name, estimated_minutes, requires_approval (set true for Review phases)
-   - The plan.md file is auto-generated - user can view it in the Plan tab
+### Phase 1: Planning (REQUIRED FIRST)
+1. **Analyze the request** - Understand what the user wants
+2. **Use design analysis** - If inspiration images were provided, incorporate the design_analysis (colors, typography, layout, components)
+3. **Call `create_plan`** immediately with:
+   - Detailed phases with sub-steps for each phase
+   - Estimated time for each phase
+   - `requires_approval: true` for: Review phases, Preview checkpoint, Final QA, Deploy
+4. **STOP AND WAIT** - Say "Plan created. Please review in the Plan tab and approve when ready."
+5. **DO NOT PROCEED** until user approves
 
-2. **WAIT FOR PLAN APPROVAL**:
-   - After creating a plan, STOP and wait for the user to approve it
-   - Say something like "I've created the plan. Please review it in the Plan tab and approve when ready."
-   - DO NOT start coding until the user explicitly approves the plan
+### Phase 2: Implementation with QA Checkpoints
+For EACH phase:
+1. **Start phase**: Call `update_plan_step` with status "in_progress"
+2. **Execute work**: Create/update files as needed
+3. **Mark complete**: Call `update_plan_step` with status "complete"
+4. **TRIGGER QA**: After completing each phase, call `dispatch_agent` with agent_type="qa"
+5. **Wait for QA results**: The QA agent reviews:
+   - All code created in this phase
+   - The plan to ensure alignment
+   - Any issues, bugs, or hallucinations
+6. **Report QA findings**: Tell user what QA found
+7. **Fix issues**: If QA finds problems, fix them before proceeding
+8. **Ask to continue**: Say "Phase X complete. QA passed. Ready for phase Y?"
 
-3. **As you work through each phase**:
-   - Call `update_plan_step` with status "in_progress" when starting a phase
-   - Create/update files using the appropriate tools
-   - Call `update_plan_step` with status "complete" when done with ALL work for that phase
-   - After EACH phase, stop and summarize what you did - wait for user to say "continue" or "next"
+### Phase 3: Preview Checkpoint (REQUIRED)
+When enough code exists for a preview (usually after core layout is done):
+1. **Trigger QA** for preview readiness check
+2. **Announce**: "Preview is now available! Click Update in the Preview tab to see it."
+3. **Wait for user feedback** before continuing
 
-4. **Phase completion**:
-   - ALWAYS mark phases complete using update_plan_step when finished
-   - The sidebar shows checkmarks for completed phases (like Cursor's TODOs)
+### Phase 4: Final QA (REQUIRED before deploy)
+Before deployment, run comprehensive QA:
+1. **Call `dispatch_agent`** with agent_type="sr_qa" for full audit
+2. **SR QA performs**:
+   - Lighthouse audit (performance, accessibility, SEO, best practices)
+   - Chrome DevTools analysis
+   - Code review for issues
+   - Mobile responsiveness check
+   - Full accessibility audit
+3. **Report all findings** with severity levels
+4. **Provide fix recommendations**
+5. **Fix critical issues** before proceeding
 
-5. **QA Integration**:
-   - When user asks for QA audit, use dispatch_agent with agent_type="qa"
-   - Present QA results clearly in the chat
+### Phase 5: Deployment (REQUIRES APPROVAL)
+1. **Confirm ready**: "All QA checks passed. Ready to deploy to production?"
+2. **WAIT for explicit approval** from user
+3. **Call `deploy`** only after user says yes
+4. **Confirm success**: "Deployed! Your site is live at [URL]"
 
-## Example Plan Creation:
-When a user says "Build me a landing page with a hero section and pricing table", immediately call create_plan with:
-- name: "Landing Page Implementation"
-- description: "Build a modern landing page with hero and pricing"  
-- phases: array of phase objects with phase_number, name, estimated_minutes, requires_approval
+## Hallucination Prevention Rules
+1. **Never invent features** that weren't discussed
+2. **Never assume dependencies** exist without checking the project files
+3. **Always use actual file paths** from the file tree
+4. **If unsure, ASK** the user rather than guessing
+5. **Verify before claiming** - don't say "I've created X" until you actually call the tool
+6. **Check imports exist** before using them in code
+7. **Use explicit types** - no implicit any in TypeScript
 
-## Interaction Style
-- Be conversational and helpful, like a senior developer pairing
-- Explain your reasoning when making architectural decisions
-- Ask clarifying questions when requirements are unclear
-- Confirm before making destructive changes
-- Celebrate milestones and progress with the user
-- When creating files, use create_file tool - don't just show the code
-- When discussing plans, use create_plan tool - don't just list steps in text
+## Strategic Agent Deployment
+- **engineer**: For complex coding tasks, refactoring, architecture decisions
+- **qa**: After each phase - catches bugs, verifies implementation matches plan
+- **sr_qa**: Final audit only - comprehensive testing, Lighthouse, accessibility
 
-## Important Rules
-1. **ALWAYS call create_plan** before starting any multi-step work
-2. **ALWAYS update plan status** as you progress through phases
-3. Always request approval before deploying to production
-4. When asked to create something, use your tools - don't just describe
-5. Keep the user informed about what you're doing in real-time
-6. If you encounter errors, explain them clearly and suggest fixes
-7. Be proactive but not presumptuous
-8. For Next.js projects, use App Router conventions (app/ directory)
+## Plan Structure Requirements
+Each phase in your plan MUST include:
+- `phase_number`: Sequential number (1, 2, 3...)
+- `name`: Clear phase name
+- `estimated_minutes`: Realistic time estimate
+- `requires_approval`: true for Review/QA/Deploy phases
+
+Include these MANDATORY phases:
+1. Project Setup & Configuration
+2-N. Implementation phases (specific to project)
+N+1. Preview Checkpoint (requires_approval: true)
+N+2. Final QA & Audit (requires_approval: true)
+N+3. Deploy to Production (requires_approval: true)
 
 ## Current Context
 - **Time**: {current_time}
@@ -113,6 +141,9 @@ When a user says "Build me a landing page with a hero section and pricing table"
 - **Description**: {project_description}
 - **Tech Stack**: {tech_stack}
 - **Status**: {project_status}
+
+## Design Analysis from Inspiration Images
+{design_analysis}
 
 ## Project Files
 {file_tree}
@@ -188,7 +219,7 @@ ENJINEER_TOOLS = [
     },
     {
         "name": "create_plan",
-        "description": "Create an implementation plan with numbered steps. Use when starting a new feature or project.",
+        "description": "Create an implementation plan with numbered phases. Each phase has detailed sub-steps. ALWAYS include Preview Checkpoint, Final QA, and Deploy phases.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -208,11 +239,20 @@ ENJINEER_TOOLS = [
                             "phase_number": {"type": "integer", "description": "Phase order (1, 2, 3...)"},
                             "name": {"type": "string", "description": "Phase name"},
                             "estimated_minutes": {"type": "integer", "description": "Estimated time"},
-                            "requires_approval": {"type": "boolean", "description": "Does this need user approval?"}
+                            "requires_approval": {"type": "boolean", "description": "Set true for: Preview Checkpoint, Final QA, Deploy phases"},
+                            "steps": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Detailed sub-steps to complete this phase"
+                            },
+                            "qa_focus": {
+                                "type": "string",
+                                "description": "What QA should check after this phase"
+                            }
                         },
-                        "required": ["phase_number", "name"]
+                        "required": ["phase_number", "name", "steps"]
                     },
-                    "description": "Ordered list of implementation phases"
+                    "description": "Ordered list of implementation phases. MUST include: Preview Checkpoint (requires_approval:true), Final QA (requires_approval:true), Deploy (requires_approval:true)"
                 }
             },
             "required": ["name", "phases"]
@@ -416,7 +456,7 @@ class EnjineerNicole:
         return self.project_data
     
     def build_system_prompt(self) -> str:
-        """Build system prompt with rich project context."""
+        """Build system prompt with rich project context including design analysis."""
         if not self.project_data:
             raise ValueError("Project data not loaded. Call load_project_context first.")
         
@@ -432,6 +472,38 @@ class EnjineerNicole:
                 file_tree += f"\n... and {len(files) - 50} more files"
         else:
             file_tree = "(No files yet - this is a new project)"
+        
+        # Build design analysis from inspiration images
+        intake_data = self.project_data.get("intake_data") or {}
+        design_analysis = intake_data.get("design_analysis")
+        
+        if design_analysis and isinstance(design_analysis, dict) and "error" not in design_analysis:
+            if "raw" in design_analysis:
+                design_analysis_str = f"Inspiration Image Analysis:\n{design_analysis['raw']}"
+            else:
+                # Format structured design analysis
+                parts = ["**Inspiration Image Analysis:**"]
+                if design_analysis.get("summary"):
+                    parts.append(f"Summary: {design_analysis['summary']}")
+                if design_analysis.get("design_style"):
+                    parts.append(f"Style: {design_analysis['design_style']}")
+                if design_analysis.get("color_palette"):
+                    colors = design_analysis['color_palette']
+                    parts.append(f"Colors: Primary {colors.get('primary', 'N/A')}, Secondary {colors.get('secondary', 'N/A')}, Accent {colors.get('accent', 'N/A')}, Background {colors.get('background', 'N/A')}, Text {colors.get('text', 'N/A')}")
+                if design_analysis.get("typography"):
+                    typo = design_analysis['typography']
+                    parts.append(f"Typography: {typo.get('style', '')} - Heading: {typo.get('heading_font', 'N/A')}, Body: {typo.get('body_font', 'N/A')}")
+                if design_analysis.get("layout"):
+                    parts.append(f"Layout: {design_analysis['layout']}")
+                if design_analysis.get("components"):
+                    parts.append(f"Key Components: {', '.join(design_analysis['components'][:10])}")
+                if design_analysis.get("visual_effects"):
+                    parts.append(f"Visual Effects: {', '.join(design_analysis['visual_effects'][:5])}")
+                if design_analysis.get("key_features"):
+                    parts.append(f"Key Features: {', '.join(design_analysis['key_features'][:5])}")
+                design_analysis_str = "\n".join(parts)
+        else:
+            design_analysis_str = "(No inspiration images provided)"
         
         # Get timezone
         try:
@@ -450,6 +522,7 @@ class EnjineerNicole:
             project_description=self.project_data["description"] or "No description provided",
             tech_stack=tech_stack_str,
             project_status=self.project_data["status"],
+            design_analysis=design_analysis_str,
             file_tree=file_tree
         )
     
@@ -694,7 +767,7 @@ class EnjineerNicole:
             logger.warning("[Enjineer] create_plan failed: no phases provided")
             return {"success": False, "error": "At least one phase is required"}
         
-        # Generate plan.md content
+        # Generate plan.md content with detailed sub-steps
         plan_md = f"""# {name}
 
 ## Overview
@@ -709,17 +782,40 @@ class EnjineerNicole:
             phase_name = phase.get("name", "Unnamed Phase")
             est_mins = phase.get("estimated_minutes", 30)
             needs_approval = phase.get("requires_approval", False)
+            steps = phase.get("steps", [])
+            qa_focus = phase.get("qa_focus", "")
             total_time += est_mins
+            
             approval_note = " *(requires approval)*" if needs_approval else ""
             plan_md += f"### Phase {phase_num}: {phase_name}{approval_note}\n"
-            plan_md += f"- Estimated time: {est_mins} minutes\n\n"
+            plan_md += f"- **Estimated time**: {est_mins} minutes\n"
+            
+            if steps:
+                plan_md += "- **Steps**:\n"
+                for i, step in enumerate(steps, 1):
+                    plan_md += f"  {i}. {step}\n"
+            
+            if qa_focus:
+                plan_md += f"- **QA Focus**: {qa_focus}\n"
+            
+            plan_md += "\n"
         
         plan_md += f"""## Timeline
-- **Total estimated time**: {total_time} minutes
+- **Total estimated time**: {total_time} minutes ({total_time // 60}h {total_time % 60}m)
 - **Created**: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+## QA Checkpoints
+After each phase, QA agent reviews:
+- Code quality and syntax
+- Plan alignment
+- Hallucination detection
+- Issue identification
 
 ## Approval Required
 This plan requires your approval before implementation begins. Review the phases above and approve to start.
+
+---
+*Awaiting approval*
 """
 
         async with pool.acquire() as conn:
@@ -821,39 +917,265 @@ This plan requires your approval before implementation begins. Review the phases
         }
     
     async def _dispatch_agent(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatch a specialized agent to perform a task."""
-        agent_type = input_data["agent_type"]
-        task = input_data["task"]
+        """
+        Dispatch a specialized agent to perform a task.
+        
+        Agent Types:
+        - qa: Quick code review after each phase
+        - sr_qa: Comprehensive final audit with Lighthouse/DevTools
+        - engineer: Complex coding tasks (dispatched to main Nicole loop)
+        """
+        agent_type = input_data.get("agent_type", "qa")
+        task = input_data.get("task", "Review code")
         focus_files = input_data.get("focus_files", [])
         
         execution_id = str(uuid4())
         
+        # Log the dispatch
         async with pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO enjineer_agent_executions 
                 (id, project_id, agent_type, instruction, context, focus_areas, status)
-                VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+                VALUES ($1, $2, $3, $4, $5, $6, 'running')
                 """,
                 execution_id, self.project_id, agent_type, task,
-                json.dumps({}), focus_files
+                json.dumps({"files": focus_files}), focus_files
             )
         
-        # TODO: Actually dispatch the agent via background task
-        # For now, mark as completed (placeholder)
-        logger.info(f"[Enjineer] Dispatched {agent_type} agent: {task[:100]}...")
+        logger.warning(f"[Enjineer] Running {agent_type} agent: {task[:100]}...")
         
-        return {
-            "success": True,
-            "result": {
-                "action": "agent_dispatched",
-                "execution_id": execution_id,
-                "agent_type": agent_type,
-                "task": task,
-                "status": "pending",
-                "message": f"{agent_type.title()} agent has been dispatched and will begin work shortly."
+        try:
+            if agent_type == "qa":
+                result = await self._run_qa_agent(pool, task, focus_files)
+            elif agent_type == "sr_qa":
+                result = await self._run_sr_qa_agent(pool, task, focus_files)
+            elif agent_type == "engineer":
+                result = {
+                    "status": "deferred",
+                    "message": "Engineering tasks flow through the main Nicole loop. Please describe the task directly."
+                }
+            else:
+                result = {"status": "error", "message": f"Unknown agent type: {agent_type}"}
+            
+            # Update execution status
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE enjineer_agent_executions 
+                    SET status = $1, result = $2, completed_at = NOW()
+                    WHERE id = $3
+                    """,
+                    "completed" if result.get("status") != "error" else "failed",
+                    json.dumps(result),
+                    execution_id
+                )
+            
+            return {
+                "success": result.get("status") != "error",
+                "result": {
+                    "action": "agent_completed",
+                    "execution_id": execution_id,
+                    "agent_type": agent_type,
+                    **result
+                }
             }
-        }
+            
+        except Exception as e:
+            logger.error(f"[Enjineer] Agent {agent_type} failed: {e}")
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """UPDATE enjineer_agent_executions SET status = 'failed', completed_at = NOW() WHERE id = $1""",
+                    execution_id
+                )
+            return {
+                "success": False,
+                "result": {"action": "agent_failed", "error": str(e)}
+            }
+    
+    async def _run_qa_agent(self, pool, task: str, focus_files: List[str]) -> Dict[str, Any]:
+        """
+        Run QA agent for phase review.
+        Reviews code quality, checks for common issues, validates against plan.
+        """
+        # Get project files
+        async with pool.acquire() as conn:
+            files = await conn.fetch(
+                "SELECT path, content, language FROM enjineer_files WHERE project_id = $1",
+                self.project_id
+            )
+            plan = await conn.fetchrow(
+                "SELECT content FROM enjineer_plans WHERE project_id = $1 AND status IN ('active', 'awaiting_approval') ORDER BY id DESC LIMIT 1",
+                self.project_id
+            )
+        
+        # Build context for QA review
+        file_contents = []
+        for f in files:
+            if not focus_files or f["path"] in focus_files:
+                file_contents.append(f"### {f['path']} ({f['language']})\n```{f['language']}\n{f['content'][:3000]}\n```")
+        
+        plan_content = plan["content"] if plan else "No plan available"
+        
+        # Use Claude to perform QA review
+        qa_prompt = f"""You are a QA Engineer reviewing code. Analyze the following code and provide a structured review.
+
+## Task: {task}
+
+## Plan:
+{plan_content[:2000]}
+
+## Files to Review:
+{chr(10).join(file_contents[:10])}
+
+## Your Review Must Check:
+1. **Code Quality**: Syntax errors, typos, missing imports
+2. **Plan Alignment**: Does the code match what the plan describes?
+3. **Hallucinations**: Is there any code that references non-existent files, imports, or components?
+4. **Issues**: Any bugs, security issues, or performance problems?
+5. **Completeness**: Is the phase fully implemented?
+
+## Response Format (JSON):
+{{
+  "status": "pass" | "fail" | "warning",
+  "issues": [
+    {{"severity": "critical|high|medium|low", "file": "path", "line": null, "description": "..."}}
+  ],
+  "hallucinations_detected": ["description of any hallucinations found"],
+  "plan_alignment": "aligned" | "partial" | "misaligned",
+  "summary": "One paragraph summary",
+  "recommendations": ["list of recommendations"]
+}}"""
+
+        try:
+            response = await self.client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                messages=[{"role": "user", "content": qa_prompt}]
+            )
+            
+            result_text = response.content[0].text
+            
+            # Try to parse JSON from response
+            json_start = result_text.find("{")
+            json_end = result_text.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                qa_result = json.loads(result_text[json_start:json_end])
+                qa_result["agent"] = "qa"
+                return qa_result
+            else:
+                return {"status": "warning", "summary": result_text, "agent": "qa"}
+                
+        except Exception as e:
+            logger.error(f"[Enjineer] QA agent error: {e}")
+            return {"status": "error", "message": str(e), "agent": "qa"}
+    
+    async def _run_sr_qa_agent(self, pool, task: str, focus_files: List[str]) -> Dict[str, Any]:
+        """
+        Run Senior QA agent for comprehensive final audit.
+        Includes Lighthouse-style checks, accessibility, performance, SEO.
+        """
+        # Get all project files
+        async with pool.acquire() as conn:
+            files = await conn.fetch(
+                "SELECT path, content, language FROM enjineer_files WHERE project_id = $1",
+                self.project_id
+            )
+            project = await conn.fetchrow(
+                "SELECT preview_domain FROM enjineer_projects WHERE id = $1",
+                self.project_id
+            )
+        
+        # Build comprehensive file list
+        file_contents = []
+        for f in files:
+            file_contents.append(f"### {f['path']} ({f['language']})\n```{f['language']}\n{f['content'][:2000]}\n```")
+        
+        preview_url = project["preview_domain"] if project and project["preview_domain"] else None
+        
+        # Comprehensive audit prompt
+        sr_qa_prompt = f"""You are a Senior QA Engineer performing a comprehensive final audit before production deployment.
+
+## Task: {task}
+
+## Preview URL: {preview_url or "Not deployed yet"}
+
+## All Project Files:
+{chr(10).join(file_contents[:20])}
+
+## Perform Complete Audit:
+
+### 1. Lighthouse Audit (Simulated)
+Analyze the code and estimate scores for:
+- **Performance**: Bundle size, render blocking, lazy loading, image optimization
+- **Accessibility**: ARIA labels, alt text, color contrast, keyboard nav, screen reader support
+- **Best Practices**: HTTPS, console errors, deprecated APIs, secure dependencies
+- **SEO**: Meta tags, semantic HTML, mobile viewport, sitemap potential
+
+### 2. Chrome DevTools Analysis
+- Console errors/warnings likely to appear
+- Network performance concerns
+- Layout/paint issues
+- Memory leak potential
+
+### 3. Code Quality Deep Dive
+- Architecture issues
+- Missing error handling
+- Edge cases not covered
+- Type safety issues (TypeScript)
+
+### 4. Mobile Responsiveness
+- Responsive breakpoints
+- Touch targets
+- Mobile-specific issues
+
+### 5. Security Check
+- XSS vulnerabilities
+- CSRF protection needs
+- Sensitive data exposure
+
+## Response Format (JSON):
+{{
+  "lighthouse_scores": {{
+    "performance": 0-100,
+    "accessibility": 0-100,
+    "best_practices": 0-100,
+    "seo": 0-100
+  }},
+  "critical_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
+  "high_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
+  "medium_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
+  "low_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
+  "passed_checks": ["list of things that passed"],
+  "deploy_ready": true | false,
+  "deploy_blockers": ["issues that must be fixed before deploy"],
+  "recommendations": ["post-launch improvements"],
+  "summary": "Executive summary paragraph"
+}}"""
+
+        try:
+            response = await self.client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4000,
+                messages=[{"role": "user", "content": sr_qa_prompt}]
+            )
+            
+            result_text = response.content[0].text
+            
+            # Try to parse JSON from response
+            json_start = result_text.find("{")
+            json_end = result_text.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                sr_qa_result = json.loads(result_text[json_start:json_end])
+                sr_qa_result["agent"] = "sr_qa"
+                sr_qa_result["status"] = "pass" if sr_qa_result.get("deploy_ready") else "fail"
+                return sr_qa_result
+            else:
+                return {"status": "warning", "summary": result_text, "agent": "sr_qa"}
+                
+        except Exception as e:
+            logger.error(f"[Enjineer] SR QA agent error: {e}")
+            return {"status": "error", "message": str(e), "agent": "sr_qa"}
     
     async def _request_approval(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Request user approval for a significant action."""

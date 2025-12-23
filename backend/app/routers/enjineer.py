@@ -40,6 +40,7 @@ class CreateProjectRequest(BaseModel):
     description: Optional[str] = None
     tech_stack: Optional[dict] = Field(default_factory=dict)
     intake_data: Optional[dict] = Field(default_factory=dict)
+    inspiration_images: Optional[List[str]] = Field(default_factory=list)  # Base64 data URLs
 
 
 class UpdateProjectRequest(BaseModel):
@@ -174,9 +175,96 @@ async def create_project(
     request: CreateProjectRequest,
     user = Depends(get_current_user)
 ):
-    """Create a new Enjineer project."""
+    """Create a new Enjineer project with optional inspiration image analysis."""
     user_id = get_user_id_from_context(user)
     pool = await get_tiger_pool()
+    
+    # Build intake data with inspiration images
+    intake_data = request.intake_data or {}
+    
+    # Store inspiration images and analyze them with Claude Vision
+    if request.inspiration_images:
+        intake_data["inspiration_images"] = request.inspiration_images
+        
+        # Analyze images with Claude Vision to extract design elements
+        try:
+            from anthropic import AsyncAnthropic
+            import os
+            
+            client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            
+            # Build image content for Claude
+            image_content = []
+            for img_data in request.inspiration_images[:3]:  # Limit to 3 images
+                # Extract base64 and media type from data URL
+                if img_data.startswith("data:"):
+                    parts = img_data.split(",", 1)
+                    if len(parts) == 2:
+                        media_type = parts[0].split(":")[1].split(";")[0]
+                        base64_data = parts[1]
+                        image_content.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": base64_data
+                            }
+                        })
+            
+            if image_content:
+                # Ask Claude to analyze the inspiration images
+                image_content.append({
+                    "type": "text",
+                    "text": """Analyze these design inspiration images and extract the following:
+
+1. **Color Palette**: List the primary, secondary, and accent colors (include hex codes if determinable)
+2. **Typography Style**: Describe the font styles (serif/sans-serif, weight, size hierarchy)
+3. **Layout Patterns**: Describe the layout structure (grid, sections, spacing)
+4. **UI Components**: List key UI elements visible (buttons, cards, forms, navigation)
+5. **Design Style**: Overall aesthetic (minimal, bold, retro, modern, etc.)
+6. **Visual Effects**: Any gradients, shadows, animations, or special effects
+7. **Key Features**: Notable design patterns worth replicating
+
+Format your response as JSON with these exact keys:
+{
+  "color_palette": {"primary": "#...", "secondary": "#...", "accent": "#...", "background": "#...", "text": "#..."},
+  "typography": {"style": "...", "heading_font": "...", "body_font": "..."},
+  "layout": "...",
+  "components": ["...", "..."],
+  "design_style": "...",
+  "visual_effects": ["...", "..."],
+  "key_features": ["...", "..."],
+  "summary": "One paragraph summary of the overall design direction"
+}"""
+                })
+                
+                response = await client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=2000,
+                    messages=[{"role": "user", "content": image_content}]
+                )
+                
+                # Parse the analysis
+                analysis_text = response.content[0].text
+                
+                # Try to extract JSON from the response
+                import json
+                try:
+                    # Find JSON in the response
+                    json_start = analysis_text.find("{")
+                    json_end = analysis_text.rfind("}") + 1
+                    if json_start >= 0 and json_end > json_start:
+                        design_analysis = json.loads(analysis_text[json_start:json_end])
+                        intake_data["design_analysis"] = design_analysis
+                        logger.info(f"[Enjineer] Analyzed inspiration images: {design_analysis.get('design_style', 'unknown')}")
+                except json.JSONDecodeError:
+                    # Store raw analysis if JSON parsing fails
+                    intake_data["design_analysis"] = {"raw": analysis_text}
+                    logger.warning("[Enjineer] Could not parse design analysis as JSON, stored raw")
+                    
+        except Exception as e:
+            logger.error(f"[Enjineer] Failed to analyze inspiration images: {e}")
+            intake_data["design_analysis"] = {"error": str(e)}
     
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
@@ -189,7 +277,7 @@ async def create_project(
             request.name,
             request.description,
             request.tech_stack or {},
-            request.intake_data or {},
+            intake_data,
             {"budget_limit": 50.0, "total_spent": 0.0, "theme": "dark"}
         )
     
