@@ -510,9 +510,11 @@ interface PlanViewProps {
 }
 
 function PlanView({ plan }: PlanViewProps) {
-  const { planOverview, currentProject } = useEnjineerStore();
+  // All hooks must be at the top, before any conditional returns
+  const { planOverview, currentProject, openFile, files, setPlanOverview, updatePlanStep: updateStep } = useEnjineerStore();
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [approvingPhase, setApprovingPhase] = useState<string | null>(null);
+  const [approvingPlan, setApprovingPlan] = useState(false);
 
   // Toggle phase expansion
   const togglePhase = (phaseId: string) => {
@@ -652,9 +654,6 @@ function PlanView({ plan }: PlanViewProps) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
-  const { openFile, files, setPlanOverview, updatePlanStep: updateStep } = useEnjineerStore();
-  const [approvingPlan, setApprovingPlan] = useState(false);
-  
   // Handle approving the entire plan
   const handleApprovePlan = async () => {
     if (!currentProject || !planOverview) return;
