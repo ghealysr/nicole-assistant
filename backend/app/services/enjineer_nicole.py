@@ -59,16 +59,27 @@ You're helping a user build their web application in a Cursor-like environment. 
 
 1. **When user describes what they want to build**:
    - Immediately call `create_plan` with clear phases
-   - Each phase should have: phase_number, name, estimated_minutes, requires_approval (true for major milestones)
-   - Example phases: "Setup project structure", "Create components", "Add styling", "Testing"
+   - Each phase should have: phase_number, name, estimated_minutes, requires_approval (set true for Review phases)
+   - The plan.md file is auto-generated - user can view it in the Plan tab
 
-2. **As you work through each phase**:
+2. **WAIT FOR PLAN APPROVAL**:
+   - After creating a plan, STOP and wait for the user to approve it
+   - Say something like "I've created the plan. Please review it in the Plan tab and approve when ready."
+   - DO NOT start coding until the user explicitly approves the plan
+
+3. **As you work through each phase**:
    - Call `update_plan_step` with status "in_progress" when starting a phase
    - Create/update files using the appropriate tools
-   - Call `update_plan_step` with status "complete" when done
-   - If phase has requires_approval=true, wait for user approval before proceeding
+   - Call `update_plan_step` with status "complete" when done with ALL work for that phase
+   - After EACH phase, stop and summarize what you did - wait for user to say "continue" or "next"
 
-3. **The user sees your plan in the sidebar** - they can track progress, see which phase you're on, and approve phases that need approval.
+4. **Phase completion**:
+   - ALWAYS mark phases complete using update_plan_step when finished
+   - The sidebar shows checkmarks for completed phases (like Cursor's TODOs)
+
+5. **QA Integration**:
+   - When user asks for QA audit, use dispatch_agent with agent_type="qa"
+   - Present QA results clearly in the chat
 
 ## Example Plan Creation:
 When a user says "Build me a landing page with a hero section and pricing table", immediately call create_plan with:
@@ -683,43 +694,82 @@ class EnjineerNicole:
             logger.warning("[Enjineer] create_plan failed: no phases provided")
             return {"success": False, "error": "At least one phase is required"}
         
+        # Generate plan.md content
+        plan_md = f"""# {name}
+
+## Overview
+{description}
+
+## Phases
+
+"""
+        total_time = 0
+        for phase in phases_data:
+            phase_num = phase.get("phase_number", 1)
+            phase_name = phase.get("name", "Unnamed Phase")
+            est_mins = phase.get("estimated_minutes", 30)
+            needs_approval = phase.get("requires_approval", False)
+            total_time += est_mins
+            approval_note = " *(requires approval)*" if needs_approval else ""
+            plan_md += f"### Phase {phase_num}: {phase_name}{approval_note}\n"
+            plan_md += f"- Estimated time: {est_mins} minutes\n\n"
+        
+        plan_md += f"""## Timeline
+- **Total estimated time**: {total_time} minutes
+- **Created**: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+## Approval Required
+This plan requires your approval before implementation begins. Review the phases above and approve to start.
+"""
+
         async with pool.acquire() as conn:
-            # Create plan - let SERIAL auto-generate the id
-            # Note: version is TEXT type in database
+            # Create plan - set status to awaiting_approval so user must approve first
             row = await conn.fetchrow(
                 """
                 INSERT INTO enjineer_plans (project_id, version, content, status, current_phase_number)
-                VALUES ($1, '1.0', $2, 'in_progress', 1)
+                VALUES ($1, '1.0', $2, 'awaiting_approval', 0)
                 RETURNING id
                 """,
                 self.project_id, json.dumps({"name": name, "description": description})
             )
             plan_id = row["id"]
             
-            # Create phases
+            # Create phases - all start as pending
             for phase in phases_data:
                 await conn.execute(
                     """
                     INSERT INTO enjineer_plan_phases 
-                    (plan_id, phase_number, name, status, estimated_minutes, requires_approval)
-                    VALUES ($1, $2, $3, 'pending', $4, $5)
+                    (plan_id, phase_number, name, status, estimated_minutes, requires_approval, approval_status)
+                    VALUES ($1, $2, $3, 'pending', $4, $5, $6)
                     """,
                     plan_id,
                     phase.get("phase_number", 1),
                     phase.get("name", "Unnamed Phase"),
                     phase.get("estimated_minutes", 30),
-                    phase.get("requires_approval", False)
+                    phase.get("requires_approval", False),
+                    'pending' if phase.get("requires_approval", False) else None
                 )
+            
+            # Create plan.md file in the project
+            await conn.execute(
+                """
+                INSERT INTO enjineer_files (project_id, path, content, language, checksum)
+                VALUES ($1, '/plan.md', $2, 'markdown', $3)
+                ON CONFLICT (project_id, path) DO UPDATE SET content = $2, checksum = $3, updated_at = NOW()
+                """,
+                self.project_id, plan_md, hashlib.sha256(plan_md.encode()).hexdigest()
+            )
         
-        logger.info(f"[Enjineer] Created plan '{name}' (id={plan_id}) with {len(phases_data)} phases")
+        logger.warning(f"[Enjineer] Created plan '{name}' (id={plan_id}) with {len(phases_data)} phases - awaiting approval")
         return {
             "success": True,
             "result": {
                 "action": "plan_created",
-                "plan_id": str(plan_id),  # Convert to string for JSON
+                "plan_id": str(plan_id),
                 "name": name,
                 "phases_count": len(phases_data),
-                "message": f"Created plan '{name}' with {len(phases_data)} phases. Check the Plan tab in the sidebar to see progress!"
+                "awaiting_approval": True,
+                "message": f"I've created the plan '{name}' with {len(phases_data)} phases and saved it to plan.md. Please review the Plan tab and **approve the plan** before I begin implementation."
             }
         }
     

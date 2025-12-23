@@ -652,8 +652,73 @@ function PlanView({ plan }: PlanViewProps) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  const { openFile, files, setPlanOverview, updatePlanStep: updateStep } = useEnjineerStore();
+  const [approvingPlan, setApprovingPlan] = useState(false);
+  
+  // Handle approving the entire plan
+  const handleApprovePlan = async () => {
+    if (!currentProject || !planOverview) return;
+    setApprovingPlan(true);
+    try {
+      const { enjineerApi } = await import('@/lib/enjineer/api');
+      await enjineerApi.approvePlan(currentProject.id, planOverview.id);
+      setPlanOverview({ ...planOverview, status: 'active' });
+      // Also set first phase to in_progress
+      if (plan.length > 0) {
+        updateStep(plan[0].id, { status: 'in_progress' });
+      }
+    } catch (err) {
+      console.error('Failed to approve plan:', err);
+    } finally {
+      setApprovingPlan(false);
+    }
+  };
+  
+  // Check if plan.md exists
+  const planMdFile = files.find(f => f.path === '/plan.md' || f.path === 'plan.md');
+  const needsPlanApproval = planOverview?.status === 'awaiting_approval';
+
   return (
     <div className="flex flex-col h-full">
+      {/* Plan Documents Section */}
+      {planMdFile && (
+        <div className="p-3 border-b border-[#1E1E2E] bg-[#0A0A0F]">
+          <div className="text-[10px] uppercase tracking-wider text-[#475569] mb-2">Plan Documents</div>
+          <button
+            onClick={() => openFile('/plan.md')}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#12121A] hover:bg-[#1E1E2E] border border-[#1E1E2E] transition-colors text-left group"
+          >
+            <FileText size={16} className="text-[#8B5CF6]" />
+            <span className="text-sm text-[#E2E8F0] group-hover:text-white">plan.md</span>
+          </button>
+        </div>
+      )}
+      
+      {/* Approval Banner */}
+      {needsPlanApproval && (
+        <div className="p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-amber-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={16} className="text-amber-400" />
+            <span className="text-sm font-medium text-amber-300">Awaiting Approval</span>
+          </div>
+          <p className="text-xs text-[#94A3B8] mb-3">
+            Review the plan above, then approve to begin implementation.
+          </p>
+          <button
+            onClick={handleApprovePlan}
+            disabled={approvingPlan}
+            className="w-full py-2 px-4 rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 text-white text-sm font-medium hover:from-emerald-600 hover:to-green-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {approvingPlan ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={14} />
+            )}
+            Approve Plan
+          </button>
+        </div>
+      )}
+
       {/* Progress Header */}
       <div className="p-4 border-b border-[#1E1E2E] bg-gradient-to-b from-[#12121A] to-transparent">
         {/* Overall progress bar */}
@@ -685,7 +750,7 @@ function PlanView({ plan }: PlanViewProps) {
         </div>
         
         {/* Plan version & status */}
-        {planOverview && (
+        {planOverview && !needsPlanApproval && (
           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#1E1E2E]/50">
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full font-medium",

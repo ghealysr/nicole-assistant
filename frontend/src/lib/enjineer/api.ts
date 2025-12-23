@@ -351,6 +351,17 @@ export const enjineerApi = {
     return { overview, phases };
   },
   
+  async approvePlan(projectId: number, planId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/plan/${planId}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to approve plan');
+    }
+  },
+  
   async approvePhase(projectId: number, phaseId: string): Promise<void> {
     const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/plan/phases/${phaseId}/approve`, {
       method: 'POST',

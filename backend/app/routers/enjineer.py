@@ -1023,6 +1023,89 @@ async def get_plan(
     }
 
 
+@router.post("/projects/{project_id}/plan/{plan_id}/approve")
+async def approve_plan(
+    project_id: int,
+    plan_id: int,
+    user = Depends(get_current_user)
+):
+    """Approve a plan to start implementation."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        # Update plan status to active
+        result = await conn.execute(
+            """
+            UPDATE enjineer_plans 
+            SET status = 'active', approved_at = NOW(), current_phase_number = 1
+            WHERE id = $1 AND project_id = $2
+            """,
+            plan_id, project_id
+        )
+        
+        # Set first phase to in_progress
+        await conn.execute(
+            """
+            UPDATE enjineer_plan_phases 
+            SET status = 'in_progress', started_at = NOW()
+            WHERE plan_id = $1 AND phase_number = 1
+            """,
+            plan_id
+        )
+    
+    return {"success": True, "message": "Plan approved. Implementation can begin."}
+
+
+@router.post("/projects/{project_id}/plan/phases/{phase_id}/approve")
+async def approve_phase(
+    project_id: int,
+    phase_id: int,
+    user = Depends(get_current_user)
+):
+    """Approve a phase that requires approval."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE enjineer_plan_phases 
+            SET approval_status = 'approved', approved_at = NOW(), status = 'in_progress'
+            WHERE id = $1
+            """,
+            phase_id
+        )
+    
+    return {"success": True}
+
+
+@router.post("/projects/{project_id}/plan/phases/{phase_id}/reject")
+async def reject_phase(
+    project_id: int,
+    phase_id: int,
+    user = Depends(get_current_user)
+):
+    """Reject a phase that requires approval."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE enjineer_plan_phases 
+            SET approval_status = 'rejected', status = 'pending'
+            WHERE id = $1
+            """,
+            phase_id
+        )
+    
+    return {"success": True}
+
+
 # ============================================================================
 # Agent Dispatch Endpoints
 # ============================================================================
