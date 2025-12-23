@@ -161,10 +161,20 @@ export function PreviewPane({
       
     } catch (error) {
       console.error('Deploy error:', error);
-      setState({ 
-        type: 'error', 
-        message: error instanceof Error ? error.message : 'Failed to deploy preview' 
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Failed to deploy preview';
+      
+      // Check if it's an auth error
+      if (errorMessage.includes('Invalid or expired token') || errorMessage.includes('401')) {
+        setState({ 
+          type: 'error', 
+          message: 'Session expired. Please refresh the page to continue.' 
+        });
+      } else {
+        setState({ 
+          type: 'error', 
+          message: errorMessage 
+        });
+      }
     }
   }, [projectId]);
 
