@@ -221,10 +221,26 @@ export function NicoleChat() {
       });
     } catch (error) {
       console.error('[NicoleChat] Error:', error);
-      updateMessage(nicoleMessageId, {
-        content: `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
-        isStreaming: false,
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Check for auth errors
+      if (errorMessage.includes('Invalid or expired token') || errorMessage.includes('401')) {
+        updateMessage(nicoleMessageId, {
+          content: `⚠️ **Session expired.** Please refresh the page to continue.\n\n[Click here to refresh](javascript:window.location.reload())`,
+          isStreaming: false,
+        });
+        // Also show an alert
+        setTimeout(() => {
+          if (confirm('Your session has expired. Would you like to refresh the page?')) {
+            window.location.reload();
+          }
+        }, 100);
+      } else {
+        updateMessage(nicoleMessageId, {
+          content: `I encountered an error: ${errorMessage}. Please try again.`,
+          isStreaming: false,
+        });
+      }
     } finally {
       setNicoleThinking(false);
     }

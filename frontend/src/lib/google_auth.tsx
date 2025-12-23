@@ -107,6 +107,24 @@ function isTokenExpired(token: string): boolean {
   return Date.now() >= exp * 1000;
 }
 
+// Check if token expires soon (within 5 minutes)
+function isTokenExpiringSoon(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return true;
+  const exp = payload.exp as number;
+  const fiveMinutes = 5 * 60 * 1000;
+  return Date.now() >= (exp * 1000) - fiveMinutes;
+}
+
+// Get time until token expires (in minutes)
+function getTokenExpiryMinutes(token: string): number {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return 0;
+  const exp = payload.exp as number;
+  const msRemaining = (exp * 1000) - Date.now();
+  return Math.max(0, Math.floor(msRemaining / 60000));
+}
+
 // Extract user info from token
 function getUserFromToken(token: string): GoogleUser | null {
   const payload = decodeJwtPayload(token);
@@ -245,6 +263,42 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     
     setIsLoading(false);
   }, []);
+
+  // Periodic token expiration check - warn user before expiry
+  useEffect(() => {
+    if (!token) return;
+    
+    const checkTokenExpiry = () => {
+      if (isTokenExpired(token)) {
+        console.warn('[GoogleAuth] Token expired, signing out');
+        localStorage.removeItem(STORAGE_KEY);
+        setToken(null);
+        setUser(null);
+        // Show alert and redirect
+        alert('Your session has expired. Please sign in again.');
+        window.location.href = '/login';
+      } else if (isTokenExpiringSoon(token)) {
+        const minutes = getTokenExpiryMinutes(token);
+        console.warn(`[GoogleAuth] Token expires in ${minutes} minutes`);
+        // Trigger Google One Tap to silently refresh if possible
+        if (window.google && isGsiLoaded) {
+          window.google.accounts.id.prompt((notification) => {
+            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+              console.log('[GoogleAuth] Could not auto-refresh token, user may need to re-login');
+            }
+          });
+        }
+      }
+    };
+    
+    // Check immediately
+    checkTokenExpiry();
+    
+    // Check every minute
+    const interval = setInterval(checkTokenExpiry, 60000);
+    
+    return () => clearInterval(interval);
+  }, [token, isGsiLoaded]);
 
   // Sign in - prompt Google One Tap
   const signIn = useCallback(() => {
