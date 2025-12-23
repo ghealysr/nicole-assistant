@@ -674,18 +674,18 @@ class EnjineerNicole:
         if not phases_data:
             return {"success": False, "error": "At least one phase is required"}
         
-        plan_id = str(uuid4())
-        
         async with pool.acquire() as conn:
-            # Create plan - set status to 'in_progress' so it appears immediately
+            # Create plan - let SERIAL auto-generate the id
             # Note: version is TEXT type in database
-            await conn.execute(
+            row = await conn.fetchrow(
                 """
-                INSERT INTO enjineer_plans (id, project_id, version, content, status, current_phase_number)
-                VALUES ($1, $2, '1.0', $3, 'in_progress', 1)
+                INSERT INTO enjineer_plans (project_id, version, content, status, current_phase_number)
+                VALUES ($1, '1.0', $2, 'in_progress', 1)
+                RETURNING id
                 """,
-                plan_id, self.project_id, json.dumps({"name": name, "description": description})
+                self.project_id, json.dumps({"name": name, "description": description})
             )
+            plan_id = row["id"]
             
             # Create phases
             for phase in phases_data:
@@ -702,14 +702,15 @@ class EnjineerNicole:
                     phase.get("requires_approval", False)
                 )
         
-        logger.info(f"[Enjineer] Created plan: {name} with {len(phases_data)} phases")
+        logger.info(f"[Enjineer] Created plan '{name}' (id={plan_id}) with {len(phases_data)} phases")
         return {
             "success": True,
             "result": {
                 "action": "plan_created",
-                "plan_id": plan_id,
+                "plan_id": str(plan_id),  # Convert to string for JSON
                 "name": name,
-                "phases_count": len(phases_data)
+                "phases_count": len(phases_data),
+                "message": f"Created plan '{name}' with {len(phases_data)} phases. Check the Plan tab in the sidebar to see progress!"
             }
         }
     
@@ -728,6 +729,12 @@ class EnjineerNicole:
             
         notes = input_data.get("notes")
         
+        # Convert plan_id to int if it's a string
+        try:
+            plan_id_int = int(plan_id)
+        except (ValueError, TypeError):
+            return {"success": False, "error": f"Invalid plan_id: {plan_id}"}
+        
         async with pool.acquire() as conn:
             result = await conn.execute(
                 """
@@ -737,7 +744,7 @@ class EnjineerNicole:
                     completed_at = CASE WHEN $1 = 'complete' THEN NOW() ELSE completed_at END
                 WHERE plan_id = $3 AND phase_number = $4
                 """,
-                status, notes, plan_id, phase_number
+                status, notes, plan_id_int, phase_number
             )
         
         if result == "UPDATE 0":
