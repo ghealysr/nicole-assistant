@@ -282,7 +282,8 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
         console.warn(`[GoogleAuth] Token expires in ${minutes} minutes`);
         // Trigger Google One Tap to silently refresh if possible
         if (window.google && isGsiLoaded) {
-          window.google.accounts.id.prompt((notification) => {
+          // Cast to any to use the callback overload which isn't in our type definitions
+          (window.google.accounts.id.prompt as (callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void)((notification) => {
             if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
               console.log('[GoogleAuth] Could not auto-refresh token, user may need to re-login');
             }
