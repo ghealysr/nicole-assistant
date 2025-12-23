@@ -673,8 +673,8 @@ function PlanView({ plan }: PlanViewProps) {
     }
   };
   
-  // Check if plan.md exists
-  const planMdFile = files.find(f => f.path === '/plan.md' || f.path === 'plan.md');
+  // Check if plan.md exists (files is a Map)
+  const planMdFile = files.get('/plan.md') || files.get('plan.md');
   const needsPlanApproval = planOverview?.status === 'awaiting_approval';
 
   return (
