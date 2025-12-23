@@ -46,8 +46,13 @@ function mapPhaseStatus(
   status: string | undefined, 
   approvalStatus: string | undefined
 ): 'pending' | 'in_progress' | 'complete' | 'skipped' | 'awaiting_approval' {
-  // If waiting for approval, show that status
-  if (approvalStatus === 'pending' && status === 'in_progress') {
+  // If waiting for approval (either in_progress waiting, or phase marked as needing approval)
+  if (approvalStatus === 'pending' && (status === 'in_progress' || status === 'awaiting_approval')) {
+    return 'awaiting_approval';
+  }
+  
+  // Handle explicit awaiting_approval status
+  if (status === 'awaiting_approval') {
     return 'awaiting_approval';
   }
   

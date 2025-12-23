@@ -1103,8 +1103,12 @@ async def get_plan(
                 "actualMinutes": p["actual_minutes"],
                 "agentsRequired": p["agents_required"] or [],
                 "qaDepth": p["qa_depth"],
+                "qaFocus": p["qa_focus"] or [],
                 "requiresApproval": p["requires_approval"],
                 "approvalStatus": p["approval_status"],
+                "startedAt": p["started_at"].isoformat() if p["started_at"] else None,
+                "completedAt": p["completed_at"].isoformat() if p["completed_at"] else None,
+                "approvedAt": p["approved_at"].isoformat() if p["approved_at"] else None,
             }
             for p in phases
         ]
@@ -1158,16 +1162,27 @@ async def approve_phase(
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
+        # Get current phase status
+        phase = await conn.fetchrow(
+            "SELECT status FROM enjineer_plan_phases WHERE id = $1", phase_id
+        )
+        
+        # If phase was awaiting_approval (work done, needs approval), mark complete
+        # Otherwise mark in_progress so work can continue
+        new_status = 'complete' if phase and phase['status'] == 'awaiting_approval' else 'in_progress'
+        
         await conn.execute(
             """
             UPDATE enjineer_plan_phases 
-            SET approval_status = 'approved', approved_at = NOW(), status = 'in_progress'
+            SET approval_status = 'approved', approved_at = NOW(), 
+                status = $2,
+                completed_at = CASE WHEN $2 = 'complete' THEN NOW() ELSE completed_at END
             WHERE id = $1
             """,
-            phase_id
+            phase_id, new_status
         )
     
-    return {"success": True}
+    return {"success": True, "new_status": new_status}
 
 
 @router.post("/projects/{project_id}/plan/phases/{phase_id}/reject")

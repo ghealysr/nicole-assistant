@@ -160,6 +160,35 @@ export function NicoleChat() {
                     useEnjineerStore.getState().setFiles(files);
                   }).catch(console.error);
                 }
+                
+                // Refresh plan when update_plan_step succeeds
+                if (lastTool.name === 'update_plan_step' && result.success && currentProject?.id) {
+                  enjineerApi.getPlan(currentProject.id).then(({ overview, phases }) => {
+                    setPlanOverview(overview);
+                    setPlan(phases);
+                  }).catch(console.error);
+                }
+                
+                // Handle QA agent results
+                if (lastTool.name === 'dispatch_agent' && result.success && currentProject?.id) {
+                  const innerResult = result.result || {};
+                  // Refresh plan in case QA status updated it
+                  enjineerApi.getPlan(currentProject.id).then(({ overview, phases }) => {
+                    setPlanOverview(overview);
+                    setPlan(phases);
+                  }).catch(console.error);
+                  
+                  // Add QA summary to message if it's a QA agent
+                  if (innerResult.agent === 'qa' || innerResult.agent === 'sr_qa') {
+                    const qaStatus = innerResult.status === 'pass' ? '✅' : 
+                                     innerResult.status === 'fail' ? '❌' : '⚠️';
+                    fullContent += `\n\n**QA Review ${qaStatus}**\n${innerResult.summary || 'Review complete'}`;
+                    updateMessage(nicoleMessageId, { 
+                      content: fullContent,
+                      toolCalls: [...toolCalls],
+                    });
+                  }
+                }
               }
               break;
 

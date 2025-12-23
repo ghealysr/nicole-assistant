@@ -891,6 +891,17 @@ This plan requires your approval before implementation begins. Review the phases
             return {"success": False, "error": f"Invalid plan_id: {plan_id}"}
         
         async with pool.acquire() as conn:
+            # Check if this phase requires approval and is being marked complete
+            phase_info = await conn.fetchrow(
+                "SELECT requires_approval, approval_status FROM enjineer_plan_phases WHERE plan_id = $1 AND phase_number = $2",
+                plan_id_int, phase_number
+            )
+            
+            # If phase requires approval and we're trying to complete it, set to awaiting_approval instead
+            actual_status = status
+            if status == 'complete' and phase_info and phase_info['requires_approval'] and phase_info['approval_status'] != 'approved':
+                actual_status = 'awaiting_approval'
+            
             result = await conn.execute(
                 """
                 UPDATE enjineer_plan_phases 
@@ -899,20 +910,20 @@ This plan requires your approval before implementation begins. Review the phases
                     completed_at = CASE WHEN $1 = 'complete' THEN NOW() ELSE completed_at END
                 WHERE plan_id = $3 AND phase_number = $4
                 """,
-                status, notes, plan_id_int, phase_number
+                actual_status, notes, plan_id_int, phase_number
             )
         
         if result == "UPDATE 0":
             return {"success": False, "error": f"Phase {phase_number} not found in plan {plan_id}"}
         
-        logger.info(f"[Enjineer] Updated plan phase {phase_number} to {status}")
+        logger.info(f"[Enjineer] Updated plan phase {phase_number} to {actual_status}")
         return {
             "success": True,
             "result": {
                 "action": "phase_updated",
                 "plan_id": plan_id,
                 "phase_number": phase_number,
-                "status": status
+                "status": actual_status
             }
         }
     
