@@ -37,6 +37,8 @@ export function NicoleChat() {
     addFile,
     updateFile,
     openFile,
+    setPlan,
+    setPlanOverview,
   } = useEnjineerStore();
 
   const [input, setInput] = React.useState('');
@@ -145,6 +147,14 @@ export function NicoleChat() {
                   content: fullContent,
                   toolCalls: [...toolCalls],
                 });
+                
+                // Refresh plan when create_plan succeeds
+                if (lastTool.name === 'create_plan' && result.success && currentProject?.id) {
+                  enjineerApi.getPlan(currentProject.id).then(({ overview, phases }) => {
+                    setPlanOverview(overview);
+                    setPlan(phases);
+                  }).catch(console.error);
+                }
               }
               break;
 
