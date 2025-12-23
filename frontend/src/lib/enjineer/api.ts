@@ -309,7 +309,7 @@ export const enjineerApi = {
     if (!res.ok) return { overview: null, phases: [] };
     const data = await res.json();
     
-    // Parse plan overview
+    // Parse plan overview (backend returns camelCase)
     const planData = data.plan;
     let overview: PlanOverview | null = null;
     if (planData) {
@@ -318,32 +318,32 @@ export const enjineerApi = {
         id: String(planData.id),
         version: planData.version || 1,
         status: planData.status || 'planning',
-        currentPhaseNumber: planData.current_phase_number || 1,
+        currentPhaseNumber: planData.currentPhase || 1,
         totalPhases: phases.length,
         completedPhases: phases.filter((p: Record<string, unknown>) => p.status === 'complete').length,
-        createdAt: new Date(planData.created_at),
-        approvedAt: planData.approved_at ? new Date(planData.approved_at) : undefined,
-        completedAt: planData.completed_at ? new Date(planData.completed_at) : undefined,
+        createdAt: new Date(planData.createdAt),
+        approvedAt: planData.approvedAt ? new Date(planData.approvedAt) : undefined,
+        completedAt: planData.completedAt ? new Date(planData.completedAt) : undefined,
       };
     }
     
-    // Parse phases with full data
+    // Parse phases with full data (backend returns camelCase)
     const phases = (data.phases || []).map((p: Record<string, unknown>) => ({
       id: String(p.id) || crypto.randomUUID(),
-      phaseNumber: (p.phase_number as number) || 1,
-      title: (p.name as string) || `Phase ${p.phase_number}`,
+      phaseNumber: (p.phaseNumber as number) || 1,
+      title: (p.name as string) || `Phase ${p.phaseNumber}`,
       description: (p.notes as string) || '',
-      status: mapPhaseStatus(p.status as string, p.approval_status as string),
-      estimatedMinutes: p.estimated_minutes as number | undefined,
-      actualMinutes: p.actual_minutes as number | undefined,
-      agentsRequired: p.agents_required as ('engineer' | 'qa' | 'sr_qa')[] | undefined,
-      requiresApproval: p.requires_approval as boolean | undefined,
-      approvalStatus: p.approval_status as 'pending' | 'approved' | 'rejected' | null,
-      qaDepth: p.qa_depth as 'basic' | 'standard' | 'thorough' | undefined,
-      qaFocus: p.qa_focus as string[] | undefined,
-      startedAt: p.started_at ? new Date(p.started_at as string) : undefined,
-      completedAt: p.completed_at ? new Date(p.completed_at as string) : undefined,
-      approvedAt: p.approved_at ? new Date(p.approved_at as string) : undefined,
+      status: mapPhaseStatus(p.status as string, p.approvalStatus as string),
+      estimatedMinutes: p.estimatedMinutes as number | undefined,
+      actualMinutes: p.actualMinutes as number | undefined,
+      agentsRequired: p.agentsRequired as ('engineer' | 'qa' | 'sr_qa')[] | undefined,
+      requiresApproval: p.requiresApproval as boolean | undefined,
+      approvalStatus: p.approvalStatus as 'pending' | 'approved' | 'rejected' | null,
+      qaDepth: p.qaDepth as 'basic' | 'standard' | 'thorough' | undefined,
+      qaFocus: p.qaFocus as string[] | undefined,
+      startedAt: p.startedAt ? new Date(p.startedAt as string) : undefined,
+      completedAt: p.completedAt ? new Date(p.completedAt as string) : undefined,
+      approvedAt: p.approvedAt ? new Date(p.approvedAt as string) : undefined,
       notes: p.notes as string | undefined,
       files: [],
     }));

@@ -148,11 +148,16 @@ export function NicoleChat() {
                   toolCalls: [...toolCalls],
                 });
                 
-                // Refresh plan when create_plan succeeds
+                // Refresh plan and files when create_plan succeeds
                 if (lastTool.name === 'create_plan' && result.success && currentProject?.id) {
+                  // Refresh plan
                   enjineerApi.getPlan(currentProject.id).then(({ overview, phases }) => {
                     setPlanOverview(overview);
                     setPlan(phases);
+                  }).catch(console.error);
+                  // Refresh files to get plan.md
+                  enjineerApi.getFiles(currentProject.id).then((files) => {
+                    useEnjineerStore.getState().setFiles(files);
                   }).catch(console.error);
                 }
               }
