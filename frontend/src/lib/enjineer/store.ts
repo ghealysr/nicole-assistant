@@ -70,7 +70,7 @@ export interface PlanStep {
 export interface PlanOverview {
   id: string;
   version: number;
-  status: 'planning' | 'active' | 'paused' | 'completed' | 'abandoned';
+  status: 'planning' | 'awaiting_approval' | 'active' | 'paused' | 'completed' | 'abandoned';
   currentPhaseNumber: number;
   totalPhases: number;
   completedPhases: number;
