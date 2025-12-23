@@ -171,7 +171,7 @@ export function NicoleChat() {
                 
                 // Handle QA agent results
                 if (lastTool.name === 'dispatch_agent' && result.success && currentProject?.id) {
-                  const innerResult = result.result || {};
+                  const innerResult = (result.result || {}) as Record<string, unknown>;
                   // Refresh plan in case QA status updated it
                   enjineerApi.getPlan(currentProject.id).then(({ overview, phases }) => {
                     setPlanOverview(overview);
@@ -182,7 +182,7 @@ export function NicoleChat() {
                   if (innerResult.agent === 'qa' || innerResult.agent === 'sr_qa') {
                     const qaStatus = innerResult.status === 'pass' ? '✅' : 
                                      innerResult.status === 'fail' ? '❌' : '⚠️';
-                    fullContent += `\n\n**QA Review ${qaStatus}**\n${innerResult.summary || 'Review complete'}`;
+                    fullContent += `\n\n**QA Review ${qaStatus}**\n${(innerResult.summary as string) || 'Review complete'}`;
                     updateMessage(nicoleMessageId, { 
                       content: fullContent,
                       toolCalls: [...toolCalls],
