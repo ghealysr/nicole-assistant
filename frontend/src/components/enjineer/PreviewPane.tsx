@@ -369,20 +369,36 @@ export function PreviewPane({
           </div>
         )}
 
-        {/* Idle State WITH existing preview - Show iframe */}
+        {/* Idle State WITH existing preview - Show preview or prompt to update */}
         {state.type === 'idle' && state.existingPreview && previewUrl && (
-          <div 
-            className="transition-all duration-300 bg-white rounded-lg shadow-2xl overflow-hidden border border-[#2E2E3E]"
-            style={getContainerStyle()}
-          >
-            <iframe
-              ref={iframeRef}
-              key={iframeKey}
-              src={previewUrl}
-              className="w-full h-full border-0"
-              title="Preview"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            />
+          <div className="relative w-full h-full">
+            {/* Iframe */}
+            <div 
+              className="transition-all duration-300 bg-white rounded-lg shadow-2xl overflow-hidden border border-[#2E2E3E]"
+              style={getContainerStyle()}
+            >
+              <iframe
+                ref={iframeRef}
+                key={iframeKey}
+                src={previewUrl}
+                className="w-full h-full border-0"
+                title="Preview"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+              />
+            </div>
+            
+            {/* Hint banner for stale previews */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#1E1E2E]/95 backdrop-blur-sm border border-[#2E2E3E] rounded-lg px-4 py-2 flex items-center gap-3 text-xs shadow-lg">
+              <span className="text-[#94A3B8]">
+                Seeing an error? Old previews expire after cleanup.
+              </span>
+              <button
+                onClick={deployPreview}
+                className="bg-[#8B5CF6] hover:bg-[#7C3AED] text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+              >
+                Redeploy
+              </button>
+            </div>
           </div>
         )}
 
