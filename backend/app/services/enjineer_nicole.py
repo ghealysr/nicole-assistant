@@ -496,7 +496,7 @@ class EnjineerNicole:
         Returns:
             Dict with 'success' bool and either 'result' or 'error'
         """
-        logger.info(f"[Enjineer] Executing tool: {tool_name}")
+        logger.warning(f"[Enjineer] Executing tool: {tool_name}")
         pool = await get_tiger_pool()
         
         try:
@@ -667,7 +667,7 @@ class EnjineerNicole:
     
     async def _create_plan(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create an implementation plan with phases."""
-        logger.info(f"[Enjineer] create_plan called with input: {input_data}")
+        logger.warning(f"[Enjineer] create_plan called with input: {input_data}")
         
         name = input_data.get("name")
         if not name:
@@ -677,7 +677,7 @@ class EnjineerNicole:
         description = input_data.get("description", "")
         phases_data = input_data.get("phases", [])
         
-        logger.info(f"[Enjineer] create_plan: name='{name}', phases_count={len(phases_data)}")
+        logger.warning(f"[Enjineer] create_plan: name='{name}', phases_count={len(phases_data)}")
         
         if not phases_data:
             logger.warning("[Enjineer] create_plan failed: no phases provided")
