@@ -496,6 +496,7 @@ class EnjineerNicole:
         Returns:
             Dict with 'success' bool and either 'result' or 'error'
         """
+        logger.info(f"[Enjineer] Executing tool: {tool_name}")
         pool = await get_tiger_pool()
         
         try:
@@ -516,7 +517,9 @@ class EnjineerNicole:
             elif tool_name == "deploy":
                 return await self._deploy(pool, tool_input)
             else:
-                return {"success": False, "error": f"Unknown tool: {tool_name}"}
+                result = {"success": False, "error": f"Unknown tool: {tool_name}"}
+                logger.warning(f"[Enjineer] Tool result: {result}")
+                return result
         except Exception as e:
             logger.error(f"[Enjineer] Tool {tool_name} failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
@@ -664,14 +667,20 @@ class EnjineerNicole:
     
     async def _create_plan(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create an implementation plan with phases."""
+        logger.info(f"[Enjineer] create_plan called with input: {input_data}")
+        
         name = input_data.get("name")
         if not name:
+            logger.warning("[Enjineer] create_plan failed: no name provided")
             return {"success": False, "error": "Plan name is required"}
         
         description = input_data.get("description", "")
         phases_data = input_data.get("phases", [])
         
+        logger.info(f"[Enjineer] create_plan: name='{name}', phases_count={len(phases_data)}")
+        
         if not phases_data:
+            logger.warning("[Enjineer] create_plan failed: no phases provided")
             return {"success": False, "error": "At least one phase is required"}
         
         async with pool.acquire() as conn:
