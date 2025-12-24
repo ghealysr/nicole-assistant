@@ -468,13 +468,22 @@ export function PreviewPane({
               <h3 className="text-lg font-medium text-[#EF4444] mb-2">Deployment Failed</h3>
               <p className="text-sm text-[#64748B]">{state.message}</p>
             </div>
-            <button
-              onClick={deployPreview}
-              className="px-6 py-3 bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-            >
-              <Rocket size={18} />
-              Try Again
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setState({ type: 'idle', existingPreview: null })}
+                className="px-4 py-2 bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+              >
+                <RefreshCw size={16} />
+                Reset
+              </button>
+              <button
+                onClick={deployPreview}
+                className="px-4 py-2 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+              >
+                <Rocket size={16} />
+                Try Again
+              </button>
+            </div>
           </div>
         )}
       </div>

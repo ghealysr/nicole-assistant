@@ -266,7 +266,7 @@ ENJINEER_TOOLS = [
             "properties": {
                 "plan_id": {
                     "type": "string",
-                    "description": "UUID of the plan"
+                    "description": "ID of the plan (provided in context as 'Plan ID: X')"
                 },
                 "phase_number": {
                     "type": "integer",
@@ -553,6 +553,10 @@ class EnjineerNicole:
                         "skipped": "⏭️"
                     }.get(p.get("status", "pending"), "⬜")
                     plan_text += f"{status_emoji} Phase {p.get('phase_number', '?')}: {p.get('name', 'Unknown')}\n"
+            
+            # Add plan_id so Nicole can reference it in update_plan_step
+            plan_id = plan.get("id")
+            plan_text += f"\n**Plan ID: {plan_id}** (use this when calling update_plan_step)"
             
             messages.append({"role": "user", "content": f"[CONTEXT: Current Plan]\n{plan_text}"})
             messages.append({"role": "assistant", "content": "I see the current plan. I'll continue from where we left off."})
@@ -979,7 +983,7 @@ This plan requires your approval before implementation begins. Review the phases
             else:
                 result = {"status": "error", "message": f"Unknown agent type: {agent_type}"}
             
-            # Update execution status
+            # Update execution status and store QA report
             async with pool.acquire() as conn:
                 await conn.execute(
                     """
@@ -991,13 +995,33 @@ This plan requires your approval before implementation begins. Review the phases
                     json.dumps(result),
                     execution_id
                 )
+                
+                # Store QA report if it's a QA agent
+                if agent_type in ("qa", "sr_qa"):
+                    await conn.execute(
+                        """
+                        INSERT INTO enjineer_qa_reports 
+                        (project_id, agent_type, status, issues, summary, recommendations, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                        """,
+                        self.project_id,
+                        agent_type,
+                        result.get("status", "unknown"),
+                        json.dumps(result.get("issues", [])),
+                        result.get("summary", ""),
+                        json.dumps(result.get("recommendations", []))
+                    )
+            
+            logger.warning(f"[Enjineer] Agent {agent_type} completed: status={result.get('status')}")
             
             return {
                 "success": result.get("status") != "error",
                 "result": {
                     "action": "agent_completed",
                     "execution_id": execution_id,
-                    "agent_type": agent_type,
+                    "agent": agent_type,
+                    "status": result.get("status", "unknown"),
+                    "summary": result.get("summary", "Review complete"),
                     **result
                 }
             }
