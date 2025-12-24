@@ -998,18 +998,38 @@ This plan requires your approval before implementation begins. Review the phases
                 
                 # Store QA report if it's a QA agent
                 if agent_type in ("qa", "sr_qa"):
+                    # Map status to valid overall_status values
+                    status_map = {"pass": "pass", "fail": "fail", "warning": "partial", "error": "fail"}
+                    overall_status = status_map.get(result.get("status", "pass"), "partial")
+                    
+                    # Build checks array from issues
+                    issues = result.get("issues", [])
+                    checks = []
+                    for issue in issues:
+                        checks.append({
+                            "name": issue.get("description", "Issue"),
+                            "status": "fail" if issue.get("severity") in ("critical", "high") else "warning",
+                            "message": issue.get("description", "")
+                        })
+                    if not checks:
+                        checks.append({"name": "Code Review", "status": overall_status, "message": result.get("summary", "Complete")})
+                    
                     await conn.execute(
                         """
                         INSERT INTO enjineer_qa_reports 
-                        (project_id, agent_type, status, issues, summary, recommendations, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                        (project_id, trigger_type, qa_depth, overall_status, checks, summary, 
+                         blocking_issues_count, warnings_count, passed_count, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                         """,
                         self.project_id,
-                        agent_type,
-                        result.get("status", "unknown"),
-                        json.dumps(result.get("issues", [])),
+                        "phase_complete",  # trigger_type
+                        "standard" if agent_type == "qa" else "thorough",  # qa_depth
+                        overall_status,
+                        json.dumps(checks),
                         result.get("summary", ""),
-                        json.dumps(result.get("recommendations", []))
+                        len([i for i in issues if i.get("severity") in ("critical", "high")]),
+                        len([i for i in issues if i.get("severity") in ("medium", "low")]),
+                        1 if overall_status == "pass" else 0
                     )
             
             logger.warning(f"[Enjineer] Agent {agent_type} completed: status={result.get('status')}")
