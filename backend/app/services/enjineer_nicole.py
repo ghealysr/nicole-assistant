@@ -420,7 +420,7 @@ class EnjineerNicole:
             plan = await conn.fetchrow(
                 """
                 SELECT * FROM enjineer_plans 
-                WHERE project_id = $1 AND status IN ('active', 'draft', 'in_progress', 'awaiting_approval')
+                WHERE project_id = $1 AND status IN ('draft', 'approved', 'in_progress', 'awaiting_approval')
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 self.project_id
@@ -550,7 +550,8 @@ class EnjineerNicole:
                         "in_progress": "🔵",
                         "complete": "✅",
                         "blocked": "🔴",
-                        "skipped": "⏭️"
+                        "skipped": "⏭️",
+                        "awaiting_approval": "⏸️"
                     }.get(p.get("status", "pending"), "⬜")
                     plan_text += f"{status_emoji} Phase {p.get('phase_number', '?')}: {p.get('name', 'Unknown')}\n"
             
@@ -954,19 +955,19 @@ This plan requires your approval before implementation begins. Review the phases
         task = input_data.get("task", "Review code")
         focus_files = input_data.get("focus_files", [])
         
-        execution_id = str(uuid4())
-        
-        # Log the dispatch
+        # Log the dispatch - use RETURNING id since enjineer_agent_executions.id is SERIAL
         async with pool.acquire() as conn:
-            await conn.execute(
+            row = await conn.fetchrow(
                 """
                 INSERT INTO enjineer_agent_executions 
-                (id, project_id, agent_type, instruction, context, focus_areas, status)
-                VALUES ($1, $2, $3, $4, $5, $6, 'running')
+                (project_id, agent_type, instruction, context, focus_areas, status)
+                VALUES ($1, $2, $3, $4, $5, 'running')
+                RETURNING id
                 """,
-                execution_id, self.project_id, agent_type, task,
+                self.project_id, agent_type, task,
                 json.dumps({"files": focus_files}), focus_files
             )
+            execution_id = row["id"]  # Integer from SERIAL
         
         logger.warning(f"[Enjineer] Running {agent_type} agent: {task[:100]}...")
         
@@ -1014,14 +1015,23 @@ This plan requires your approval before implementation begins. Review the phases
                     if not checks:
                         checks.append({"name": "Code Review", "status": overall_status, "message": result.get("summary", "Complete")})
                     
+                    # Get current plan_id for linkage
+                    current_plan = await conn.fetchrow(
+                        "SELECT id FROM enjineer_plans WHERE project_id = $1 AND status IN ('approved', 'in_progress') ORDER BY id DESC LIMIT 1",
+                        self.project_id
+                    )
+                    plan_id = current_plan["id"] if current_plan else None
+                    
                     await conn.execute(
                         """
                         INSERT INTO enjineer_qa_reports 
-                        (project_id, trigger_type, qa_depth, overall_status, checks, summary, 
+                        (project_id, execution_id, plan_id, trigger_type, qa_depth, overall_status, checks, summary, 
                          blocking_issues_count, warnings_count, passed_count, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
                         """,
                         self.project_id,
+                        execution_id,  # Already an integer from SERIAL
+                        plan_id,  # plan_id linkage
                         "phase_complete",  # trigger_type
                         "standard" if agent_type == "qa" else "thorough",  # qa_depth
                         overall_status,
@@ -1070,7 +1080,7 @@ This plan requires your approval before implementation begins. Review the phases
                 self.project_id
             )
             plan = await conn.fetchrow(
-                "SELECT content FROM enjineer_plans WHERE project_id = $1 AND status IN ('active', 'awaiting_approval') ORDER BY id DESC LIMIT 1",
+                "SELECT id, content FROM enjineer_plans WHERE project_id = $1 AND status IN ('approved', 'in_progress', 'awaiting_approval') ORDER BY id DESC LIMIT 1",
                 self.project_id
             )
         

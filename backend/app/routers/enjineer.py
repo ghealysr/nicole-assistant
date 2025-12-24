@@ -1127,11 +1127,11 @@ async def approve_plan(
     pool = await get_tiger_pool()
     
     async with pool.acquire() as conn:
-        # Update plan status to active
+        # Update plan status to in_progress (workflow: awaiting_approval -> approved/in_progress)
         result = await conn.execute(
             """
             UPDATE enjineer_plans 
-            SET status = 'active', approved_at = NOW(), current_phase_number = 1
+            SET status = 'in_progress', approved_at = NOW(), current_phase_number = 1
             WHERE id = $1 AND project_id = $2
             """,
             plan_id, project_id

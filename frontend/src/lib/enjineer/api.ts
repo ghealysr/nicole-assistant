@@ -334,7 +334,7 @@ export const enjineerApi = {
       overview = {
         id: String(planData.id),
         version: planData.version || 1,
-        status: planData.status || 'planning',
+        status: planData.status || 'draft',  // Default to draft (matches DB constraint)
         currentPhaseNumber: planData.currentPhase || 1,
         totalPhases: phases.length,
         completedPhases: phases.filter((p: Record<string, unknown>) => p.status === 'complete').length,
