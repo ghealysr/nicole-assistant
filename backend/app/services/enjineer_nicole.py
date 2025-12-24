@@ -385,6 +385,10 @@ class EnjineerNicole:
         self.project_data: Optional[Dict[str, Any]] = None
         self.max_tool_iterations = 10  # Safety limit
         
+        # Token usage tracking for this session
+        self.session_input_tokens = 0
+        self.session_output_tokens = 0
+        
     async def load_project_context(self) -> Dict[str, Any]:
         """Load project data, files, and recent conversation for context."""
         pool = await get_tiger_pool()
@@ -1356,6 +1360,45 @@ Analyze the code and estimate scores for:
         return "plaintext"
     
     # ========================================================================
+    # Usage Tracking
+    # ========================================================================
+    
+    async def _save_session_usage(self) -> None:
+        """Save session token usage to database for project cost tracking."""
+        pool = await get_tiger_pool()
+        
+        # Claude Sonnet 4 pricing: $3/1M input, $15/1M output
+        input_cost = (self.session_input_tokens / 1_000_000) * 3.0
+        output_cost = (self.session_output_tokens / 1_000_000) * 15.0
+        total_cost = input_cost + output_cost
+        
+        async with pool.acquire() as conn:
+            # Update project's cumulative usage
+            await conn.execute(
+                """
+                UPDATE enjineer_projects 
+                SET metadata = jsonb_set(
+                    COALESCE(metadata, '{}'::jsonb),
+                    '{usage}',
+                    COALESCE(metadata->'usage', '{}'::jsonb) || jsonb_build_object(
+                        'total_input_tokens', COALESCE((metadata->'usage'->>'total_input_tokens')::bigint, 0) + $2,
+                        'total_output_tokens', COALESCE((metadata->'usage'->>'total_output_tokens')::bigint, 0) + $3,
+                        'total_cost_usd', COALESCE((metadata->'usage'->>'total_cost_usd')::numeric, 0) + $4,
+                        'last_updated', NOW()
+                    )
+                ),
+                updated_at = NOW()
+                WHERE id = $1
+                """,
+                self.project_id,
+                self.session_input_tokens,
+                self.session_output_tokens,
+                total_cost
+            )
+        
+        logger.debug(f"[Enjineer] Saved usage: {self.session_input_tokens}+{self.session_output_tokens} tokens, ${total_cost:.6f}")
+    
+    # ========================================================================
     # Main Message Processing (Agentic Loop)
     # ========================================================================
     
@@ -1441,6 +1484,11 @@ Analyze the code and estimate scores for:
                     # Get the final message to extract complete tool inputs
                     final_message = await stream.get_final_message()
                     stop_reason = final_message.stop_reason
+                    
+                    # Track token usage from this API call
+                    if hasattr(final_message, 'usage') and final_message.usage:
+                        self.session_input_tokens += final_message.usage.input_tokens or 0
+                        self.session_output_tokens += final_message.usage.output_tokens or 0
                 
                 # If no tool calls, we're done
                 if stop_reason != "tool_use":
@@ -1544,4 +1592,18 @@ Analyze the code and estimate scores for:
             logger.warning(f"[Enjineer] Hit max tool iterations ({self.max_tool_iterations})")
             yield {"type": "text", "content": "\n\n*I've reached the maximum number of operations. Let me know if you'd like me to continue.*"}
         
-        yield {"type": "done"}
+        # Save session usage to database
+        if self.session_input_tokens > 0 or self.session_output_tokens > 0:
+            try:
+                await self._save_session_usage()
+            except Exception as e:
+                logger.error(f"[Enjineer] Failed to save usage: {e}")
+        
+        # Emit usage info with done event
+        yield {
+            "type": "done",
+            "usage": {
+                "input_tokens": self.session_input_tokens,
+                "output_tokens": self.session_output_tokens
+            }
+        }

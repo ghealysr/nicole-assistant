@@ -1039,6 +1039,44 @@ async def reject_request(
 
 
 # ============================================================================
+# Usage Tracking Endpoints
+# ============================================================================
+
+@router.get("/projects/{project_id}/usage")
+async def get_project_usage(
+    project_id: int,
+    user = Depends(get_current_user)
+):
+    """Get token usage and cost information for a project."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        # Get usage from project metadata
+        project = await conn.fetchrow(
+            "SELECT metadata FROM enjineer_projects WHERE id = $1",
+            project_id
+        )
+        
+        if project and project["metadata"]:
+            usage = project["metadata"].get("usage", {})
+            return {
+                "inputTokens": usage.get("total_input_tokens", 0),
+                "outputTokens": usage.get("total_output_tokens", 0),
+                "totalCost": float(usage.get("total_cost_usd", 0)),
+                "lastUpdated": usage.get("last_updated")
+            }
+        
+        return {
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "totalCost": 0,
+            "lastUpdated": None
+        }
+
+
+# ============================================================================
 # Plan Endpoints
 # ============================================================================
 

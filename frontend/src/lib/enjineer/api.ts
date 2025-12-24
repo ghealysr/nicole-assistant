@@ -168,6 +168,25 @@ export const enjineerApi = {
   },
 
   // ========================================================================
+  // Usage Tracking
+  // ========================================================================
+  
+  async getUsage(projectId: number): Promise<{
+    inputTokens: number;
+    outputTokens: number;
+    totalCost: number;
+    lastUpdated: string | null;
+  }> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/usage`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      return { inputTokens: 0, outputTokens: 0, totalCost: 0, lastUpdated: null };
+    }
+    return res.json();
+  },
+
+  // ========================================================================
   // File Operations
   // ========================================================================
   
@@ -220,12 +239,13 @@ export const enjineerApi = {
   async chat(
     projectId: number, 
     message: string, 
-    onEvent: (event: ChatEvent) => void
+    onEvent: (event: ChatEvent) => void,
+    attachments?: Array<{ name: string; type: string; content: string }>
   ): Promise<void> {
     const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/chat`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, attachments: attachments || [] }),
     });
 
     if (!res.ok) {

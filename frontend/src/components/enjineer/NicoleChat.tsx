@@ -18,10 +18,10 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  Send, Wrench, CheckCircle2, XCircle, 
-  Code, FileText, Rocket, File, 
+  Send, Wrench, CheckCircle2, XCircle, Loader2, Sparkles,
+  Code, FileText, Rocket, File, AlertCircle,
   ThumbsUp, ThumbsDown, ArrowUp, FileCode,
-  Play, Zap, Eye, Settings
+  Play, Zap
 } from 'lucide-react';
 import { useEnjineerStore, ChatMessage, ToolCall } from '@/lib/enjineer/store';
 import { NicoleOrbAnimation } from '@/components/chat/NicoleOrbAnimation';
@@ -95,6 +95,19 @@ export function NicoleChat() {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Convert file to base64 for sending to backend
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1] || '';
+        resolve(base64);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Tool name to friendly label mapping
   const getToolLabel = (toolName: string): string => {
     const labels: Record<string, string> = {
@@ -122,15 +135,38 @@ export function NicoleChat() {
       return;
     }
 
+    // Process attached files - convert to base64 for sending
+    const processedAttachments: Array<{ name: string; type: string; content: string }> = [];
+    for (const file of attachedFiles) {
+      try {
+        const content = await readFileAsBase64(file);
+        processedAttachments.push({
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          content,
+        });
+      } catch (err) {
+        console.error(`Failed to process file ${file.name}:`, err);
+      }
+    }
+
+    // Build message content with file mentions
+    let messageContent = input.trim();
+    if (processedAttachments.length > 0) {
+      const fileNames = processedAttachments.map(a => a.name).join(', ');
+      messageContent += `\n\n[Attached files: ${fileNames}]`;
+    }
+
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content: messageContent,
       timestamp: new Date(),
     };
 
     addMessage(userMessage);
     setInput('');
+    setAttachedFiles([]); // Clear attached files after sending
     setNicoleThinking(true);
 
     // Create placeholder for Nicole's streaming response
@@ -299,7 +335,8 @@ export function NicoleChat() {
               console.log('[Nicole] Stream complete');
               break;
           }
-        }
+        },
+        processedAttachments.length > 0 ? processedAttachments : undefined
       );
 
       // Finalize the message
@@ -386,10 +423,11 @@ export function NicoleChat() {
       <div className="h-14 border-b border-[#1E1E2E] flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <LotusSphere 
-              state={isNicoleThinking ? 'thinking' : 'default'}
-              size={32}
-              isActive={true}
+            <NicoleOrbAnimation 
+              isActive={isNicoleThinking}
+              size="small"
+              variant="single"
+              showParticles={false}
             />
           </div>
           <div>
@@ -577,8 +615,6 @@ export function NicoleChat() {
 
 // Welcome Message Component
 function WelcomeMessage() {
-  const { addMessage } = useEnjineerStore();
-  
   const handleQuickAction = (message: string) => {
     // Trigger the message through the parent somehow - for now just set input
     const input = document.querySelector('textarea') as HTMLTextAreaElement;

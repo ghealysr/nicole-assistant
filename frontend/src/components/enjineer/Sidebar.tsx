@@ -21,9 +21,10 @@ import {
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
   Image as ImageIcon, Settings, Package, Globe, Database,
-  Layout, Layers, Terminal, X, Clock, Code, DollarSign
+  Layout, Layers, Terminal, X, Clock, Code
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
+import { enjineerApi } from '@/lib/enjineer/api';
 
 export function Sidebar() {
   const {
@@ -98,36 +99,27 @@ export function Sidebar() {
 // ============================================================================
 
 function TokenUsageFooter() {
-  const { currentProject } = useEnjineerStore();
+  const { currentProject, messages } = useEnjineerStore();
   const [usage, setUsage] = React.useState<{
     inputTokens: number;
     outputTokens: number;
     totalCost: number;
   }>({ inputTokens: 0, outputTokens: 0, totalCost: 0 });
 
-  // Mock usage data - in production, this would come from the backend
+  // Fetch real usage from backend API
   React.useEffect(() => {
     if (currentProject?.id) {
-      // TODO: Fetch real usage from backend API
-      // For now, estimate based on file count and conversation
-      const files = useEnjineerStore.getState().files;
-      const messages = useEnjineerStore.getState().messages;
-      
-      // Rough estimation (in production, track actual API usage)
-      const inputTokens = messages.reduce((sum, m) => sum + (m.content?.length || 0) / 4, 0);
-      const outputTokens = messages.filter(m => m.role === 'assistant').reduce((sum, m) => sum + (m.content?.length || 0) / 4, 0);
-      
-      // Claude Sonnet pricing: $3/1M input, $15/1M output
-      const inputCost = (inputTokens / 1_000_000) * 3;
-      const outputCost = (outputTokens / 1_000_000) * 15;
-      
-      setUsage({
-        inputTokens: Math.round(inputTokens),
-        outputTokens: Math.round(outputTokens),
-        totalCost: inputCost + outputCost,
-      });
+      enjineerApi.getUsage(currentProject.id)
+        .then(data => {
+          setUsage({
+            inputTokens: data.inputTokens,
+            outputTokens: data.outputTokens,
+            totalCost: data.totalCost,
+          });
+        })
+        .catch(console.error);
     }
-  }, [currentProject?.id]);
+  }, [currentProject?.id, messages.length]); // Refresh when messages change
 
   const formatNumber = (n: number) => {
     if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -731,7 +723,7 @@ function PlanView({ plan }: PlanViewProps) {
     try {
       const { enjineerApi } = await import('@/lib/enjineer/api');
       await enjineerApi.approvePlan(currentProject.id, planOverview.id);
-      setPlanOverview({ ...planOverview, status: 'active' });
+      setPlanOverview({ ...planOverview, status: 'approved' });
       // Also set first phase to in_progress
       if (plan.length > 0) {
         updateStep(plan[0].id, { status: 'in_progress' });
@@ -823,7 +815,7 @@ function PlanView({ plan }: PlanViewProps) {
           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#1E1E2E]/50">
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full font-medium",
-              planOverview.status === 'active' 
+              planOverview.status === 'approved' || planOverview.status === 'in_progress'
                 ? "bg-emerald-500/20 text-emerald-400"
                 : planOverview.status === 'completed'
                 ? "bg-blue-500/20 text-blue-400"
