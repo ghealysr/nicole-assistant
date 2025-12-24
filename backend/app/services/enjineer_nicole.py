@@ -558,18 +558,28 @@ class EnjineerNicole:
             messages.append({"role": "assistant", "content": "I see the current plan. I'll continue from where we left off."})
         
         # Add conversation history (limit to prevent token overflow)
+        # Filter out messages with empty content to avoid API errors
         history = self.project_data.get("messages", [])[-8:]
         for msg in history:
-            messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            content = msg.get("content", "")
+            if content and content.strip():  # Only add non-empty messages
+                messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
         
-        # Add the new user message
-        messages.append({
-            "role": "user",
-            "content": new_message
-        })
+        # Add the new user message (ensure it's not empty)
+        if new_message and new_message.strip():
+            messages.append({
+                "role": "user",
+                "content": new_message
+            })
+        else:
+            # Fallback for empty messages
+            messages.append({
+                "role": "user",
+                "content": "Continue with the project."
+            })
         
         return messages
     
@@ -1460,8 +1470,16 @@ Analyze the code and estimate scores for:
                         })
                 
                 # Add assistant message and tool results to conversation for next iteration
-                messages.append({"role": "assistant", "content": assistant_content})
-                messages.append({"role": "user", "content": tool_results})
+                # Ensure assistant_content is not empty (Claude API requires non-empty content)
+                if assistant_content:
+                    messages.append({"role": "assistant", "content": assistant_content})
+                else:
+                    # Add a minimal text block if only tool uses were returned
+                    messages.append({"role": "assistant", "content": [{"type": "text", "text": "Processing..."}]})
+                
+                # Tool results go as user message
+                if tool_results:
+                    messages.append({"role": "user", "content": tool_results})
                 
             except Exception as e:
                 logger.error(f"[Enjineer] Error in process_message: {e}", exc_info=True)
