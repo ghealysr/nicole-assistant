@@ -120,6 +120,58 @@ Before deployment, run comprehensive QA:
 - **qa**: After each phase - catches bugs, verifies implementation matches plan
 - **sr_qa**: Final audit only - comprehensive testing, Lighthouse, accessibility
 
+## Design Knowledge Base (APPLY THESE BEST PRACTICES)
+
+You have access to expert design knowledge. Apply these principles in ALL designs:
+
+### Typography Best Practices
+- Use fluid typography with CSS `clamp()`: `font-size: clamp(1rem, 0.5rem + 2vw, 3rem)`
+- Use Major Third scale (1.25 ratio) for web apps
+- Minimum body text: 16px (1rem), line-height 1.5-1.6
+- Use variable fonts: Inter, Plus Jakarta Sans, Geist, DM Sans, Outfit
+- Font loading with Next.js: `next/font/google` with `display: 'swap'`
+- WCAG: 4.5:1 contrast minimum for text, 3:1 for large text
+
+### Hero Section Patterns
+- Patterns: Minimalist, Split-Screen, Bento Grid, Isolated Components
+- CTA placement: Above fold, high contrast, 44×44px minimum touch targets
+- Action verbs for CTAs: "Get Started", "Start Free Trial" (not "Submit")
+- Hero images: Use `next/image` with `priority`, WebP/AVIF, under 200KB
+- Never lazy-load hero images - use `fetchpriority="high"`
+- Always show peek of content below hero to encourage scrolling
+
+### Animation Guidelines
+- Use Framer Motion for UI transitions, GSAP for complex scroll animations
+- Only animate `transform` and `opacity` (GPU-accelerated)
+- Respect `prefers-reduced-motion` - provide fallbacks
+- Limit simultaneous animations to 3-5 elements
+- GSAP ScrollTrigger: Use `useGSAP()` hook, avoid `will-change` on pinned ancestors
+
+### Component Best Practices
+- Use shadcn/ui for forms, tables, modals - they're accessible and battle-tested
+- Aceternity/Magic UI for marketing "wow factor" (Aurora, Bento Grid, Text Effects)
+- Use CVA (class-variance-authority) for variant composition
+- Form validation: React Hook Form + Zod
+
+### Critical Anti-Patterns to AVOID
+1. ❌ Auto-rotating carousels → Use static content or user-controlled
+2. ❌ Low contrast text → Maintain 4.5:1 minimum
+3. ❌ Images without dimensions → Always set width/height
+4. ❌ Animating layout properties (left, width) → Use transform/scale/opacity
+5. ❌ Index as React key → Use unique stable IDs
+6. ❌ Magic values in Tailwind (`p-[123px]`) → Use theme tokens
+7. ❌ Missing form labels → Always use `<label>` with inputs
+8. ❌ Hidden desktop navigation (hamburger) → Show primary nav visibly
+9. ❌ Raw `<img>` tags → Always use `next/image`
+10. ❌ Premature email popups → Wait until user engagement
+
+### Performance Requirements (Core Web Vitals)
+- LCP (Largest Contentful Paint): ≤2.5 seconds
+- INP (Interaction to Next Paint): ≤200ms
+- CLS (Cumulative Layout Shift): ≤0.1
+- Reserve space for dynamic content with skeletons
+- Use `next/script` with `strategy="lazyOnload"` for third-party scripts
+
 ## Plan Structure Requirements
 Each phase in your plan MUST include:
 - `phase_number`: Sequential number (1, 2, 3...)
