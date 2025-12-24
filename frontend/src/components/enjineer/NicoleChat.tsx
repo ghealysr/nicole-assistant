@@ -9,20 +9,22 @@
  * 
  * Handles:
  * - Streaming text responses
- * - Tool call visualization
+ * - Tool call visualization with status box
  * - Code creation/update events
  * - Approval request handling
+ * - Image uploads and file paste
  */
 
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  Send, Loader2, Wrench, CheckCircle2, XCircle, 
-  Sparkles, Code, FileText, Rocket, File, 
-  AlertCircle, ThumbsUp, ThumbsDown
+  Send, Wrench, CheckCircle2, XCircle, 
+  Code, FileText, Rocket, File, 
+  ThumbsUp, ThumbsDown, ArrowUp, FileCode,
+  Play, Zap, Eye, Settings
 } from 'lucide-react';
 import { useEnjineerStore, ChatMessage, ToolCall } from '@/lib/enjineer/store';
-import { LotusSphere } from '@/components/chat/LotusSphere';
+import { NicoleOrbAnimation } from '@/components/chat/NicoleOrbAnimation';
 import { enjineerApi, ChatEvent } from '@/lib/enjineer/api';
 
 export function NicoleChat() {
@@ -46,21 +48,67 @@ export function NicoleChat() {
     id: string;
     title: string;
   } | null>(null);
+  const [currentToolStatus, setCurrentToolStatus] = React.useState<{
+    tool: string;
+    status: 'starting' | 'running' | 'complete';
+    label: string;
+  } | null>(null);
+  const [attachedFiles, setAttachedFiles] = React.useState<File[]>([]);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Auto-scroll on new messages
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-resize textarea
+  // Handle paste for files
   React.useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
-      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 150)}px`;
-    }
-  }, [input]);
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          const file = items[i].getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        setAttachedFiles(prev => [...prev, ...files]);
+      }
+    };
+    
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles(prev => [...prev, ...files]);
+    e.target.value = ''; // Reset for same file
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Tool name to friendly label mapping
+  const getToolLabel = (toolName: string): string => {
+    const labels: Record<string, string> = {
+      create_plan: 'Creating implementation plan...',
+      update_plan_step: 'Updating progress...',
+      create_file: 'Building page...',
+      update_file: 'Updating code...',
+      delete_file: 'Removing file...',
+      dispatch_agent: 'Launching agent...',
+      request_approval: 'Requesting approval...',
+      deploy: 'Deploying to Vercel...',
+    };
+    return labels[toolName] || `Running ${toolName}...`;
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isNicoleThinking) return;
@@ -121,10 +169,17 @@ export function NicoleChat() {
               break;
 
             case 'tool_use':
-              // Tool is starting or running
+              // Tool is starting or running - update status box
+              const toolName = event.tool || 'unknown';
+              setCurrentToolStatus({
+                tool: toolName,
+                status: event.status === 'starting' ? 'starting' : 'running',
+                label: getToolLabel(toolName),
+              });
+              
               const toolCall: ToolCall = {
                 id: `tool-${toolIdCounter++}`,
-                name: event.tool || 'unknown',
+                name: toolName,
                 status: event.status === 'starting' ? 'pending' : 
                         event.status === 'running' ? 'running' : 'pending',
                 result: undefined,
@@ -137,7 +192,11 @@ export function NicoleChat() {
               break;
 
             case 'tool_result':
-              // Tool completed - update the last tool call
+              // Tool completed - update the last tool call and clear status box
+              setCurrentToolStatus(prev => prev ? { ...prev, status: 'complete' } : null);
+              // Clear status box after a brief moment
+              setTimeout(() => setCurrentToolStatus(null), 500);
+              
               const lastTool = toolCalls[toolCalls.length - 1];
               if (lastTool) {
                 const result = event.result || {};
@@ -235,7 +294,8 @@ export function NicoleChat() {
               break;
 
             case 'done':
-              // Stream complete
+              // Stream complete - clear status
+              setCurrentToolStatus(null);
               console.log('[Nicole] Stream complete');
               break;
           }
@@ -404,36 +464,111 @@ export function NicoleChat() {
         </div>
       )}
 
-      {/* Input Area */}
-      <div className="border-t border-[#1E1E2E] p-4 shrink-0">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={currentProject ? "Ask Nicole anything..." : "Select a project first..."}
-              disabled={!currentProject}
-              rows={1}
-              className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 pr-12 text-sm text-white placeholder-[#64748B] resize-none focus:outline-none focus:border-[#8B5CF6] transition-colors disabled:opacity-50"
+      {/* Tool Status Box - Always above input */}
+      {(currentToolStatus || isNicoleThinking) && (
+        <div className="border-t border-[#1E1E2E] px-4 py-3 bg-[#0A0A0F]">
+          <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-[#8B5CF6]/10 to-[#6366F1]/10 rounded-xl border border-[#8B5CF6]/20">
+            <NicoleOrbAnimation 
+              isActive={true} 
+              size="small" 
+              variant="single"
+              showParticles={false}
             />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isNicoleThinking || !currentProject}
-              className={cn(
-                "absolute right-2 bottom-2 p-2 rounded-lg transition-colors",
-                input.trim() && !isNicoleThinking && currentProject
-                  ? "bg-[#8B5CF6] text-white hover:bg-[#7C3AED]"
-                  : "bg-[#1E1E2E] text-[#64748B]"
+            <div className="flex-1">
+              <div className="text-sm text-[#F1F5F9] font-medium">
+                {currentToolStatus?.label || 'Nicole is thinking...'}
+              </div>
+              {currentToolStatus && (
+                <div className="text-xs text-[#8B5CF6] mt-0.5 flex items-center gap-1">
+                  {currentToolStatus.status === 'starting' && <Zap size={10} />}
+                  {currentToolStatus.status === 'running' && <Play size={10} />}
+                  {currentToolStatus.status === 'complete' && <CheckCircle2 size={10} className="text-green-500" />}
+                  {currentToolStatus.tool}
+                </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attached Files Preview */}
+      {attachedFiles.length > 0 && (
+        <div className="px-4 py-2 border-t border-[#1E1E2E] bg-[#0A0A0F]">
+          <div className="flex flex-wrap gap-2">
+            {attachedFiles.map((file, index) => (
+              <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-[#1E1E2E] rounded-lg">
+                <FileCode size={12} className="text-[#8B5CF6]" />
+                <span className="text-xs text-[#94A3B8] max-w-[100px] truncate">{file.name}</span>
+                <button 
+                  onClick={() => removeAttachedFile(index)}
+                  className="text-[#64748B] hover:text-red-400 transition-colors"
+                >
+                  <XCircle size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input Area - Doubled height, no scrollbar */}
+      <div className="border-t border-[#1E1E2E] p-4 shrink-0">
+        <div className="relative">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.txt,.md,.json,.js,.ts,.tsx,.jsx,.css,.html"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          
+          <div className="flex items-end gap-2">
+            {/* Upload button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!currentProject}
+              className={cn(
+                "p-3 rounded-xl transition-colors shrink-0",
+                currentProject
+                  ? "bg-[#1E1E2E] text-[#8B5CF6] hover:bg-[#2E2E3E] border border-[#8B5CF6]/30"
+                  : "bg-[#1E1E2E] text-[#64748B] opacity-50"
+              )}
+              title="Upload images or files"
             >
-              <Send size={16} />
+              <ArrowUp size={18} />
             </button>
+            
+            <div className="flex-1 relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={currentProject ? "Ask Nicole anything..." : "Select a project first..."}
+                disabled={!currentProject}
+                rows={3}
+                style={{ overflow: 'hidden' }}
+                className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 pr-12 text-sm text-white placeholder-[#64748B] resize-none focus:outline-none focus:border-[#8B5CF6] transition-colors disabled:opacity-50 min-h-[80px]"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isNicoleThinking || !currentProject}
+                className={cn(
+                  "absolute right-2 bottom-2 p-2 rounded-lg transition-colors",
+                  input.trim() && !isNicoleThinking && currentProject
+                    ? "bg-[#8B5CF6] text-white hover:bg-[#7C3AED]"
+                    : "bg-[#1E1E2E] text-[#64748B]"
+                )}
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
         </div>
         <p className="text-[10px] text-[#64748B] mt-2 text-center">
-          Press Enter to send • Shift+Enter for new line
+          Enter to send • Shift+Enter for new line • Paste files directly
         </p>
       </div>
     </div>
@@ -442,10 +577,27 @@ export function NicoleChat() {
 
 // Welcome Message Component
 function WelcomeMessage() {
+  const { addMessage } = useEnjineerStore();
+  
+  const handleQuickAction = (message: string) => {
+    // Trigger the message through the parent somehow - for now just set input
+    const input = document.querySelector('textarea') as HTMLTextAreaElement;
+    if (input) {
+      input.value = message;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  
   return (
     <div className="text-center py-8">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#8B5CF6] to-[#6366F1] flex items-center justify-center">
-        <Sparkles size={28} className="text-white" />
+      {/* Nicole's Orb in processing state with light beams */}
+      <div className="mx-auto mb-4 flex justify-center">
+        <NicoleOrbAnimation 
+          isActive={true} 
+          size="medium" 
+          variant="single"
+          showParticles={true}
+        />
       </div>
       <h3 className="text-lg font-semibold text-white mb-2">
         Welcome to Enjineer
@@ -454,20 +606,29 @@ function WelcomeMessage() {
         I&apos;m Nicole, your coding partner. Tell me what you want to build and I&apos;ll help you create it.
       </p>
       
-      <div className="space-y-2">
-        <p className="text-xs text-[#64748B] mb-3">Try asking me to:</p>
-        <QuickAction icon={<FileText size={14} />} text="Create a Next.js landing page" />
-        <QuickAction icon={<Code size={14} />} text="Add a contact form component" />
-        <QuickAction icon={<Rocket size={14} />} text="Deploy to production" />
+      <div className="space-y-3">
+        <QuickAction 
+          icon={<Play size={14} />} 
+          text="Begin Project (Start Planning)" 
+          onClick={() => handleQuickAction("Let's begin! Create a detailed plan for this project.")}
+        />
+        <QuickAction 
+          icon={<Rocket size={14} />} 
+          text="Build a Test Website" 
+          onClick={() => handleQuickAction("Build me a simple, modern test website to verify everything is working.")}
+        />
       </div>
     </div>
   );
 }
 
-function QuickAction({ icon, text }: { icon: React.ReactNode; text: string }) {
+function QuickAction({ icon, text, onClick }: { icon: React.ReactNode; text: string; onClick?: () => void }) {
   return (
-    <button className="w-full px-4 py-2.5 bg-[#12121A] hover:bg-[#1E1E2E] border border-[#1E1E2E] rounded-lg text-sm text-[#94A3B8] hover:text-white transition-colors flex items-center gap-2 text-left">
-      <span className="text-[#8B5CF6]">{icon}</span>
+    <button 
+      onClick={onClick}
+      className="w-full px-4 py-3 bg-[#12121A] hover:bg-[#1E1E2E] border border-[#8B5CF6]/20 hover:border-[#8B5CF6]/40 rounded-xl text-sm text-[#94A3B8] hover:text-white transition-all flex items-center gap-3 text-left group"
+    >
+      <span className="text-[#8B5CF6] group-hover:scale-110 transition-transform">{icon}</span>
       {text}
     </button>
   );
@@ -495,18 +656,20 @@ function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={cn("flex items-start gap-3", isUser && "flex-row-reverse")}>
       {/* Avatar */}
-      <div className={cn(
-        "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-        isUser 
-          ? "bg-[#1E1E2E]"
-          : "bg-gradient-to-br from-[#8B5CF6] to-[#6366F1]"
-      )}>
-        {isUser ? (
+      {isUser ? (
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-[#1E1E2E]">
           <span className="text-xs font-semibold text-white">G</span>
-        ) : (
-          <Sparkles size={14} className="text-white" />
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="shrink-0">
+          <NicoleOrbAnimation 
+            isActive={message.isStreaming || false} 
+            size="small" 
+            variant="single"
+            showParticles={false}
+          />
+        </div>
+      )}
 
       {/* Content */}
       <div className={cn(
@@ -518,7 +681,6 @@ function MessageBubble({ message }: MessageBubbleProps) {
         {/* Streaming indicator */}
         {message.isStreaming && !message.content && (
           <div className="flex items-center gap-2 text-[#8B5CF6]">
-            <Loader2 size={14} className="animate-spin" />
             <span className="text-sm">Nicole is thinking...</span>
           </div>
         )}

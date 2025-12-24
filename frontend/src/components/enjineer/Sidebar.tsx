@@ -21,7 +21,7 @@ import {
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
   Image as ImageIcon, Settings, Package, Globe, Database,
-  Layout, Layers, Terminal, X, Clock, Code
+  Layout, Layers, Terminal, X, Clock, Code, DollarSign
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
 
@@ -85,6 +85,76 @@ export function Sidebar() {
         ) : (
           <PlanView plan={plan} />
         )}
+      </div>
+      
+      {/* Token Usage & Cost Footer - Only show in files tab */}
+      {sidebarTab === 'files' && <TokenUsageFooter />}
+    </div>
+  );
+}
+
+// ============================================================================
+// Token Usage Footer Component
+// ============================================================================
+
+function TokenUsageFooter() {
+  const { currentProject } = useEnjineerStore();
+  const [usage, setUsage] = React.useState<{
+    inputTokens: number;
+    outputTokens: number;
+    totalCost: number;
+  }>({ inputTokens: 0, outputTokens: 0, totalCost: 0 });
+
+  // Mock usage data - in production, this would come from the backend
+  React.useEffect(() => {
+    if (currentProject?.id) {
+      // TODO: Fetch real usage from backend API
+      // For now, estimate based on file count and conversation
+      const files = useEnjineerStore.getState().files;
+      const messages = useEnjineerStore.getState().messages;
+      
+      // Rough estimation (in production, track actual API usage)
+      const inputTokens = messages.reduce((sum, m) => sum + (m.content?.length || 0) / 4, 0);
+      const outputTokens = messages.filter(m => m.role === 'assistant').reduce((sum, m) => sum + (m.content?.length || 0) / 4, 0);
+      
+      // Claude Sonnet pricing: $3/1M input, $15/1M output
+      const inputCost = (inputTokens / 1_000_000) * 3;
+      const outputCost = (outputTokens / 1_000_000) * 15;
+      
+      setUsage({
+        inputTokens: Math.round(inputTokens),
+        outputTokens: Math.round(outputTokens),
+        totalCost: inputCost + outputCost,
+      });
+    }
+  }, [currentProject?.id]);
+
+  const formatNumber = (n: number) => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return n.toString();
+  };
+
+  return (
+    <div className="border-t border-[#1E1E2E] px-3 py-2 bg-[#0A0A0F]">
+      <div className="flex items-center justify-between text-[10px]">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 text-[#64748B]">
+            <Terminal size={10} />
+            <span>{formatNumber(usage.inputTokens)}</span>
+          </div>
+          <span className="text-[#3E3E4E]">/</span>
+          <div className="flex items-center gap-1 text-[#8B5CF6]">
+            <Code size={10} />
+            <span>{formatNumber(usage.outputTokens)}</span>
+          </div>
+        </div>
+        <div className="text-[#22C55E] font-medium">
+          ${usage.totalCost.toFixed(4)}
+        </div>
+      </div>
+      <div className="text-[9px] text-[#4A4A5A] mt-1 text-center">
+        Token usage · Project cost
       </div>
     </div>
   );
