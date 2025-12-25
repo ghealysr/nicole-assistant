@@ -24,6 +24,7 @@ from anthropic import Anthropic, AsyncAnthropic
 from app.config import settings
 from app.database import get_tiger_pool
 from app.services.knowledge_base_service import kb_service
+from app.services.enjineer_qa_service import qa_service
 
 logger = logging.getLogger(__name__)
 
@@ -1175,13 +1176,20 @@ This plan requires your approval before implementation begins. Review the phases
         Dispatch a specialized agent to perform a task.
         
         Agent Types:
-        - qa: Quick code review after each phase
-        - sr_qa: Comprehensive final audit with Lighthouse/DevTools
+        - qa: Standard QA using GPT-4o (fast, different perspective)
+        - sr_qa: Senior QA using Claude Opus 4.5 (deep architectural review)
+        - full_qa: Complete pipeline (GPT-4o → Opus 4.5)
         - engineer: Complex coding tasks (dispatched to main Nicole loop)
+        
+        MULTI-MODEL QA SYSTEM:
+        - GPT-4o catches common patterns, React issues, accessibility basics
+        - Claude Opus 4.5 provides deep architectural analysis, security audit
+        - Running both gives maximum coverage through model diversity
         """
         agent_type = input_data.get("agent_type", "qa")
         task = input_data.get("task", "Review code")
         focus_files = input_data.get("focus_files", [])
+        phase_context = input_data.get("phase_context", None)
         
         # Log the dispatch - use RETURNING id since enjineer_agent_executions.id is SERIAL
         async with pool.acquire() as conn:
@@ -1193,24 +1201,53 @@ This plan requires your approval before implementation begins. Review the phases
                 RETURNING id
                 """,
                 self.project_id, agent_type, task,
-                json.dumps({"files": focus_files}), focus_files
+                json.dumps({"files": focus_files, "phase_context": phase_context}), focus_files
             )
             execution_id = row["id"]  # Integer from SERIAL
         
-        logger.warning(f"[Enjineer] Running {agent_type} agent: {task[:100]}...")
+        logger.warning(f"[Enjineer] Running {agent_type} agent (multi-model QA): {task[:100]}...")
         
         try:
+            # Get files for QA review
+            files_for_review = await self._get_files_for_qa(pool, focus_files)
+            
             if agent_type == "qa":
-                result = await self._run_qa_agent(pool, task, focus_files)
+                # Standard QA with GPT-4o
+                result = await qa_service.run_standard_qa(
+                    project_id=self.project_id,
+                    files=files_for_review,
+                    phase_context=phase_context or task,
+                    user_id=self.user_id
+                )
             elif agent_type == "sr_qa":
-                result = await self._run_sr_qa_agent(pool, task, focus_files)
+                # Senior QA with Claude Opus 4.5
+                result = await qa_service.run_senior_qa(
+                    project_id=self.project_id,
+                    files=files_for_review,
+                    phase_context=phase_context or task,
+                    user_id=self.user_id
+                )
+            elif agent_type == "full_qa":
+                # Full pipeline: GPT-4o → Opus 4.5
+                result = await qa_service.run_full_qa_pipeline(
+                    project_id=self.project_id,
+                    files=files_for_review,
+                    phase_context=phase_context or task,
+                    user_id=self.user_id
+                )
             elif agent_type == "engineer":
                 result = {
+                    "success": True,
                     "status": "deferred",
                     "message": "Engineering tasks flow through the main Nicole loop. Please describe the task directly."
                 }
             else:
-                result = {"status": "error", "message": f"Unknown agent type: {agent_type}"}
+                result = {"success": False, "status": "error", "message": f"Unknown agent type: {agent_type}"}
+            
+            # Transform result to standard format
+            status = "pass" if result.get("passed") or result.get("success") else "fail"
+            if result.get("verdict") == "CONDITIONAL_APPROVAL":
+                status = "warning"
             
             # Update execution status and store QA report
             async with pool.acquire() as conn:
@@ -1296,189 +1333,47 @@ This plan requires your approval before implementation begins. Review the phases
                 "result": {"action": "agent_failed", "error": str(e)}
             }
     
-    async def _run_qa_agent(self, pool, task: str, focus_files: List[str]) -> Dict[str, Any]:
+    async def _get_files_for_qa(self, pool, focus_files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Run QA agent for phase review.
-        Reviews code quality, checks for common issues, validates against plan.
+        Get project files formatted for QA review.
+        
+        Args:
+            pool: Database connection pool
+            focus_files: Optional list of specific file paths to include
+            
+        Returns:
+            List of file dictionaries with path and content
         """
-        # Get project files
         async with pool.acquire() as conn:
             files = await conn.fetch(
                 "SELECT path, content, language FROM enjineer_files WHERE project_id = $1",
                 self.project_id
             )
-            plan = await conn.fetchrow(
-                "SELECT id, content FROM enjineer_plans WHERE project_id = $1 AND status IN ('approved', 'in_progress', 'awaiting_approval') ORDER BY id DESC LIMIT 1",
-                self.project_id
-            )
         
-        # Build context for QA review
-        file_contents = []
+        result = []
         for f in files:
-            if not focus_files or f["path"] in focus_files:
-                file_contents.append(f"### {f['path']} ({f['language']})\n```{f['language']}\n{f['content'][:3000]}\n```")
-        
-        plan_content = plan["content"] if plan else "No plan available"
-        
-        # Use Claude to perform QA review
-        qa_prompt = f"""You are a QA Engineer reviewing code. Analyze the following code and provide a structured review.
-
-## Task: {task}
-
-## Plan:
-{plan_content[:2000]}
-
-## Files to Review:
-{chr(10).join(file_contents[:10])}
-
-## Your Review Must Check:
-1. **Code Quality**: Syntax errors, typos, missing imports
-2. **Plan Alignment**: Does the code match what the plan describes?
-3. **Hallucinations**: Is there any code that references non-existent files, imports, or components?
-4. **Issues**: Any bugs, security issues, or performance problems?
-5. **Completeness**: Is the phase fully implemented?
-
-## Response Format (JSON):
-{{
-  "status": "pass" | "fail" | "warning",
-  "issues": [
-    {{"severity": "critical|high|medium|low", "file": "path", "line": null, "description": "..."}}
-  ],
-  "hallucinations_detected": ["description of any hallucinations found"],
-  "plan_alignment": "aligned" | "partial" | "misaligned",
-  "summary": "One paragraph summary",
-  "recommendations": ["list of recommendations"]
-}}"""
-
-        try:
-            response = await self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=2000,
-                messages=[{"role": "user", "content": qa_prompt}]
-            )
+            # Filter by focus files if specified
+            if focus_files and f["path"] not in focus_files:
+                continue
             
-            result_text = response.content[0].text
-            
-            # Try to parse JSON from response
-            json_start = result_text.find("{")
-            json_end = result_text.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                qa_result = json.loads(result_text[json_start:json_end])
-                qa_result["agent"] = "qa"
-                return qa_result
-            else:
-                return {"status": "warning", "summary": result_text, "agent": "qa"}
-                
-        except Exception as e:
-            logger.error(f"[Enjineer] QA agent error: {e}")
-            return {"status": "error", "message": str(e), "agent": "qa"}
+            result.append({
+                "path": f["path"],
+                "content": f["content"],
+                "language": f["language"]
+            })
+        
+        return result
     
-    async def _run_sr_qa_agent(self, pool, task: str, focus_files: List[str]) -> Dict[str, Any]:
-        """
-        Run Senior QA agent for comprehensive final audit.
-        Includes Lighthouse-style checks, accessibility, performance, SEO.
-        """
-        # Get all project files
-        async with pool.acquire() as conn:
-            files = await conn.fetch(
-                "SELECT path, content, language FROM enjineer_files WHERE project_id = $1",
-                self.project_id
-            )
-            project = await conn.fetchrow(
-                "SELECT preview_domain FROM enjineer_projects WHERE id = $1",
-                self.project_id
-            )
-        
-        # Build comprehensive file list
-        file_contents = []
-        for f in files:
-            file_contents.append(f"### {f['path']} ({f['language']})\n```{f['language']}\n{f['content'][:2000]}\n```")
-        
-        preview_url = project["preview_domain"] if project and project["preview_domain"] else None
-        
-        # Comprehensive audit prompt
-        sr_qa_prompt = f"""You are a Senior QA Engineer performing a comprehensive final audit before production deployment.
-
-## Task: {task}
-
-## Preview URL: {preview_url or "Not deployed yet"}
-
-## All Project Files:
-{chr(10).join(file_contents[:20])}
-
-## Perform Complete Audit:
-
-### 1. Lighthouse Audit (Simulated)
-Analyze the code and estimate scores for:
-- **Performance**: Bundle size, render blocking, lazy loading, image optimization
-- **Accessibility**: ARIA labels, alt text, color contrast, keyboard nav, screen reader support
-- **Best Practices**: HTTPS, console errors, deprecated APIs, secure dependencies
-- **SEO**: Meta tags, semantic HTML, mobile viewport, sitemap potential
-
-### 2. Chrome DevTools Analysis
-- Console errors/warnings likely to appear
-- Network performance concerns
-- Layout/paint issues
-- Memory leak potential
-
-### 3. Code Quality Deep Dive
-- Architecture issues
-- Missing error handling
-- Edge cases not covered
-- Type safety issues (TypeScript)
-
-### 4. Mobile Responsiveness
-- Responsive breakpoints
-- Touch targets
-- Mobile-specific issues
-
-### 5. Security Check
-- XSS vulnerabilities
-- CSRF protection needs
-- Sensitive data exposure
-
-## Response Format (JSON):
-{{
-  "lighthouse_scores": {{
-    "performance": 0-100,
-    "accessibility": 0-100,
-    "best_practices": 0-100,
-    "seo": 0-100
-  }},
-  "critical_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
-  "high_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
-  "medium_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
-  "low_issues": [{{"category": "...", "description": "...", "fix": "..."}}],
-  "passed_checks": ["list of things that passed"],
-  "deploy_ready": true | false,
-  "deploy_blockers": ["issues that must be fixed before deploy"],
-  "recommendations": ["post-launch improvements"],
-  "summary": "Executive summary paragraph"
-}}"""
-
-        try:
-            response = await self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=4000,
-                messages=[{"role": "user", "content": sr_qa_prompt}]
-            )
-            
-            result_text = response.content[0].text
-            
-            # Try to parse JSON from response
-            json_start = result_text.find("{")
-            json_end = result_text.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                sr_qa_result = json.loads(result_text[json_start:json_end])
-                sr_qa_result["agent"] = "sr_qa"
-                sr_qa_result["status"] = "pass" if sr_qa_result.get("deploy_ready") else "fail"
-                return sr_qa_result
-            else:
-                return {"status": "warning", "summary": result_text, "agent": "sr_qa"}
-                
-        except Exception as e:
-            logger.error(f"[Enjineer] SR QA agent error: {e}")
-            return {"status": "error", "message": str(e), "agent": "sr_qa"}
+    # =========================================================================
+    # LEGACY QA METHODS (Deprecated - now using multi-model qa_service)
+    # =========================================================================
+    # The following methods are kept for backwards compatibility but the main
+    # _dispatch_agent now routes to qa_service which uses:
+    # - GPT-4o for standard QA (fast, different training perspective)
+    # - Claude Opus 4.5 for senior QA (deep reasoning, architectural)
+    #
+    # This multi-model approach provides true QA diversity - different models
+    # catch different issues based on their unique training and reasoning.
     
     async def _request_approval(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Request user approval for a significant action."""
