@@ -2601,6 +2601,195 @@ async def delete_preview(
 
 
 # ============================================================================
+# Knowledge Base Endpoints
+# ============================================================================
+
+from app.services.knowledge_base_service import kb_service
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    category: Optional[str] = Field(None, pattern="^(patterns|animation|components|fundamentals|core)$")
+    include_sections: bool = False
+    limit: int = Field(10, ge=1, le=50)
+
+
+class KnowledgeSearchResponse(BaseModel):
+    files: List[dict]
+    sections: List[dict]
+    total_files: int
+    total_sections: int
+    query: str
+
+
+@router.get("/knowledge/search")
+async def search_knowledge_base(
+    query: str = Query(..., min_length=1, max_length=500),
+    category: Optional[str] = Query(None, pattern="^(patterns|animation|components|fundamentals|core)$"),
+    include_sections: bool = Query(False),
+    limit: int = Query(10, ge=1, le=50),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Search the design knowledge base.
+    
+    Returns files and optionally sections matching the query.
+    Used by Nicole to retrieve design patterns and best practices.
+    """
+    try:
+        # Search files
+        file_results = await kb_service.search_fulltext(
+            query=query,
+            category=category,
+            limit=limit
+        )
+        
+        section_results = []
+        if include_sections:
+            section_results = await kb_service.search_sections(
+                query=query,
+                limit=limit * 2
+            )
+        
+        # Log access for analytics
+        if file_results:
+            await kb_service.log_access(
+                file_id=file_results[0]["id"],
+                user_id=user.get("user_id", 1),
+                query_text=query,
+                access_method="api_search"
+            )
+        
+        return {
+            "success": True,
+            "files": file_results,
+            "sections": section_results,
+            "total_files": len(file_results),
+            "total_sections": len(section_results),
+            "query": query
+        }
+        
+    except Exception as e:
+        logger.error(f"[KB] Search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@router.get("/knowledge/files")
+async def list_knowledge_files(
+    category: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user)
+):
+    """
+    List all knowledge base files.
+    
+    Optionally filter by category.
+    """
+    try:
+        if category:
+            files = await kb_service.get_by_category(category, limit=100)
+        else:
+            files = await kb_service.get_popular_files(limit=100)
+        
+        return {
+            "success": True,
+            "files": files,
+            "total": len(files)
+        }
+        
+    except Exception as e:
+        logger.error(f"[KB] List failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/files/{slug}")
+async def get_knowledge_file(
+    slug: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get a specific knowledge file by slug.
+    
+    Returns full content for detailed reference.
+    """
+    try:
+        file_data = await kb_service.get_file_by_slug(slug)
+        
+        if not file_data:
+            raise HTTPException(status_code=404, detail=f"Knowledge file '{slug}' not found")
+        
+        # Log access
+        await kb_service.log_access(
+            file_id=file_data["id"],
+            user_id=user.get("user_id", 1),
+            access_method="direct"
+        )
+        
+        return {
+            "success": True,
+            "file": file_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[KB] Get file failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/context")
+async def get_knowledge_context(
+    query: str = Query(..., min_length=1),
+    max_sections: int = Query(5, ge=1, le=20),
+    max_tokens: int = Query(4000, ge=500, le=10000),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get formatted knowledge context for Nicole's system prompt.
+    
+    Returns a markdown-formatted string with relevant sections,
+    optimized for token budget.
+    """
+    try:
+        context = await kb_service.get_relevant_context(
+            query=query,
+            max_sections=max_sections,
+            max_tokens=max_tokens
+        )
+        
+        return {
+            "success": True,
+            "context": context,
+            "query": query
+        }
+        
+    except Exception as e:
+        logger.error(f"[KB] Get context failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/stats")
+async def get_knowledge_stats(
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get knowledge base usage statistics.
+    """
+    try:
+        stats = await kb_service.get_usage_stats()
+        popular = await kb_service.get_popular_files(limit=5)
+        
+        return {
+            "success": True,
+            "stats": stats,
+            "popular_files": popular
+        }
+        
+    except Exception as e:
+        logger.error(f"[KB] Stats failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 

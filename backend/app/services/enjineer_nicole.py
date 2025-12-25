@@ -23,6 +23,7 @@ from anthropic import Anthropic, AsyncAnthropic
 
 from app.config import settings
 from app.database import get_tiger_pool
+from app.services.knowledge_base_service import kb_service
 
 logger = logging.getLogger(__name__)
 
@@ -496,6 +497,44 @@ ENJINEER_TOOLS = [
             },
             "required": ["environment"]
         }
+    },
+    {
+        "name": "search_knowledge_base",
+        "description": """Search Nicole's design knowledge base for patterns, components, animations, and best practices.
+Use this tool to find specific design guidance before implementing UI components.
+
+Categories available:
+- patterns: Hero sections, bento grids, pricing pages
+- animation: GSAP ScrollTrigger, Motion (Framer Motion)
+- components: shadcn/ui, Aceternity UI
+- fundamentals: Typography, color theory, spacing systems
+- core: Anti-patterns, common mistakes
+
+ALWAYS use this tool when:
+- Implementing hero sections, pricing pages, or bento grids
+- Adding animations (GSAP or Motion)
+- Choosing components (shadcn vs Aceternity)
+- Making design system decisions (typography, colors, spacing)
+- Need conversion data or best practices""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query - be specific (e.g., 'hero section CTA placement conversion', 'GSAP ScrollTrigger React 19', 'bento grid CSS implementation')"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["patterns", "animation", "components", "fundamentals", "core"],
+                    "description": "Optional category filter to narrow results"
+                },
+                "include_sections": {
+                    "type": "boolean",
+                    "description": "If true, search within sections for more granular results. Default: false"
+                }
+            },
+            "required": ["query"]
+        }
     }
 ]
 
@@ -765,6 +804,8 @@ class EnjineerNicole:
                 return await self._request_approval(pool, tool_input)
             elif tool_name == "deploy":
                 return await self._deploy(pool, tool_input)
+            elif tool_name == "search_knowledge_base":
+                return await self._search_knowledge_base(tool_input)
             else:
                 result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                 logger.warning(f"[Enjineer] Tool result: {result}")
@@ -1482,6 +1523,100 @@ Analyze the code and estimate scores for:
                 "message": f"Deployment to {environment} has been initiated. You'll receive a preview URL shortly."
             }
         }
+    
+    async def _search_knowledge_base(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Search Nicole's design knowledge base for patterns and best practices.
+        
+        Returns formatted context that Nicole can directly use in responses.
+        """
+        query = input_data.get("query")
+        if not query:
+            return {"success": False, "error": "Search query is required"}
+        
+        category = input_data.get("category")
+        include_sections = input_data.get("include_sections", False)
+        
+        try:
+            # Search files first
+            file_results = await kb_service.search_fulltext(
+                query=query,
+                category=category,
+                limit=5
+            )
+            
+            section_results = []
+            if include_sections or not file_results:
+                # Also search sections for granular results
+                section_results = await kb_service.search_sections(
+                    query=query,
+                    limit=10
+                )
+            
+            if not file_results and not section_results:
+                return {
+                    "success": True,
+                    "result": {
+                        "found": False,
+                        "message": f"No knowledge found for '{query}'. You may need to use your built-in expertise.",
+                        "query": query
+                    }
+                }
+            
+            # Format results for Nicole
+            formatted_results = []
+            
+            for f in file_results[:3]:
+                formatted_results.append({
+                    "type": "file",
+                    "slug": f["slug"],
+                    "title": f["title"],
+                    "category": f["category"],
+                    "description": f.get("description", ""),
+                    "relevance": round(float(f.get("relevance", 0)), 3),
+                    "usage_count": f.get("usage_count", 0),
+                    "tags": f.get("tags", [])
+                })
+            
+            # Add relevant sections with their content
+            section_context = []
+            for s in section_results[:5]:
+                section_context.append({
+                    "file": s["file_title"],
+                    "file_slug": s["file_slug"],
+                    "heading": s["heading"],
+                    "content": s["content"][:2000],  # Truncate long sections
+                    "relevance": round(float(s.get("relevance", 0)), 3)
+                })
+            
+            # Log the access
+            if file_results:
+                await kb_service.log_access(
+                    file_id=file_results[0]["id"],
+                    query_text=query,
+                    access_method="nicole_search"
+                )
+            
+            logger.info(f"[KB] Search '{query}' returned {len(file_results)} files, {len(section_results)} sections")
+            
+            return {
+                "success": True,
+                "result": {
+                    "found": True,
+                    "query": query,
+                    "category_filter": category,
+                    "files": formatted_results,
+                    "sections": section_context,
+                    "instruction": "Use this knowledge to inform your implementation. Cite sources when applying patterns (e.g., 'According to hero-sections.md...')"
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[KB] Search failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Knowledge base search failed: {str(e)}"
+            }
     
     def _detect_language(self, path: str) -> str:
         """Detect language from file extension."""
