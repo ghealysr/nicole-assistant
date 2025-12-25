@@ -5,25 +5,44 @@ A sophisticated QA system using model diversity for comprehensive code review:
 - Standard QA: GPT-4o (fast, cost-effective, different training data)
 - Senior QA: Claude Opus 4.5 (deep reasoning, architectural review)
 
-This creates true QA diversity - different models catch different issues
-based on their unique training and reasoning approaches.
+Quality Standards: Anthropic Senior Engineer Level
+- Full async support (no blocking calls)
+- Retry logic with exponential backoff
+- Structured logging with context
+- Single source of truth for storage
+- Robust parsing with fallbacks
+- Cost tracking and observability
 """
 
-import logging
-import json
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+import asyncio
 import hashlib
+import json
+import logging
+import re
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional
 
-import openai
 import anthropic
-from anthropic import Anthropic
+import openai
+from anthropic import AsyncAnthropic
 
 from app.config import settings
 from app.database import db
-from app.services.knowledge_base_service import kb_service
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# COST CONFIGURATION (per 1M tokens)
+# =============================================================================
+
+MODEL_COSTS = {
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "claude-opus-4-5-20251101": {"input": 15.00, "output": 75.00},
+    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+}
 
 
 # =============================================================================
@@ -70,40 +89,38 @@ Check for:
 3. Unvalidated external URLs?
 4. Missing input sanitization?
 
-## Output Format (Required)
+## Project Plan Context
+{plan_context}
 
-```markdown
-## 🔍 Standard QA Review
-
-### Summary
-- **Files Reviewed**: [count]
-- **Issues Found**: [critical/high/medium/low counts]
-- **Recommendation**: PASS | PASS WITH WARNINGS | FAIL
-
-### 🔴 Critical Issues (Must Fix)
-1. **[Category]**: [Description]
-   - Location: `file.tsx:line`
-   - Evidence: `code snippet`
-   - Fix: [exact fix]
-
-### 🟠 High Priority (Should Fix)
-[Same format]
-
-### 🟡 Medium Priority (Consider)
-[Same format]
-
-### ✅ What's Done Well
-[List positive patterns found]
-
-### 📋 Recommended Actions
-1. [Action item with priority]
-```
-
-## Knowledge Base Context
+## Knowledge Base Standards
 {kb_context}
 
 ## Code to Review
 {code_context}
+
+## Output Format (JSON Required)
+
+Respond with ONLY a JSON object in this exact format:
+```json
+{{
+  "summary": "One paragraph summary of findings",
+  "recommendation": "PASS | PASS_WITH_WARNINGS | FAIL",
+  "files_reviewed": 0,
+  "issues": [
+    {{
+      "severity": "critical|high|medium|low",
+      "category": "TypeScript|React|Accessibility|Security|Performance",
+      "file": "path/to/file.tsx",
+      "line": 123,
+      "title": "Brief issue title",
+      "description": "Detailed description",
+      "fix": "Recommended fix"
+    }}
+  ],
+  "passed_checks": ["List of checks that passed"],
+  "positive_patterns": ["Good patterns found in the code"]
+}}
+```
 """
 
 
@@ -160,75 +177,60 @@ You don't just look at code—you think about:
 3. **Test Coverage**: Critical paths covered? Edge cases tested?
 4. **Consistency**: Following project conventions?
 
-## Output Format (Required)
+## Previous Standard QA Findings
+{previous_qa_context}
 
-```markdown
-## 🎯 Senior QA Architect Review
+## Project Plan Context
+{plan_context}
 
-### Executive Summary
-[2-3 sentence summary of overall code quality and production readiness]
-
-**Verdict**: ✅ APPROVED | ⚠️ CONDITIONAL APPROVAL | ❌ REQUIRES CHANGES
-
-### 📊 Quality Metrics
-| Category | Score | Notes |
-|----------|-------|-------|
-| Code Quality | /10 | |
-| Performance | /10 | |
-| Security | /10 | |
-| Accessibility | /10 | |
-| Maintainability | /10 | |
-| **Overall** | **/10** | |
-
-### 🔴 Blocking Issues (Deployment Blockers)
-[Issues that MUST be fixed before deployment]
-
-1. **[Category] - [Title]**
-   - **Severity**: CRITICAL
-   - **Impact**: [What could go wrong in production]
-   - **Location**: `file.tsx:line`
-   - **Evidence**: 
-     ```tsx
-     [problematic code]
-     ```
-   - **Recommended Fix**:
-     ```tsx
-     [corrected code]
-     ```
-   - **Why This Matters**: [Technical explanation]
-
-### 🟠 High Priority Improvements
-[Should fix before next release]
-
-### 🟡 Technical Debt
-[Address when possible]
-
-### ✅ Exemplary Patterns Found
-[Highlight good code to reinforce positive patterns]
-
-### 🏗️ Architectural Recommendations
-[Bigger picture improvements for future consideration]
-
-### 📈 Performance Recommendations
-[Specific performance improvements with expected impact]
-
-### 🔒 Security Hardening
-[Additional security measures recommended]
-
-### 🧪 Testing Requirements
-[What tests should be added/improved]
-
-### 📋 Action Items (Prioritized)
-1. [P0 - Must do now]
-2. [P1 - This sprint]
-3. [P2 - Backlog]
-```
-
-## Knowledge Base Context
+## Knowledge Base Standards
 {kb_context}
 
 ## Code to Review
 {code_context}
+
+## Output Format (JSON Required)
+
+Respond with ONLY a JSON object in this exact format:
+```json
+{{
+  "executive_summary": "2-3 sentence summary of overall code quality and production readiness",
+  "verdict": "APPROVED | CONDITIONAL_APPROVAL | REQUIRES_CHANGES",
+  "quality_scores": {{
+    "code_quality": 0,
+    "performance": 0,
+    "security": 0,
+    "accessibility": 0,
+    "maintainability": 0,
+    "overall": 0
+  }},
+  "blocking_issues": [
+    {{
+      "severity": "critical",
+      "category": "Category",
+      "file": "path/to/file.tsx",
+      "line": 123,
+      "title": "Issue title",
+      "impact": "What could go wrong in production",
+      "description": "Detailed description",
+      "fix": "Exact fix with code if applicable",
+      "why_this_matters": "Technical explanation"
+    }}
+  ],
+  "high_priority": [],
+  "technical_debt": [],
+  "exemplary_patterns": ["Good patterns to reinforce"],
+  "architectural_recommendations": [],
+  "performance_recommendations": [],
+  "security_hardening": [],
+  "testing_requirements": [],
+  "action_items": [
+    {{"priority": "P0", "action": "Must do now"}},
+    {{"priority": "P1", "action": "This sprint"}},
+    {{"priority": "P2", "action": "Backlog"}}
+  ]
+}}
+```
 """
 
 
@@ -240,22 +242,40 @@ class EnjineerQAService:
     """
     Multi-model QA service for comprehensive code review.
     
-    Uses GPT-4o for standard QA (fast, different perspective)
-    Uses Claude Opus 4.5 for senior QA (deep reasoning, architectural)
+    Architecture:
+    - GPT-4o for standard QA (fast, different perspective)
+    - Claude Opus 4.5 for senior QA (deep reasoning, architectural)
+    - Full pipeline runs both sequentially for maximum coverage
+    
+    Quality Standards:
+    - All API calls are async (no blocking)
+    - Retry logic with exponential backoff
+    - Single storage location (no duplicates)
+    - Structured JSON output parsing
+    - Cost tracking for observability
     """
     
     def __init__(self):
+        # Async clients only - no blocking calls
         self.openai_client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         
         # Model configuration
-        self.standard_qa_model = "gpt-4o"  # GPT-4o for standard QA
-        self.senior_qa_model = "claude-opus-4-5-20251101"  # Opus 4.5 for senior QA
+        self.standard_qa_model = "gpt-4o"
+        self.senior_qa_model = "claude-opus-4-5-20251101"
         
         # Token limits
         self.standard_qa_max_tokens = 4000
         self.senior_qa_max_tokens = 8000
         
+        # Retry configuration
+        self.max_retries = 3
+        self.retry_base_delay = 1.0
+    
+    # =========================================================================
+    # PUBLIC API
+    # =========================================================================
+    
     async def run_standard_qa(
         self,
         project_id: int,
@@ -268,27 +288,21 @@ class EnjineerQAService:
         
         GPT-4o brings a different perspective from Claude - trained on different
         data, different reasoning patterns. This diversity catches different bugs.
-        
-        Args:
-            project_id: Enjineer project ID
-            files: List of files to review [{path, content}]
-            phase_context: Optional context about current phase
-            user_id: User ID for logging
-            
-        Returns:
-            QA report dictionary
         """
         start_time = datetime.utcnow()
         
         try:
-            # Build code context
+            # Build contexts
             code_context = self._build_code_context(files)
-            
-            # Get relevant knowledge
-            kb_context = await self._get_qa_knowledge("React TypeScript accessibility patterns")
+            plan_context = await self._get_plan_context(project_id)
+            kb_context = await self._get_qa_knowledge(
+                "React TypeScript accessibility security patterns",
+                category="qa"
+            )
             
             # Build prompt
             prompt = STANDARD_QA_PROMPT.format(
+                plan_context=plan_context,
                 kb_context=kb_context,
                 code_context=code_context
             )
@@ -296,67 +310,76 @@ class EnjineerQAService:
             if phase_context:
                 prompt += f"\n\n## Phase Context\n{phase_context}"
             
-            logger.info(f"[QA] Running standard QA with GPT-4o for project {project_id}")
+            logger.info(f"[QA] Running standard QA with {self.standard_qa_model} for project {project_id}")
             
-            # Call GPT-4o
-            response = await self.openai_client.chat.completions.create(
+            # Call GPT-4o with retry
+            response = await self._call_openai_with_retry(
                 model=self.standard_qa_model,
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a QA Engineer reviewing code. Output your review in the exact markdown format specified."
+                        "content": "You are a QA Engineer. Output ONLY valid JSON matching the specified format. No markdown, no explanation, just JSON."
                     },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.standard_qa_max_tokens,
-                temperature=0.3  # Lower temperature for consistent reviews
+                temperature=0.3
             )
             
             review_content = response.choices[0].message.content or ""
             
-            # Parse review
-            issues = self._parse_issues(review_content)
+            # Parse JSON response
+            parsed = self._parse_json_response(review_content)
             
-            # Calculate duration
+            # Calculate metrics
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            tokens_used = {
+                "prompt": response.usage.prompt_tokens if response.usage else 0,
+                "completion": response.usage.completion_tokens if response.usage else 0
+            }
+            cost = self._calculate_cost(self.standard_qa_model, tokens_used)
             
             # Build result
+            issues = parsed.get("issues", [])
+            critical_count = len([i for i in issues if i.get("severity") == "critical"])
+            
             result = {
                 "success": True,
                 "agent": "standard_qa",
                 "model": self.standard_qa_model,
                 "review": review_content,
+                "parsed": parsed,
                 "issues": issues,
                 "issue_counts": {
-                    "critical": len([i for i in issues if i.get("severity") == "critical"]),
+                    "critical": critical_count,
                     "high": len([i for i in issues if i.get("severity") == "high"]),
                     "medium": len([i for i in issues if i.get("severity") == "medium"]),
                     "low": len([i for i in issues if i.get("severity") == "low"])
                 },
-                "passed": len([i for i in issues if i.get("severity") == "critical"]) == 0,
+                "passed": critical_count == 0,
+                "recommendation": parsed.get("recommendation", "UNKNOWN"),
+                "summary": parsed.get("summary", "Review complete"),
                 "duration_ms": duration_ms,
                 "files_reviewed": len(files),
-                "tokens_used": {
-                    "prompt": response.usage.prompt_tokens if response.usage else 0,
-                    "completion": response.usage.completion_tokens if response.usage else 0
-                }
+                "tokens_used": tokens_used,
+                "estimated_cost_usd": cost
             }
             
-            # Store in database
+            # Store report (single source of truth)
             await self._store_qa_report(project_id, user_id, result, "standard_qa")
             
             return result
             
         except Exception as e:
-            logger.error(f"[QA] Standard QA failed: {e}", exc_info=True)
+            logger.error(f"[QA] Standard QA failed for project {project_id}: {e}", exc_info=True)
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             return {
                 "success": False,
                 "agent": "standard_qa",
+                "model": self.standard_qa_model,
                 "error": str(e),
-                "duration_ms": int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                "passed": False,
+                "duration_ms": duration_ms
             }
     
     async def run_senior_qa(
@@ -372,61 +395,50 @@ class EnjineerQAService:
         
         Opus 4.5 provides deep architectural analysis and catches subtle issues
         that require extended reasoning. Used for final reviews and complex code.
-        
-        Args:
-            project_id: Enjineer project ID
-            files: List of files to review
-            previous_qa_result: Optional standard QA result to build upon
-            phase_context: Optional context about current phase
-            user_id: User ID for logging
-            
-        Returns:
-            QA report dictionary
         """
         start_time = datetime.utcnow()
         
         try:
-            # Build code context
-            code_context = self._build_code_context(files)
-            
-            # Get relevant knowledge (more comprehensive for senior review)
+            # Build contexts
+            code_context = self._build_code_context(files, max_chars=80000)  # Larger for Opus
+            plan_context = await self._get_plan_context(project_id)
             kb_context = await self._get_qa_knowledge(
-                "React performance security architecture patterns anti-patterns"
+                "React performance security architecture patterns anti-patterns production",
+                category="qa"
             )
+            
+            # Previous QA context
+            previous_qa_context = "No previous QA review available."
+            if previous_qa_result and previous_qa_result.get("success"):
+                previous_qa_context = f"""
+Standard QA (GPT-4o) found the following:
+- Recommendation: {previous_qa_result.get('recommendation', 'N/A')}
+- Summary: {previous_qa_result.get('summary', 'N/A')}
+- Critical Issues: {previous_qa_result.get('issue_counts', {}).get('critical', 0)}
+- High Issues: {previous_qa_result.get('issue_counts', {}).get('high', 0)}
+
+Please validate these findings and add any deeper architectural insights.
+"""
             
             # Build prompt
             prompt = SENIOR_QA_PROMPT.format(
+                previous_qa_context=previous_qa_context,
+                plan_context=plan_context,
                 kb_context=kb_context,
                 code_context=code_context
             )
             
-            # Add previous QA context if available
-            if previous_qa_result and previous_qa_result.get("success"):
-                prompt += f"""
-
-## Previous Standard QA Findings
-The standard QA (GPT-4o) found the following issues. Please validate and add any deeper insights:
-
-{previous_qa_result.get('review', 'No previous review')}
-
-Consider whether the standard QA missed anything, or if its findings need refinement.
-"""
-            
             if phase_context:
                 prompt += f"\n\n## Phase Context\n{phase_context}"
             
-            logger.info(f"[QA] Running senior QA with Claude Opus 4.5 for project {project_id}")
+            logger.info(f"[QA] Running senior QA with {self.senior_qa_model} for project {project_id}")
             
-            # Call Claude Opus 4.5 (using sync client in async wrapper)
-            message = self.anthropic_client.messages.create(
+            # Call Claude Opus 4.5 with retry (ASYNC - no blocking!)
+            message = await self._call_anthropic_with_retry(
                 model=self.senior_qa_model,
+                messages=[{"role": "user", "content": prompt}],
                 max_tokens=self.senior_qa_max_tokens,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                system="You are a Senior QA Architect. Output ONLY valid JSON matching the specified format. No markdown, no explanation, just JSON."
             )
             
             review_content = ""
@@ -434,51 +446,73 @@ Consider whether the standard QA missed anything, or if its findings need refine
                 if hasattr(block, 'text'):
                     review_content += block.text
             
-            # Parse review
-            issues = self._parse_issues(review_content)
+            # Parse JSON response
+            parsed = self._parse_json_response(review_content)
+            
+            # Calculate metrics
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            tokens_used = {
+                "prompt": message.usage.input_tokens if message.usage else 0,
+                "completion": message.usage.output_tokens if message.usage else 0
+            }
+            cost = self._calculate_cost(self.senior_qa_model, tokens_used)
             
             # Extract quality scores
-            scores = self._extract_quality_scores(review_content)
+            scores = parsed.get("quality_scores", {})
             
-            # Calculate duration
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            # Combine all issues
+            all_issues = (
+                parsed.get("blocking_issues", []) +
+                parsed.get("high_priority", []) +
+                parsed.get("technical_debt", [])
+            )
             
-            # Build result
+            critical_count = len([i for i in all_issues if i.get("severity") == "critical"])
+            
+            # Determine verdict
+            verdict = parsed.get("verdict", "UNKNOWN")
+            passed = verdict == "APPROVED" or (verdict == "CONDITIONAL_APPROVAL" and critical_count == 0)
+            
             result = {
                 "success": True,
                 "agent": "senior_qa",
                 "model": self.senior_qa_model,
                 "review": review_content,
-                "issues": issues,
+                "parsed": parsed,
+                "issues": all_issues,
                 "issue_counts": {
-                    "critical": len([i for i in issues if i.get("severity") == "critical"]),
-                    "high": len([i for i in issues if i.get("severity") == "high"]),
-                    "medium": len([i for i in issues if i.get("severity") == "medium"]),
-                    "low": len([i for i in issues if i.get("severity") == "low"])
+                    "critical": critical_count,
+                    "high": len([i for i in all_issues if i.get("severity") == "high"]),
+                    "medium": len([i for i in all_issues if i.get("severity") == "medium"]),
+                    "low": len([i for i in all_issues if i.get("severity") == "low"])
                 },
                 "quality_scores": scores,
-                "passed": len([i for i in issues if i.get("severity") == "critical"]) == 0,
-                "verdict": self._extract_verdict(review_content),
+                "passed": passed,
+                "verdict": verdict,
+                "summary": parsed.get("executive_summary", "Review complete"),
+                "action_items": parsed.get("action_items", []),
                 "duration_ms": duration_ms,
                 "files_reviewed": len(files),
-                "tokens_used": {
-                    "prompt": message.usage.input_tokens if message.usage else 0,
-                    "completion": message.usage.output_tokens if message.usage else 0
-                }
+                "tokens_used": tokens_used,
+                "estimated_cost_usd": cost
             }
             
-            # Store in database
+            # Store report (single source of truth)
             await self._store_qa_report(project_id, user_id, result, "senior_qa")
             
             return result
             
         except Exception as e:
-            logger.error(f"[QA] Senior QA failed: {e}", exc_info=True)
+            logger.error(f"[QA] Senior QA failed for project {project_id}: {e}", exc_info=True)
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             return {
                 "success": False,
                 "agent": "senior_qa",
+                "model": self.senior_qa_model,
                 "error": str(e),
-                "duration_ms": int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                "passed": False,
+                "verdict": "ERROR",
+                "duration_ms": duration_ms
             }
     
     async def run_full_qa_pipeline(
@@ -494,17 +528,9 @@ Consider whether the standard QA missed anything, or if its findings need refine
         This provides maximum coverage through model diversity:
         - GPT-4o: Fast first pass, catches common issues
         - Opus 4.5: Deep analysis, validates findings, catches architectural issues
-        
-        Args:
-            project_id: Enjineer project ID
-            files: List of files to review
-            phase_context: Optional context about current phase
-            user_id: User ID for logging
-            
-        Returns:
-            Combined QA report
         """
         logger.info(f"[QA] Starting full QA pipeline for project {project_id}")
+        start_time = datetime.utcnow()
         
         # Phase 1: Standard QA (GPT-4o)
         standard_result = await self.run_standard_qa(
@@ -523,30 +549,44 @@ Consider whether the standard QA missed anything, or if its findings need refine
             user_id=user_id
         )
         
-        # Combine results
+        # Combine and deduplicate issues
         all_issues = []
         if standard_result.get("success"):
             all_issues.extend(standard_result.get("issues", []))
         if senior_result.get("success"):
             all_issues.extend(senior_result.get("issues", []))
         
-        # Deduplicate issues by hash
         unique_issues = self._deduplicate_issues(all_issues)
         
-        # Final verdict
+        # Calculate combined metrics
+        total_duration = (
+            standard_result.get("duration_ms", 0) +
+            senior_result.get("duration_ms", 0)
+        )
+        total_cost = (
+            standard_result.get("estimated_cost_usd", 0) +
+            senior_result.get("estimated_cost_usd", 0)
+        )
+        
+        # Final verdict logic
         critical_count = len([i for i in unique_issues if i.get("severity") == "critical"])
         high_count = len([i for i in unique_issues if i.get("severity") == "high"])
         
         if critical_count > 0:
             final_verdict = "FAIL"
+            passed = False
         elif high_count > 3:
             final_verdict = "CONDITIONAL_PASS"
+            passed = False
         else:
             final_verdict = "PASS"
+            passed = True
         
-        return {
+        result = {
             "success": True,
-            "pipeline": "full",
+            "agent": "full_qa",
+            "pipeline": True,
+            "models_used": [self.standard_qa_model, self.senior_qa_model],
             "standard_qa": standard_result,
             "senior_qa": senior_result,
             "combined": {
@@ -559,49 +599,173 @@ Consider whether the standard QA missed anything, or if its findings need refine
                     "low": len([i for i in unique_issues if i.get("severity") == "low"])
                 },
                 "verdict": final_verdict,
-                "quality_scores": senior_result.get("quality_scores", {}),
-                "models_used": [self.standard_qa_model, self.senior_qa_model]
+                "quality_scores": senior_result.get("quality_scores", {})
             },
+            "passed": passed,
+            "verdict": final_verdict,
+            "summary": f"Full QA Pipeline: {final_verdict}. Standard QA: {standard_result.get('recommendation', 'N/A')}, Senior QA: {senior_result.get('verdict', 'N/A')}",
             "files_reviewed": len(files),
-            "total_duration_ms": (
-                standard_result.get("duration_ms", 0) + 
-                senior_result.get("duration_ms", 0)
-            )
+            "duration_ms": total_duration,
+            "estimated_cost_usd": total_cost
         }
+        
+        # Store pipeline report
+        await self._store_qa_report(project_id, user_id, result, "full_qa")
+        
+        return result
     
     # =========================================================================
-    # HELPER METHODS
+    # API CALL METHODS WITH RETRY
+    # =========================================================================
+    
+    async def _call_openai_with_retry(
+        self,
+        model: str,
+        messages: List[Dict],
+        max_tokens: int,
+        temperature: float = 0.3
+    ) -> Any:
+        """Call OpenAI API with exponential backoff retry."""
+        last_error = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                return await self.openai_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+            except openai.RateLimitError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"[QA] OpenAI rate limited, retrying in {delay}s (attempt {attempt + 1}/{self.max_retries})")
+                    await asyncio.sleep(delay)
+            except openai.APIError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"[QA] OpenAI API error, retrying in {delay}s: {e}")
+                    await asyncio.sleep(delay)
+        
+        raise last_error or Exception("OpenAI API call failed after retries")
+    
+    async def _call_anthropic_with_retry(
+        self,
+        model: str,
+        messages: List[Dict],
+        max_tokens: int,
+        system: str = ""
+    ) -> Any:
+        """Call Anthropic API with exponential backoff retry."""
+        last_error = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                return await self.anthropic_client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=messages
+                )
+            except anthropic.RateLimitError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"[QA] Anthropic rate limited, retrying in {delay}s (attempt {attempt + 1}/{self.max_retries})")
+                    await asyncio.sleep(delay)
+            except anthropic.APIError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"[QA] Anthropic API error, retrying in {delay}s: {e}")
+                    await asyncio.sleep(delay)
+        
+        raise last_error or Exception("Anthropic API call failed after retries")
+    
+    # =========================================================================
+    # CONTEXT BUILDING METHODS
     # =========================================================================
     
     def _build_code_context(self, files: List[Dict[str, Any]], max_chars: int = 50000) -> str:
         """Build code context string from files."""
+        if not files:
+            return "[No files to review]"
+        
         context_parts = []
         total_chars = 0
         
-        for file in files:
+        # Prioritize key files
+        priority_extensions = ['.tsx', '.ts', '.jsx', '.js']
+        sorted_files = sorted(
+            files,
+            key=lambda f: (
+                0 if any(f.get("path", "").endswith(ext) for ext in priority_extensions) else 1,
+                f.get("path", "")
+            )
+        )
+        
+        for file in sorted_files:
             path = file.get("path", "unknown")
             content = file.get("content", "")
+            language = file.get("language", "tsx")
             
-            # Skip if we'd exceed limit
-            file_chars = len(content) + len(path) + 50
+            # Calculate this file's contribution
+            file_chars = len(content) + len(path) + 100
+            
             if total_chars + file_chars > max_chars:
-                context_parts.append(f"\n[Truncated: {len(files) - len(context_parts)} more files...]")
+                remaining = len(sorted_files) - len(context_parts)
+                if remaining > 0:
+                    context_parts.append(f"\n[Truncated: {remaining} more files not shown due to size limit]")
                 break
+            
+            # Truncate individual files if too large
+            max_file_chars = 10000
+            truncated = len(content) > max_file_chars
+            display_content = content[:max_file_chars] if truncated else content
             
             context_parts.append(f"""
 ### File: `{path}`
-```tsx
-{content[:8000]}{"... [truncated]" if len(content) > 8000 else ""}
+```{language}
+{display_content}{"... [truncated]" if truncated else ""}
 ```
 """)
             total_chars += file_chars
         
         return "\n".join(context_parts)
     
-    async def _get_qa_knowledge(self, query: str) -> str:
+    async def _get_plan_context(self, project_id: int) -> str:
+        """Fetch current plan for QA context."""
+        try:
+            async with db.acquire() as conn:
+                plan = await conn.fetchrow(
+                    """
+                    SELECT content FROM enjineer_plans 
+                    WHERE project_id = $1 AND status IN ('approved', 'in_progress', 'awaiting_approval') 
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    project_id
+                )
+            
+            if plan and plan["content"]:
+                # Truncate if too long
+                content = plan["content"][:3000]
+                return f"## Current Project Plan\n\n{content}"
+            
+            return "[No project plan available]"
+            
+        except Exception as e:
+            logger.warning(f"[QA] Failed to fetch plan for project {project_id}: {e}")
+            return "[Failed to load project plan]"
+    
+    async def _get_qa_knowledge(self, query: str, category: Optional[str] = None) -> str:
         """Get relevant QA knowledge from the knowledge base."""
         try:
-            # Search for QA-related knowledge
+            # Import here to avoid circular dependency
+            from app.services.knowledge_base_service import kb_service
+            
+            # Get relevant context with optional category filter
             context = await kb_service.get_relevant_context(
                 query=query,
                 max_sections=4,
@@ -609,115 +773,89 @@ Consider whether the standard QA missed anything, or if its findings need refine
             )
             
             if context:
-                return f"""
-## Relevant QA Standards
-
-{context}
-"""
+                return f"## Relevant QA Standards\n\n{context}"
+            
             return "[No specific knowledge base context available]"
+            
         except Exception as e:
             logger.warning(f"[QA] Failed to get knowledge context: {e}")
             return "[Knowledge base unavailable]"
     
-    def _parse_issues(self, review_content: str) -> List[Dict[str, Any]]:
-        """Parse issues from review content."""
-        issues = []
-        
-        # Look for issue patterns
-        import re
-        
-        # Critical issues
-        critical_section = re.search(
-            r'(?:🔴|Critical|Blocking).*?(?=(?:🟠|🟡|🟢|High|Medium|Low|##|$))',
-            review_content, 
-            re.DOTALL | re.IGNORECASE
-        )
-        if critical_section:
-            issues.extend(self._extract_issues_from_section(critical_section.group(), "critical"))
-        
-        # High priority
-        high_section = re.search(
-            r'(?:🟠|High Priority).*?(?=(?:🟡|🟢|Medium|Low|##|$))',
-            review_content, 
-            re.DOTALL | re.IGNORECASE
-        )
-        if high_section:
-            issues.extend(self._extract_issues_from_section(high_section.group(), "high"))
-        
-        # Medium priority
-        medium_section = re.search(
-            r'(?:🟡|Medium Priority).*?(?=(?:🟢|Low|##|$))',
-            review_content, 
-            re.DOTALL | re.IGNORECASE
-        )
-        if medium_section:
-            issues.extend(self._extract_issues_from_section(medium_section.group(), "medium"))
-        
-        return issues
+    # =========================================================================
+    # PARSING METHODS
+    # =========================================================================
     
-    def _extract_issues_from_section(self, section: str, severity: str) -> List[Dict[str, Any]]:
-        """Extract individual issues from a section."""
-        issues = []
+    def _parse_json_response(self, content: str) -> Dict[str, Any]:
+        """Parse JSON from LLM response with fallbacks."""
+        if not content:
+            return {}
         
-        # Split by numbered items or bullet points
-        import re
-        items = re.split(r'\n(?:\d+\.|[-*•])\s+', section)
+        # Try direct JSON parse
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
         
-        for item in items[1:]:  # Skip first (header)
-            if len(item.strip()) > 20:  # Meaningful content
-                issues.append({
-                    "severity": severity,
-                    "description": item.strip()[:500],
-                    "hash": hashlib.md5(item.strip()[:200].encode()).hexdigest()[:8]
-                })
+        # Try to extract JSON from markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)\n?```', content)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
         
-        return issues
-    
-    def _extract_quality_scores(self, review_content: str) -> Dict[str, int]:
-        """Extract quality scores from senior review."""
-        scores = {}
+        # Try to find JSON object in content
+        json_start = content.find('{')
+        json_end = content.rfind('}')
+        if json_start >= 0 and json_end > json_start:
+            try:
+                return json.loads(content[json_start:json_end + 1])
+            except json.JSONDecodeError:
+                pass
         
-        import re
-        
-        # Look for score table
-        patterns = [
-            (r'Code Quality.*?(\d+)/10', 'code_quality'),
-            (r'Performance.*?(\d+)/10', 'performance'),
-            (r'Security.*?(\d+)/10', 'security'),
-            (r'Accessibility.*?(\d+)/10', 'accessibility'),
-            (r'Maintainability.*?(\d+)/10', 'maintainability'),
-            (r'Overall.*?(\d+)/10', 'overall'),
-        ]
-        
-        for pattern, key in patterns:
-            match = re.search(pattern, review_content, re.IGNORECASE)
-            if match:
-                scores[key] = int(match.group(1))
-        
-        return scores
-    
-    def _extract_verdict(self, review_content: str) -> str:
-        """Extract verdict from review."""
-        if "APPROVED" in review_content.upper() and "❌" not in review_content:
-            if "CONDITIONAL" in review_content.upper():
-                return "CONDITIONAL_APPROVAL"
-            return "APPROVED"
-        elif "REQUIRES CHANGES" in review_content.upper() or "❌" in review_content:
-            return "REQUIRES_CHANGES"
-        return "UNKNOWN"
+        # Fallback: return empty with raw content
+        logger.warning(f"[QA] Failed to parse JSON from response, returning raw")
+        return {"raw_content": content, "_parse_failed": True}
     
     def _deduplicate_issues(self, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Remove duplicate issues based on hash."""
+        """Remove duplicate issues based on content hash."""
         seen_hashes = set()
         unique = []
         
         for issue in issues:
-            issue_hash = issue.get("hash", hashlib.md5(str(issue).encode()).hexdigest()[:8])
+            # Create hash from key fields
+            hash_content = (
+                issue.get("file", "") +
+                issue.get("title", "") +
+                issue.get("description", "")[:100]
+            )
+            issue_hash = hashlib.md5(hash_content.encode()).hexdigest()[:12]
+            
             if issue_hash not in seen_hashes:
                 seen_hashes.add(issue_hash)
+                issue["hash"] = issue_hash
                 unique.append(issue)
         
         return unique
+    
+    # =========================================================================
+    # COST CALCULATION
+    # =========================================================================
+    
+    def _calculate_cost(self, model: str, tokens_used: Dict[str, int]) -> float:
+        """Calculate estimated cost in USD."""
+        if model not in MODEL_COSTS:
+            return 0.0
+        
+        costs = MODEL_COSTS[model]
+        input_cost = (tokens_used.get("prompt", 0) / 1_000_000) * costs["input"]
+        output_cost = (tokens_used.get("completion", 0) / 1_000_000) * costs["output"]
+        
+        return round(input_cost + output_cost, 6)
+    
+    # =========================================================================
+    # DATABASE STORAGE (SINGLE SOURCE OF TRUTH)
+    # =========================================================================
     
     async def _store_qa_report(
         self,
@@ -725,24 +863,100 @@ Consider whether the standard QA missed anything, or if its findings need refine
         user_id: int,
         result: Dict[str, Any],
         qa_type: str
-    ) -> None:
-        """Store QA report in database."""
+    ) -> Optional[int]:
+        """
+        Store QA report in database.
+        
+        This is the SINGLE SOURCE OF TRUTH for QA report storage.
+        The dispatch_agent method in enjineer_nicole.py should NOT store reports.
+        """
         try:
+            # Map to valid database values
+            trigger_type = qa_type  # Now valid: standard_qa, senior_qa, full_qa
+            
+            # Map qa_depth
+            depth_map = {
+                "standard_qa": "standard",
+                "senior_qa": "thorough",
+                "full_qa": "pipeline"
+            }
+            qa_depth = depth_map.get(qa_type, "standard")
+            
+            # Map overall_status
+            if result.get("passed"):
+                overall_status = "pass"
+            elif result.get("verdict") == "CONDITIONAL_APPROVAL":
+                overall_status = "partial"
+            else:
+                overall_status = "fail"
+            
+            # Build checks array
+            issues = result.get("issues", [])
+            checks = []
+            for issue in issues:
+                checks.append({
+                    "name": issue.get("title", issue.get("description", "Issue")[:50]),
+                    "status": "fail" if issue.get("severity") in ("critical", "high") else "warning",
+                    "severity": issue.get("severity", "medium"),
+                    "category": issue.get("category", "General"),
+                    "file": issue.get("file", ""),
+                    "message": issue.get("description", "")[:500]
+                })
+            
+            if not checks:
+                checks.append({
+                    "name": "Code Review",
+                    "status": overall_status,
+                    "message": result.get("summary", "Review complete")
+                })
+            
+            # Count issues by severity
+            blocking_count = len([i for i in issues if i.get("severity") in ("critical", "high")])
+            warning_count = len([i for i in issues if i.get("severity") in ("medium", "low")])
+            passed_count = 1 if overall_status == "pass" else 0
+            
+            # Get plan_id for linkage
             async with db.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO enjineer_qa_reports
-                    (project_id, trigger_type, qa_depth, overall_status, checks, triggered_by)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                """,
+                plan_row = await conn.fetchrow(
+                    "SELECT id FROM enjineer_plans WHERE project_id = $1 AND status IN ('approved', 'in_progress') ORDER BY id DESC LIMIT 1",
+                    project_id
+                )
+                plan_id = plan_row["id"] if plan_row else None
+                
+                # Insert report
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO enjineer_qa_reports 
+                    (project_id, plan_id, trigger_type, qa_depth, overall_status, checks, 
+                     summary, blocking_issues_count, warnings_count, passed_count,
+                     duration_seconds, model_used, tokens_used, estimated_cost_usd, triggered_by, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+                    RETURNING id
+                    """,
                     project_id,
-                    qa_type,
-                    "full" if qa_type == "senior_qa" else "standard",
-                    "pass" if result.get("passed") else "fail",
-                    json.dumps(result),
+                    plan_id,
+                    trigger_type,
+                    qa_depth,
+                    overall_status,
+                    json.dumps(checks),
+                    result.get("summary", "")[:1000],
+                    blocking_count,
+                    warning_count,
+                    passed_count,
+                    result.get("duration_ms", 0) / 1000.0,  # Convert to seconds
+                    result.get("model", ""),
+                    json.dumps(result.get("tokens_used", {})),
+                    Decimal(str(result.get("estimated_cost_usd", 0))),
                     user_id
                 )
+                
+                report_id = row["id"] if row else None
+                logger.info(f"[QA] Stored QA report {report_id} for project {project_id} ({qa_type})")
+                return report_id
+                
         except Exception as e:
-            logger.warning(f"[QA] Failed to store QA report: {e}")
+            logger.error(f"[QA] Failed to store QA report for project {project_id}: {e}", exc_info=True)
+            return None
 
 
 # =============================================================================
@@ -750,4 +964,3 @@ Consider whether the standard QA missed anything, or if its findings need refine
 # =============================================================================
 
 qa_service = EnjineerQAService()
-

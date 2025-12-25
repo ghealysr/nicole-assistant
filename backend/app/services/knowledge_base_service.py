@@ -327,19 +327,28 @@ class KnowledgeBaseService:
         self,
         query: str,
         file_id: Optional[int] = None,
+        category: Optional[str] = None,
         limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
         Search within sections for more granular results.
         
-        Useful for finding specific techniques within large files.
+        Args:
+            query: Search query string
+            file_id: Optional filter to specific file
+            category: Optional filter to specific category (e.g., 'qa', 'fundamentals')
+            limit: Maximum results to return
+            
+        Returns:
+            List of matching sections with relevance scores
         """
         async with db.acquire() as conn:
             if file_id:
+                # Search within specific file
                 rows = await conn.fetch("""
                     SELECT 
                         s.id, s.file_id, s.heading, s.level, s.content, s.word_count,
-                        f.slug as file_slug, f.title as file_title,
+                        f.slug as file_slug, f.title as file_title, f.category,
                         ts_rank(to_tsvector('english', s.heading || ' ' || s.content),
                                 plainto_tsquery('english', $1)) as relevance
                     FROM knowledge_base_sections s
@@ -351,11 +360,29 @@ class KnowledgeBaseService:
                     ORDER BY relevance DESC
                     LIMIT $3
                 """, query, file_id, limit)
-            else:
+            elif category:
+                # Search within specific category (e.g., 'qa')
                 rows = await conn.fetch("""
                     SELECT 
                         s.id, s.file_id, s.heading, s.level, s.content, s.word_count,
-                        f.slug as file_slug, f.title as file_title,
+                        f.slug as file_slug, f.title as file_title, f.category,
+                        ts_rank(to_tsvector('english', s.heading || ' ' || s.content),
+                                plainto_tsquery('english', $1)) as relevance
+                    FROM knowledge_base_sections s
+                    JOIN knowledge_base_files f ON s.file_id = f.id
+                    WHERE f.is_active = true
+                      AND f.category = $2
+                      AND to_tsvector('english', s.heading || ' ' || s.content) 
+                          @@ plainto_tsquery('english', $1)
+                    ORDER BY relevance DESC
+                    LIMIT $3
+                """, query, category, limit)
+            else:
+                # Search all sections
+                rows = await conn.fetch("""
+                    SELECT 
+                        s.id, s.file_id, s.heading, s.level, s.content, s.word_count,
+                        f.slug as file_slug, f.title as file_title, f.category,
                         ts_rank(to_tsvector('english', s.heading || ' ' || s.content),
                                 plainto_tsquery('english', $1)) as relevance
                     FROM knowledge_base_sections s
@@ -411,7 +438,8 @@ class KnowledgeBaseService:
         self,
         query: str,
         max_sections: int = 5,
-        max_tokens: int = 4000
+        max_tokens: int = 4000,
+        category: Optional[str] = None
     ) -> str:
         """
         Retrieve relevant knowledge context for Nicole's system prompt.
@@ -423,14 +451,15 @@ class KnowledgeBaseService:
             query: User's request or project context
             max_sections: Maximum sections to include
             max_tokens: Approximate token limit (1 word ≈ 1.3 tokens)
+            category: Optional category filter (e.g., 'qa', 'fundamentals', 'patterns')
             
         Returns:
             Formatted markdown context string
         """
         max_words = int(max_tokens / 1.3)
         
-        # Search for relevant sections
-        sections = await self.search_sections(query, limit=max_sections * 2)
+        # Search for relevant sections (with optional category filter)
+        sections = await self.search_sections(query, category=category, limit=max_sections * 2)
         
         if not sections:
             return ""

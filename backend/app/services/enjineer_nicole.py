@@ -1244,12 +1244,15 @@ This plan requires your approval before implementation begins. Review the phases
             else:
                 result = {"success": False, "status": "error", "message": f"Unknown agent type: {agent_type}"}
             
-            # Transform result to standard format
-            status = "pass" if result.get("passed") or result.get("success") else "fail"
-            if result.get("verdict") == "CONDITIONAL_APPROVAL":
-                status = "warning"
+            # Transform result to standard format for execution tracking
+            # NOTE: QA report storage is handled by qa_service._store_qa_report()
+            # This is the SINGLE SOURCE OF TRUTH - no duplicate storage here
             
-            # Update execution status and store QA report
+            execution_status = "completed"
+            if result.get("error") or not result.get("success", True):
+                execution_status = "failed"
+            
+            # Update agent execution status only (not QA reports - handled by qa_service)
             async with pool.acquire() as conn:
                 await conn.execute(
                     """
@@ -1257,57 +1260,12 @@ This plan requires your approval before implementation begins. Review the phases
                     SET status = $1, result = $2, completed_at = NOW()
                     WHERE id = $3
                     """,
-                    "completed" if result.get("status") != "error" else "failed",
+                    execution_status,
                     json.dumps(result),
                     execution_id
                 )
-                
-                # Store QA report if it's a QA agent
-                if agent_type in ("qa", "sr_qa"):
-                    # Map status to valid overall_status values
-                    status_map = {"pass": "pass", "fail": "fail", "warning": "partial", "error": "fail"}
-                    overall_status = status_map.get(result.get("status", "pass"), "partial")
-                    
-                    # Build checks array from issues
-                    issues = result.get("issues", [])
-                    checks = []
-                    for issue in issues:
-                        checks.append({
-                            "name": issue.get("description", "Issue"),
-                            "status": "fail" if issue.get("severity") in ("critical", "high") else "warning",
-                            "message": issue.get("description", "")
-                        })
-                    if not checks:
-                        checks.append({"name": "Code Review", "status": overall_status, "message": result.get("summary", "Complete")})
-                    
-                    # Get current plan_id for linkage
-                    current_plan = await conn.fetchrow(
-                        "SELECT id FROM enjineer_plans WHERE project_id = $1 AND status IN ('approved', 'in_progress') ORDER BY id DESC LIMIT 1",
-                        self.project_id
-                    )
-                    plan_id = current_plan["id"] if current_plan else None
-                    
-                    await conn.execute(
-                        """
-                        INSERT INTO enjineer_qa_reports 
-                        (project_id, execution_id, plan_id, trigger_type, qa_depth, overall_status, checks, summary, 
-                         blocking_issues_count, warnings_count, passed_count, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-                        """,
-                        self.project_id,
-                        execution_id,  # Already an integer from SERIAL
-                        plan_id,  # plan_id linkage
-                        "phase_complete",  # trigger_type
-                        "standard" if agent_type == "qa" else "thorough",  # qa_depth
-                        overall_status,
-                        json.dumps(checks),
-                        result.get("summary", ""),
-                        len([i for i in issues if i.get("severity") in ("critical", "high")]),
-                        len([i for i in issues if i.get("severity") in ("medium", "low")]),
-                        1 if overall_status == "pass" else 0
-                    )
             
-            logger.warning(f"[Enjineer] Agent {agent_type} completed: status={result.get('status')}")
+            logger.warning(f"[Enjineer] Agent {agent_type} completed: passed={result.get('passed')}, verdict={result.get('verdict')}")
             
             return {
                 "success": result.get("status") != "error",
