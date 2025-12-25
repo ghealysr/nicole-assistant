@@ -715,9 +715,46 @@ class EnjineerNicole:
             file_tree=file_tree
         )
     
-    def build_messages(self, new_message: str) -> List[Dict[str, Any]]:
-        """Build message history including context injections."""
+    async def build_messages(self, new_message: str) -> List[Dict[str, Any]]:
+        """Build message history including context injections and knowledge base."""
         messages = []
+        
+        # =========================================================================
+        # AUTO-INJECT RELEVANT KNOWLEDGE BASE CONTENT
+        # =========================================================================
+        # This is the critical piece - automatically search for relevant design
+        # knowledge based on the user's message and inject it as context
+        try:
+            if new_message and len(new_message) > 10:
+                relevant_knowledge = await kb_service.get_relevant_context(
+                    query=new_message,
+                    max_sections=5,
+                    max_tokens=6000  # ~4500 words of knowledge context
+                )
+                
+                if relevant_knowledge and len(relevant_knowledge) > 100:
+                    messages.append({
+                        "role": "user", 
+                        "content": f"[KNOWLEDGE BASE CONTEXT - Apply these patterns exactly]\n\n{relevant_knowledge}"
+                    })
+                    messages.append({
+                        "role": "assistant", 
+                        "content": "I've reviewed the relevant design knowledge. I'll apply these patterns and cite sources in my implementation."
+                    })
+                    logger.info(f"[KB] Auto-injected {len(relevant_knowledge)} chars of knowledge context")
+                    
+                    # Log the auto-injection for analytics
+                    try:
+                        await kb_service.log_access(
+                            file_id=None,  # Auto-injection covers multiple files
+                            user_id=self.user_id,
+                            query_text=new_message[:500],  # First 500 chars
+                            access_method="auto_inject"
+                        )
+                    except Exception:
+                        pass  # Non-critical, don't fail message building
+        except Exception as e:
+            logger.warning(f"[KB] Failed to auto-inject knowledge: {e}")
         
         # Add plan context if exists
         if self.project_data.get("plan"):
@@ -1713,7 +1750,7 @@ Analyze the code and estimate scores for:
         
         # Build initial request
         system_prompt = self.build_system_prompt()
-        messages = self.build_messages(message)
+        messages = await self.build_messages(message)
         
         logger.info(f"[Enjineer] Processing message for project '{self.project_data['name']}' ({self.project_id})")
         
