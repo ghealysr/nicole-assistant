@@ -90,7 +90,7 @@ export interface Project {
 }
 
 export type MainTab = 'code' | 'preview' | 'terminal';
-export type SidebarTab = 'files' | 'plan';
+export type SidebarTab = 'files' | 'plan' | 'qa';
 export type PreviewMode = 'mobile' | 'tablet' | 'desktop';
 
 interface EnjineerStore {

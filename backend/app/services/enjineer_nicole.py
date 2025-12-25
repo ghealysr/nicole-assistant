@@ -123,20 +123,63 @@ For EACH phase:
 3. Write PRODUCTION-READY code (no TODOs, no placeholders)
 4. Call `update_plan_step` with status "complete"
 5. Call `dispatch_agent` with agent_type="qa"
-6. Report QA findings, fix ALL issues before proceeding
-7. Ask: "Phase X complete. QA passed. Ready for phase Y?"
+6. **IMMEDIATELY call `get_qa_reports`** to retrieve the detailed findings
+7. Follow the QA-to-Fix Workflow below
+8. Only proceed when all critical/high issues are resolved
+
+### QA-to-Fix Workflow (MANDATORY after every QA)
+After calling `dispatch_agent(agent_type="qa")`:
+
+**Step 1: Retrieve Report**
+```
+Call get_qa_reports(limit=1, include_issues=true)
+```
+
+**Step 2: Analyze Issues by Severity**
+- CRITICAL issues: MUST fix before proceeding (blocks deployment)
+- HIGH issues: MUST fix before proceeding (significant problems)
+- MEDIUM issues: Should fix, can continue with caution
+- LOW issues: Note for improvement, can proceed
+
+**Step 3: Create Fix Plan**
+For each critical/high issue:
+1. Identify the file and line from the issue
+2. Use `update_file` to apply the suggested fix
+3. Document what was changed
+
+**Step 4: Verify Fixes**
+After fixing all critical/high issues:
+1. Call `dispatch_agent(agent_type="qa")` again
+2. Call `get_qa_reports` to verify issues are resolved
+3. Only proceed if critical/high count = 0
+
+**Step 5: Report to User**
+"Phase X complete. QA Review: [pass/fail]
+- Fixed: [list of fixes made]
+- Remaining: [any medium/low issues noted]
+Ready for Phase Y?"
 
 ### Phase 3: Preview Checkpoint (REQUIRED)
 When core layout complete:
-1. Trigger QA for preview readiness
-2. Announce: "Preview available! Click Update in Preview tab."
-3. Wait for user feedback before continuing
+1. Trigger QA for preview readiness with `dispatch_agent(agent_type="qa")`
+2. Fix any issues using the QA-to-Fix Workflow
+3. Announce: "Preview available! Click Update in Preview tab."
+4. Wait for user feedback before continuing
 
 ### Phase 4: Final QA (REQUIRED before deploy)
-1. Call `dispatch_agent` with agent_type="sr_qa" for full audit
-2. SR QA performs: Lighthouse, accessibility, mobile, code review
-3. Report findings with severity levels
-4. Fix ALL critical issues before proceeding
+1. Call `dispatch_agent` with agent_type="sr_qa" for full audit (uses Claude Opus 4.5)
+2. SR QA performs: Deep architectural review, security audit, accessibility, performance
+3. **Call `get_qa_reports`** to get detailed findings
+4. Fix ALL critical and high issues using QA-to-Fix Workflow
+5. Re-run SR QA until all critical issues resolved
+
+### Deployment Error Handling
+If deployment fails:
+1. Call `get_deployment_logs()` to retrieve build errors
+2. Analyze error messages (TypeScript, ESLint, missing deps)
+3. Use `update_file` to fix each error
+4. Inform user: "Found [N] build errors. Fixing now..."
+5. After fixes, user should click "Update Preview" to redeploy
 
 ### Phase 5: Deployment (REQUIRES EXPLICIT APPROVAL)
 1. Confirm: "All QA passed. Ready to deploy to production?"
@@ -510,6 +553,7 @@ Categories available:
 - components: shadcn/ui, Aceternity UI
 - fundamentals: Typography, color theory, spacing systems
 - core: Anti-patterns, common mistakes
+- qa: React patterns, TypeScript, accessibility, performance
 
 ALWAYS use this tool when:
 - Implementing hero sections, pricing pages, or bento grids
@@ -526,7 +570,7 @@ ALWAYS use this tool when:
                 },
                 "category": {
                     "type": "string",
-                    "enum": ["patterns", "animation", "components", "fundamentals", "core"],
+                    "enum": ["patterns", "animation", "components", "fundamentals", "core", "qa"],
                     "description": "Optional category filter to narrow results"
                 },
                 "include_sections": {
@@ -535,6 +579,75 @@ ALWAYS use this tool when:
                 }
             },
             "required": ["query"]
+        }
+    },
+    # =========================================================================
+    # QA Report Retrieval Tool - Allows Nicole to read past QA reports
+    # =========================================================================
+    {
+        "name": "get_qa_reports",
+        "description": """Retrieve QA reports for this project. Use this tool to:
+- Read issues found in the last QA review
+- Create a fix plan based on QA findings
+- Verify if issues from previous QA runs were resolved
+- Track QA history and patterns
+
+ALWAYS use this after dispatch_agent(qa) to:
+1. Get the detailed issues list
+2. Create targeted fixes for each issue
+3. Re-run QA to verify fixes""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of reports to retrieve (default: 3, max: 10)",
+                    "default": 3
+                },
+                "status_filter": {
+                    "type": "string",
+                    "enum": ["all", "pass", "fail", "partial"],
+                    "description": "Filter by QA result status",
+                    "default": "all"
+                },
+                "include_issues": {
+                    "type": "boolean",
+                    "description": "Include detailed issue list (default: true)",
+                    "default": True
+                }
+            }
+        }
+    },
+    # =========================================================================
+    # Deployment Logs Tool - Allows Nicole to read Vercel build errors
+    # =========================================================================
+    {
+        "name": "get_deployment_logs",
+        "description": """Retrieve build logs and error messages from Vercel deployments.
+Use this tool when:
+- A deployment fails and you need to understand why
+- You see 'Deployment failed' error and need the actual error message
+- You need to fix TypeScript, ESLint, or build errors
+
+Returns:
+- Build step status (success/failed)
+- Error messages with file/line information
+- TypeScript compilation errors
+- Missing dependency errors""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Vercel deployment ID (if known). If not provided, fetches latest deployment."
+                },
+                "log_type": {
+                    "type": "string",
+                    "enum": ["build", "output", "all"],
+                    "description": "Type of logs to retrieve",
+                    "default": "all"
+                }
+            }
         }
     }
 ]
@@ -844,6 +957,10 @@ class EnjineerNicole:
                 return await self._deploy(pool, tool_input)
             elif tool_name == "search_knowledge_base":
                 return await self._search_knowledge_base(tool_input)
+            elif tool_name == "get_qa_reports":
+                return await self._get_qa_reports(pool, tool_input)
+            elif tool_name == "get_deployment_logs":
+                return await self._get_deployment_logs(pool, tool_input)
             else:
                 result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                 logger.warning(f"[Enjineer] Tool result: {result}")
@@ -1506,6 +1623,399 @@ This plan requires your approval before implementation begins. Review the phases
             return {
                 "success": False,
                 "error": f"Knowledge base search failed: {str(e)}"
+            }
+    
+    # =========================================================================
+    # QA REPORT RETRIEVAL - Allows Nicole to read and act on QA findings
+    # =========================================================================
+    
+    async def _get_qa_reports(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Retrieve QA reports for this project.
+        
+        Returns:
+            - List of QA reports with issues, status, and recommendations
+            - Structured format for Nicole to create fix plans
+        """
+        limit = min(input_data.get("limit", 3), 10)  # Max 10
+        status_filter = input_data.get("status_filter", "all")
+        include_issues = input_data.get("include_issues", True)
+        
+        try:
+            async with pool.acquire() as conn:
+                # Build query with optional status filter
+                if status_filter == "all":
+                    reports = await conn.fetch(
+                        """
+                        SELECT 
+                            id, project_id, plan_id, phase_number,
+                            trigger_type, qa_depth, overall_status,
+                            checks, summary, 
+                            blocking_issues_count, warnings_count, passed_count,
+                            model_used, tokens_used, estimated_cost_usd,
+                            duration_seconds, created_at
+                        FROM enjineer_qa_reports 
+                        WHERE project_id = $1 
+                        ORDER BY created_at DESC 
+                        LIMIT $2
+                        """,
+                        self.project_id, limit
+                    )
+                else:
+                    reports = await conn.fetch(
+                        """
+                        SELECT 
+                            id, project_id, plan_id, phase_number,
+                            trigger_type, qa_depth, overall_status,
+                            checks, summary,
+                            blocking_issues_count, warnings_count, passed_count,
+                            model_used, tokens_used, estimated_cost_usd,
+                            duration_seconds, created_at
+                        FROM enjineer_qa_reports 
+                        WHERE project_id = $1 AND overall_status = $2
+                        ORDER BY created_at DESC 
+                        LIMIT $3
+                        """,
+                        self.project_id, status_filter, limit
+                    )
+            
+            if not reports:
+                return {
+                    "success": True,
+                    "result": {
+                        "found": False,
+                        "message": "No QA reports found for this project. Run dispatch_agent(agent_type='qa') to generate a QA report.",
+                        "reports": []
+                    }
+                }
+            
+            # Format reports for Nicole
+            formatted_reports = []
+            for report in reports:
+                report_data = {
+                    "id": str(report["id"]),
+                    "created_at": report["created_at"].isoformat() if report["created_at"] else None,
+                    "trigger_type": report["trigger_type"],
+                    "qa_depth": report["qa_depth"],
+                    "status": report["overall_status"],
+                    "model_used": report.get("model_used"),
+                    "phase_number": report["phase_number"],
+                    "summary": report["summary"],
+                    "counts": {
+                        "blocking": report["blocking_issues_count"] or 0,
+                        "warnings": report["warnings_count"] or 0,
+                        "passed": report["passed_count"] or 0
+                    }
+                }
+                
+                # Include detailed issues if requested
+                if include_issues and report["checks"]:
+                    checks = report["checks"]
+                    if isinstance(checks, str):
+                        try:
+                            checks = json.loads(checks)
+                        except json.JSONDecodeError:
+                            checks = []
+                    
+                    # Group issues by severity for easier action planning
+                    critical_issues = []
+                    high_issues = []
+                    medium_issues = []
+                    low_issues = []
+                    
+                    for check in checks:
+                        severity = check.get("severity", "medium").lower()
+                        issue_entry = {
+                            "category": check.get("category"),
+                            "file": check.get("file"),
+                            "line": check.get("line"),
+                            "issue": check.get("issue") or check.get("message"),
+                            "fix": check.get("fix") or check.get("suggestion"),
+                            "status": check.get("status", "open")
+                        }
+                        
+                        if severity == "critical":
+                            critical_issues.append(issue_entry)
+                        elif severity == "high":
+                            high_issues.append(issue_entry)
+                        elif severity == "medium":
+                            medium_issues.append(issue_entry)
+                        else:
+                            low_issues.append(issue_entry)
+                    
+                    report_data["issues"] = {
+                        "critical": critical_issues,
+                        "high": high_issues,
+                        "medium": medium_issues,
+                        "low": low_issues
+                    }
+                    report_data["action_required"] = len(critical_issues) > 0 or len(high_issues) > 0
+                
+                formatted_reports.append(report_data)
+            
+            # Generate actionable summary
+            latest = formatted_reports[0]
+            action_summary = ""
+            if latest.get("action_required"):
+                critical_count = len(latest.get("issues", {}).get("critical", []))
+                high_count = len(latest.get("issues", {}).get("high", []))
+                action_summary = f"ACTION REQUIRED: {critical_count} critical and {high_count} high severity issues need fixing before proceeding."
+            elif latest["status"] == "pass":
+                action_summary = "All checks passed. Safe to proceed to next phase."
+            else:
+                action_summary = f"QA status: {latest['status']}. Review issues and address as needed."
+            
+            logger.info(f"[QA] Retrieved {len(formatted_reports)} reports for project {self.project_id}")
+            
+            return {
+                "success": True,
+                "result": {
+                    "found": True,
+                    "report_count": len(formatted_reports),
+                    "action_summary": action_summary,
+                    "reports": formatted_reports,
+                    "instruction": """Review the issues above and create fixes:
+1. For each critical/high issue, apply the suggested fix
+2. Use update_file to make changes
+3. After all fixes, run dispatch_agent(agent_type='qa') again to verify"""
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[QA] Failed to retrieve reports: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to retrieve QA reports: {str(e)}"
+            }
+    
+    # =========================================================================
+    # DEPLOYMENT LOGS - Allows Nicole to read Vercel build errors
+    # =========================================================================
+    
+    async def _get_deployment_logs(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Retrieve build logs and error messages from Vercel deployments.
+        
+        Uses Vercel API:
+        - GET /v2/deployments/{id} - Deployment status
+        - GET /v2/deployments/{id}/events - Build events/logs
+        
+        Returns structured error information for Nicole to fix.
+        """
+        import httpx
+        from app.config import settings
+        
+        deployment_id = input_data.get("deployment_id")
+        log_type = input_data.get("log_type", "all")
+        
+        # Get Vercel credentials
+        vercel_token = settings.VERCEL_TOKEN
+        vercel_team_id = getattr(settings, 'VERCEL_TEAM_ID', None)
+        
+        if not vercel_token:
+            return {
+                "success": False,
+                "error": "Vercel token not configured. Cannot retrieve deployment logs."
+            }
+        
+        headers = {"Authorization": f"Bearer {vercel_token}"}
+        
+        try:
+            # If no deployment_id provided, get the latest deployment
+            if not deployment_id:
+                async with pool.acquire() as conn:
+                    latest = await conn.fetchrow(
+                        """
+                        SELECT platform_deployment_id, status, error_message, build_log
+                        FROM enjineer_deployments 
+                        WHERE project_id = $1 AND platform = 'vercel'
+                        ORDER BY created_at DESC LIMIT 1
+                        """,
+                        self.project_id
+                    )
+                    
+                    if latest:
+                        deployment_id = latest["platform_deployment_id"]
+                        
+                        # If we have stored logs, return them
+                        if latest["error_message"] or latest["build_log"]:
+                            return {
+                                "success": True,
+                                "result": {
+                                    "source": "database",
+                                    "deployment_id": deployment_id,
+                                    "status": latest["status"],
+                                    "error_message": latest["error_message"],
+                                    "build_log": latest["build_log"],
+                                    "instruction": "Review the error above and fix the code. Common fixes: missing imports, TypeScript errors, ESLint violations."
+                                }
+                            }
+            
+            if not deployment_id:
+                # Try to get from project's vercel_project_id
+                async with pool.acquire() as conn:
+                    project = await conn.fetchrow(
+                        "SELECT vercel_project_id FROM enjineer_projects WHERE id = $1",
+                        self.project_id
+                    )
+                    
+                    if not project or not project["vercel_project_id"]:
+                        return {
+                            "success": False,
+                            "error": "No Vercel deployments found for this project. Deploy first using the preview."
+                        }
+                    
+                    # Get latest deployment from Vercel
+                    vercel_project_id = project["vercel_project_id"]
+                    url = f"https://api.vercel.com/v6/deployments?projectId={vercel_project_id}&limit=1"
+                    if vercel_team_id:
+                        url += f"&teamId={vercel_team_id}"
+                    
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(url, headers=headers, timeout=15.0)
+                        if resp.status_code == 200:
+                            deployments = resp.json().get("deployments", [])
+                            if deployments:
+                                deployment_id = deployments[0]["uid"]
+            
+            if not deployment_id:
+                return {
+                    "success": False,
+                    "error": "Could not find a deployment ID. Please deploy the project first."
+                }
+            
+            # Fetch deployment details from Vercel
+            deployment_url = f"https://api.vercel.com/v13/deployments/{deployment_id}"
+            events_url = f"https://api.vercel.com/v2/deployments/{deployment_id}/events"
+            
+            if vercel_team_id:
+                deployment_url += f"?teamId={vercel_team_id}"
+                events_url += f"?teamId={vercel_team_id}"
+            
+            async with httpx.AsyncClient() as client:
+                # Get deployment status
+                deployment_resp = await client.get(deployment_url, headers=headers, timeout=15.0)
+                deployment_data = {}
+                if deployment_resp.status_code == 200:
+                    deployment_data = deployment_resp.json()
+                
+                # Get build events/logs
+                events_data = []
+                if log_type in ["build", "all"]:
+                    events_resp = await client.get(events_url, headers=headers, timeout=15.0)
+                    if events_resp.status_code == 200:
+                        events_data = events_resp.json()
+            
+            # Parse deployment state and errors
+            state = deployment_data.get("readyState", deployment_data.get("state", "UNKNOWN"))
+            error_info = {
+                "state": state,
+                "deployment_id": deployment_id,
+                "url": deployment_data.get("url"),
+                "errors": [],
+                "build_steps": []
+            }
+            
+            # Extract error from deployment data
+            if deployment_data.get("errorMessage"):
+                error_info["errors"].append({
+                    "type": "deployment_error",
+                    "message": deployment_data["errorMessage"]
+                })
+            
+            if deployment_data.get("errorCode"):
+                error_info["error_code"] = deployment_data["errorCode"]
+            
+            # Parse build events for errors
+            for event in events_data:
+                if isinstance(event, dict):
+                    event_type = event.get("type", "")
+                    
+                    # Build step tracking
+                    if event_type == "build-step":
+                        error_info["build_steps"].append({
+                            "name": event.get("name"),
+                            "status": event.get("status"),
+                            "duration": event.get("duration")
+                        })
+                    
+                    # Error events
+                    if "error" in event_type.lower() or event.get("level") == "error":
+                        error_info["errors"].append({
+                            "type": event_type,
+                            "message": event.get("text") or event.get("message"),
+                            "file": event.get("file"),
+                            "line": event.get("line")
+                        })
+                    
+                    # Log output that might contain errors
+                    if event_type == "command-output" and event.get("text"):
+                        text = event["text"]
+                        if any(keyword in text.lower() for keyword in ["error", "failed", "cannot find", "module not found"]):
+                            error_info["errors"].append({
+                                "type": "build_output",
+                                "message": text[:500]  # Truncate long messages
+                            })
+            
+            # Store logs in database for future reference
+            if error_info["errors"]:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE enjineer_deployments 
+                        SET error_message = $1, build_log = $2, updated_at = NOW()
+                        WHERE platform_deployment_id = $3
+                        """,
+                        error_info["errors"][0].get("message", ""),
+                        json.dumps(error_info["build_steps"]),
+                        deployment_id
+                    )
+            
+            # Generate action items
+            action_items = []
+            for error in error_info["errors"][:5]:  # Top 5 errors
+                msg = error.get("message", "")
+                if "module not found" in msg.lower() or "cannot find module" in msg.lower():
+                    action_items.append(f"Install missing dependency or fix import path: {msg[:100]}")
+                elif "typescript" in msg.lower() or "type" in msg.lower():
+                    action_items.append(f"Fix TypeScript error: {msg[:100]}")
+                elif "eslint" in msg.lower():
+                    action_items.append(f"Fix ESLint violation: {msg[:100]}")
+                else:
+                    action_items.append(f"Fix: {msg[:100]}")
+            
+            logger.info(f"[Vercel] Retrieved logs for deployment {deployment_id}: state={state}, errors={len(error_info['errors'])}")
+            
+            return {
+                "success": True,
+                "result": {
+                    "source": "vercel_api",
+                    "deployment_id": deployment_id,
+                    "state": state,
+                    "is_failed": state in ["ERROR", "FAILED", "CANCELED"],
+                    "is_building": state in ["BUILDING", "QUEUED", "INITIALIZING"],
+                    "is_ready": state == "READY",
+                    "url": f"https://{deployment_data.get('url')}" if deployment_data.get('url') else None,
+                    "error_count": len(error_info["errors"]),
+                    "errors": error_info["errors"][:10],  # Top 10 errors
+                    "build_steps": error_info["build_steps"],
+                    "action_items": action_items,
+                    "instruction": """To fix deployment errors:
+1. Review each error message carefully
+2. Use update_file to fix the specific file/line mentioned
+3. Common fixes:
+   - Missing imports: Add the import statement
+   - Type errors: Fix the TypeScript types
+   - ESLint: Follow the linting rule suggestion
+4. After fixing, trigger a new deployment via the Preview tab"""
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[Vercel] Failed to retrieve logs: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to retrieve deployment logs: {str(e)}"
             }
     
     def _detect_language(self, path: str) -> str:

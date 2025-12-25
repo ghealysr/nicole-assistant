@@ -6,6 +6,18 @@
  */
 
 import { EnjineerFile, PlanStep, PlanOverview, Project } from './store';
+import type { QAReport, QACheck } from '@/types/enjineer';
+
+/**
+ * QA Report Detail - Full report with all checks
+ */
+interface QAReportDetail extends Omit<QAReport, 'issues'> {
+  checks: QACheck[];
+  blockingIssuesCount: number;
+  warningsCount: number;
+  passedCount: number;
+  screenshots: string[];
+}
 
 /**
  * API Base URL - Hardcoded for reliability
@@ -473,6 +485,59 @@ export const enjineerApi = {
       body: JSON.stringify({ environment }),
     });
     if (!res.ok) throw new Error('Failed to deploy');
+    return res.json();
+  },
+
+  // ========================================================================
+  // QA Reports
+  // ========================================================================
+  
+  /**
+   * Get QA reports for a project.
+   * @param projectId - Project ID
+   * @param options - Optional filters (limit, status)
+   * @returns List of QA reports with issues grouped by severity
+   */
+  async getQAReports(
+    projectId: number, 
+    options?: { limit?: number; status?: 'pass' | 'fail' | 'partial' }
+  ): Promise<{ 
+    reports: QAReport[]; 
+    count: number; 
+    projectId: number 
+  }> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', options.limit.toString());
+    if (options?.status) params.set('status', options.status);
+    
+    const url = `${API_BASE}/enjineer/projects/${projectId}/qa-reports${params.toString() ? `?${params}` : ''}`;
+    const res = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to get QA reports');
+    }
+    
+    return res.json();
+  },
+
+  /**
+   * Get a single QA report by ID with full details.
+   * @param projectId - Project ID
+   * @param reportId - QA Report ID
+   */
+  async getQAReport(projectId: number, reportId: string): Promise<QAReportDetail> {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/qa-reports/${reportId}`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to get QA report');
+    }
+    
     return res.json();
   },
 

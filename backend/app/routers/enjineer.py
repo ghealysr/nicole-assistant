@@ -1348,6 +1348,183 @@ async def deploy_project(
 
 
 # ============================================================================
+# QA Reports Endpoints
+# ============================================================================
+
+@router.get("/projects/{project_id}/qa-reports")
+async def get_qa_reports(
+    project_id: int,
+    limit: int = Query(default=10, le=50),
+    status: Optional[str] = Query(default=None, description="Filter by status: pass, fail, partial"),
+    user = Depends(get_current_user)
+):
+    """
+    Retrieve QA reports for a project.
+    
+    Returns:
+        - List of QA reports with issues, status, and recommendations
+        - Grouped issues by severity for action planning
+    """
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        if status:
+            reports = await conn.fetch(
+                """
+                SELECT 
+                    id, project_id, execution_id, plan_id, phase_number,
+                    trigger_type, qa_depth, overall_status,
+                    checks, summary,
+                    blocking_issues_count, warnings_count, passed_count,
+                    model_used, tokens_used, estimated_cost_usd,
+                    duration_seconds, created_at
+                FROM enjineer_qa_reports 
+                WHERE project_id = $1 AND overall_status = $2
+                ORDER BY created_at DESC 
+                LIMIT $3
+                """,
+                project_id, status, limit
+            )
+        else:
+            reports = await conn.fetch(
+                """
+                SELECT 
+                    id, project_id, execution_id, plan_id, phase_number,
+                    trigger_type, qa_depth, overall_status,
+                    checks, summary,
+                    blocking_issues_count, warnings_count, passed_count,
+                    model_used, tokens_used, estimated_cost_usd,
+                    duration_seconds, created_at
+                FROM enjineer_qa_reports 
+                WHERE project_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2
+                """,
+                project_id, limit
+            )
+    
+    formatted_reports = []
+    for report in reports:
+        # Parse checks JSONB
+        checks = report["checks"]
+        if isinstance(checks, str):
+            try:
+                checks = json.loads(checks)
+            except json.JSONDecodeError:
+                checks = []
+        
+        # Group issues by severity
+        issues_by_severity = {
+            "critical": [],
+            "high": [],
+            "medium": [],
+            "low": []
+        }
+        
+        if checks and isinstance(checks, list):
+            for check in checks:
+                severity = check.get("severity", "medium").lower()
+                issue_data = {
+                    "category": check.get("category"),
+                    "file": check.get("file"),
+                    "line": check.get("line"),
+                    "issue": check.get("issue") or check.get("message"),
+                    "fix": check.get("fix") or check.get("suggestion"),
+                    "status": check.get("status", "open")
+                }
+                if severity in issues_by_severity:
+                    issues_by_severity[severity].append(issue_data)
+                else:
+                    issues_by_severity["medium"].append(issue_data)
+        
+        formatted_reports.append({
+            "id": str(report["id"]),
+            "executionId": str(report["execution_id"]) if report["execution_id"] else None,
+            "planId": str(report["plan_id"]) if report["plan_id"] else None,
+            "phaseNumber": report["phase_number"],
+            "triggerType": report["trigger_type"],
+            "qaDepth": report["qa_depth"],
+            "status": report["overall_status"],
+            "modelUsed": report.get("model_used"),
+            "tokensUsed": report.get("tokens_used"),
+            "estimatedCostUsd": float(report["estimated_cost_usd"]) if report.get("estimated_cost_usd") else None,
+            "summary": report["summary"],
+            "counts": {
+                "blocking": report["blocking_issues_count"] or 0,
+                "warnings": report["warnings_count"] or 0,
+                "passed": report["passed_count"] or 0
+            },
+            "issues": issues_by_severity,
+            "durationSeconds": report["duration_seconds"],
+            "createdAt": report["created_at"].isoformat() if report["created_at"] else None
+        })
+    
+    return {
+        "reports": formatted_reports,
+        "count": len(formatted_reports),
+        "projectId": project_id
+    }
+
+
+@router.get("/projects/{project_id}/qa-reports/{report_id}")
+async def get_qa_report_detail(
+    project_id: int,
+    report_id: str,
+    user = Depends(get_current_user)
+):
+    """Get detailed QA report by ID."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        report = await conn.fetchrow(
+            """
+            SELECT * FROM enjineer_qa_reports 
+            WHERE id = $1 AND project_id = $2
+            """,
+            int(report_id), project_id
+        )
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="QA report not found")
+    
+    # Parse checks JSONB
+    checks = report["checks"]
+    if isinstance(checks, str):
+        try:
+            checks = json.loads(checks)
+        except json.JSONDecodeError:
+            checks = []
+    
+    return {
+        "id": str(report["id"]),
+        "projectId": str(report["project_id"]),
+        "executionId": str(report["execution_id"]) if report["execution_id"] else None,
+        "planId": str(report["plan_id"]) if report["plan_id"] else None,
+        "phaseNumber": report["phase_number"],
+        "triggerType": report["trigger_type"],
+        "qaDepth": report["qa_depth"],
+        "status": report["overall_status"],
+        "modelUsed": report.get("model_used"),
+        "tokensUsed": report.get("tokens_used"),
+        "estimatedCostUsd": float(report["estimated_cost_usd"]) if report.get("estimated_cost_usd") else None,
+        "summary": report["summary"],
+        "checks": checks,
+        "blockingIssuesCount": report["blocking_issues_count"] or 0,
+        "warningsCount": report["warnings_count"] or 0,
+        "passedCount": report["passed_count"] or 0,
+        "screenshots": report.get("screenshots") or [],
+        "durationSeconds": report["duration_seconds"],
+        "createdAt": report["created_at"].isoformat() if report["created_at"] else None
+    }
+
+
+# ============================================================================
 # Preview Endpoints
 # ============================================================================
 

@@ -215,29 +215,56 @@ export interface QACheck {
   file: string | null;
   line: number | null;
   column: number | null;
-  severity: 'critical' | 'warning' | 'info';
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
   suggestion: string | null;
+  fix: string | null;
   code_snippet: string | null;
   screenshot_url: string | null;
 }
 
+export interface QAIssue {
+  category: string | null;
+  file: string | null;
+  line: number | null;
+  issue: string | null;
+  fix: string | null;
+  status: 'open' | 'fixed' | 'ignored';
+}
+
+export interface QAIssuesBySeverity {
+  critical: QAIssue[];
+  high: QAIssue[];
+  medium: QAIssue[];
+  low: QAIssue[];
+}
+
 export interface QAReport {
   id: string;
-  project_id: string;
-  execution_id: string | null;
-  plan_id: string | null;
-  phase_number: number | null;
-  trigger_type: 'phase_complete' | 'manual' | 'pre_deploy' | 'scheduled';
-  qa_depth: 'light' | 'standard' | 'thorough';
-  overall_status: 'pass' | 'fail' | 'partial';
-  checks: QACheck[];
+  projectId: string;
+  executionId: string | null;
+  planId: string | null;
+  phaseNumber: number | null;
+  triggerType: 'phase_complete' | 'manual' | 'pre_deploy' | 'scheduled' | 'standard_qa' | 'senior_qa' | 'full_qa';
+  qaDepth: 'light' | 'standard' | 'thorough' | 'full' | 'pipeline';
+  status: 'pass' | 'fail' | 'partial';
+  modelUsed: string | null;
+  tokensUsed: { prompt?: number; completion?: number } | null;
+  estimatedCostUsd: number | null;
   summary: string | null;
-  blocking_issues_count: number;
-  warnings_count: number;
-  passed_count: number;
-  screenshots: string[];
-  duration_seconds: number | null;
-  created_at: string;
+  counts: {
+    blocking: number;
+    warnings: number;
+    passed: number;
+  };
+  issues: QAIssuesBySeverity;
+  durationSeconds: number | null;
+  createdAt: string | null;
+}
+
+export interface QAReportsResponse {
+  reports: QAReport[];
+  count: number;
+  projectId: number;
 }
 
 // ============================================================================

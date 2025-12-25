@@ -138,6 +138,42 @@ KNOWLEDGE_FILES = [
         "tags": ["anti-patterns", "mistakes", "accessibility", "performance", "wcag", "ux"],
         "path": "knowledge/core/anti-patterns.md"
     },
+    
+    # -------------------------------------------------------------------------
+    # QA - Quality Assurance Knowledge for QA Agents
+    # -------------------------------------------------------------------------
+    {
+        "slug": "accessibility-wcag",
+        "title": "Accessibility & WCAG 2.2 Compliance",
+        "category": "qa",
+        "description": "WCAG 2.2 AA requirements, color contrast, keyboard navigation, ARIA patterns, screen reader testing",
+        "tags": ["accessibility", "wcag", "a11y", "aria", "screen-reader", "contrast", "keyboard"],
+        "path": "knowledge/qa/accessibility-wcag.md"
+    },
+    {
+        "slug": "react-typescript-patterns",
+        "title": "React & TypeScript Code Review Patterns",
+        "category": "qa",
+        "description": "React best practices, TypeScript strict mode, hooks rules, component patterns, error handling",
+        "tags": ["react", "typescript", "hooks", "patterns", "code-review", "best-practices"],
+        "path": "knowledge/qa/react-typescript-patterns.md"
+    },
+    {
+        "slug": "performance-web-vitals",
+        "title": "Core Web Vitals & Performance Optimization",
+        "category": "qa",
+        "description": "LCP, INP, CLS optimization, bundle analysis, lazy loading, image optimization, caching strategies",
+        "tags": ["performance", "web-vitals", "lcp", "cls", "inp", "lighthouse", "optimization"],
+        "path": "knowledge/qa/performance-web-vitals.md"
+    },
+    {
+        "slug": "css-tailwind-patterns",
+        "title": "CSS & Tailwind Best Practices",
+        "category": "qa",
+        "description": "Tailwind v4 patterns, responsive design, dark mode, CSS specificity, z-index management",
+        "tags": ["css", "tailwind", "responsive", "dark-mode", "specificity", "styles"],
+        "path": "knowledge/qa/css-tailwind-patterns.md"
+    },
 ]
 
 

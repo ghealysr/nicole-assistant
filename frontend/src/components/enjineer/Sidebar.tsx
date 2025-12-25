@@ -21,10 +21,11 @@ import {
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
   Image as ImageIcon, Settings, Package, Globe, Database,
-  Layout, Layers, Terminal, X, Clock, Code
+  Layout, Layers, Terminal, X, Clock, Code, Shield
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
 import { enjineerApi } from '@/lib/enjineer/api';
+import { QAReportPanel } from './QAReportPanel';
 
 export function Sidebar() {
   const {
@@ -49,32 +50,44 @@ export function Sidebar() {
         <button
           onClick={() => setSidebarTab('files')}
           className={cn(
-            "flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2",
+            "flex-1 px-3 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
             sidebarTab === 'files'
               ? "text-[#F1F5F9] border-b-2 border-[#8B5CF6]"
               : "text-[#64748B] hover:text-[#94A3B8]"
           )}
         >
-          <FileCode size={16} />
+          <FileCode size={14} />
           Files
         </button>
         <button
           onClick={() => setSidebarTab('plan')}
           className={cn(
-            "flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2",
+            "flex-1 px-3 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
             sidebarTab === 'plan'
               ? "text-[#F1F5F9] border-b-2 border-[#8B5CF6]"
               : "text-[#64748B] hover:text-[#94A3B8]"
           )}
         >
-          <ListChecks size={16} />
+          <ListChecks size={14} />
           Plan
+        </button>
+        <button
+          onClick={() => setSidebarTab('qa')}
+          className={cn(
+            "flex-1 px-3 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
+            sidebarTab === 'qa'
+              ? "text-[#F1F5F9] border-b-2 border-[#8B5CF6]"
+              : "text-[#64748B] hover:text-[#94A3B8]"
+          )}
+        >
+          <Shield size={14} />
+          QA
         </button>
       </div>
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {sidebarTab === 'files' ? (
+        {sidebarTab === 'files' && (
           <FileTree 
             files={files}
             selectedFile={selectedFile}
@@ -83,9 +96,9 @@ export function Sidebar() {
               openFile(path);
             }}
           />
-        ) : (
-          <PlanView plan={plan} />
         )}
+        {sidebarTab === 'plan' && <PlanView plan={plan} />}
+        {sidebarTab === 'qa' && <QATabContent selectFile={selectFile} openFile={openFile} />}
       </div>
       
       {/* Token Usage & Cost Footer - Only show in files tab */}
@@ -1018,5 +1031,36 @@ function PlanView({ plan }: PlanViewProps) {
         })}
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// QA Tab Content Component
+// ============================================================================
+
+function QATabContent({ 
+  selectFile, 
+  openFile 
+}: { 
+  selectFile: (path: string) => void;
+  openFile: (path: string) => void;
+}) {
+  const { selectedProject } = useEnjineerStore();
+  
+  const handleFileClick = useCallback((path: string, line?: number) => {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    selectFile(normalizedPath);
+    openFile(normalizedPath);
+    // Note: Line number navigation could be enhanced with Monaco editor integration
+    if (line) {
+      console.log(`[QA] Navigate to ${normalizedPath}:${line}`);
+    }
+  }, [selectFile, openFile]);
+  
+  return (
+    <QAReportPanel 
+      projectId={selectedProject?.id ?? null}
+      onFileClick={handleFileClick}
+    />
   );
 }
