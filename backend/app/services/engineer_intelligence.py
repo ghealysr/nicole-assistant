@@ -137,6 +137,16 @@ class PreflightResult:
     blocked: bool = False
 
 
+@dataclass
+class ParsedError:
+    """Parsed error from build logs."""
+    error_type: str
+    error_detail: str
+    file: Optional[str] = None
+    line: Optional[int] = None
+    suggested_fix: Optional[str] = None
+
+
 # ============================================================================
 # ERROR PATTERNS
 # ============================================================================
@@ -536,6 +546,184 @@ class EngineerIntelligenceService:
             ),
         }
         return diagnoses.get(error_type, f"Error type '{error_type}' recurring. Previous fixes not effective.")
+    
+    # ========================================================================
+    # SINGLE ERROR PARSING AND RECORDING
+    # ========================================================================
+    
+    def parse_build_error(self, error_message: str) -> 'ParsedError':
+        """
+        Parse a single build error message into structured form.
+        
+        Returns:
+            ParsedError with error_type, error_detail, file, line, and suggested_fix
+        """
+        error_message = error_message or ""
+        
+        for error_type, pattern in ERROR_PATTERNS.items():
+            match = pattern.search(error_message)
+            if match:
+                # Extract file and line if available
+                file_path = None
+                line_number = None
+                suggested_fix = None
+                
+                if error_type == "type_error" and match.lastindex >= 3:
+                    file_path = match.group(2)
+                    line_number = int(match.group(3)) if match.group(3).isdigit() else None
+                    suggested_fix = f"Fix TypeScript error at {file_path}:{line_number}"
+                elif error_type == "module_not_found":
+                    module_name = match.group(1) if match.lastindex >= 1 else None
+                    suggested_fix = f"Install missing module: npm install {module_name}" if module_name else None
+                elif error_type == "no_default_export":
+                    suggested_fix = "Use named import syntax: import {{ Component }} from 'path'"
+                elif error_type == "eslint_error":
+                    rule = match.group(2) if match.lastindex >= 2 else None
+                    suggested_fix = f"Fix ESLint rule: {rule}" if rule else "Fix ESLint violation"
+                elif error_type == "use_client_missing":
+                    suggested_fix = "Add 'use client' directive at top of component file"
+                elif error_type == "react_server_component":
+                    suggested_fix = "Add 'use client' directive or move hook/effect to client component"
+                
+                return ParsedError(
+                    error_type=error_type,
+                    error_detail=match.group(0)[:200],
+                    file=file_path,
+                    line=line_number,
+                    suggested_fix=suggested_fix,
+                )
+        
+        # No pattern matched - return generic
+        return ParsedError(
+            error_type="unknown",
+            error_detail=error_message[:200],
+            file=None,
+            line=None,
+            suggested_fix=None,
+        )
+    
+    async def record_error_pattern(
+        self,
+        project_id: int,
+        deployment_id: str,
+        error_type: str,
+        error_detail: str,
+        file_path: Optional[str] = None,
+        line_number: Optional[int] = None,
+    ):
+        """
+        Record a single error pattern occurrence.
+        
+        Increments occurrence count if error already exists, otherwise creates new.
+        """
+        try:
+            # Check if this error already exists
+            existing = await db.fetchrow(
+                """
+                SELECT id, occurrence_count 
+                FROM enjineer_error_patterns
+                WHERE project_id = $1 
+                  AND error_type = $2 
+                  AND error_detail = $3
+                  AND resolved = FALSE
+                """,
+                project_id,
+                error_type,
+                error_detail[:500],  # Truncate for storage
+            )
+            
+            if existing:
+                # Increment occurrence count
+                await db.execute(
+                    """
+                    UPDATE enjineer_error_patterns 
+                    SET occurrence_count = occurrence_count + 1,
+                        last_seen = NOW(),
+                        deployment_id = $1
+                    WHERE id = $2
+                    """,
+                    deployment_id,
+                    existing["id"],
+                )
+                logger.info(f"[INTEL] Incremented error count: {error_type} (now {existing['occurrence_count'] + 1})")
+            else:
+                # Insert new error
+                await db.execute(
+                    """
+                    INSERT INTO enjineer_error_patterns
+                    (project_id, deployment_id, error_type, error_detail, 
+                     error_file, error_line, occurrence_count, first_seen, last_seen)
+                    VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())
+                    """,
+                    project_id,
+                    deployment_id,
+                    error_type,
+                    error_detail[:500],
+                    file_path,
+                    line_number,
+                )
+                logger.info(f"[INTEL] Recorded new error: {error_type}")
+        except Exception as e:
+            logger.warning(f"[INTEL] Failed to record error pattern: {e}")
+    
+    async def update_circuit_breaker(
+        self,
+        project_id: int,
+        success: bool,
+        error_count: int = 0,
+    ):
+        """
+        Update circuit breaker based on deployment result.
+        
+        - Success: Reset failure count, close circuit
+        - Failure: Increment failure count, potentially open circuit
+        """
+        try:
+            if success:
+                # Reset on success
+                await self._update_circuit_state(
+                    project_id,
+                    CircuitState.CLOSED,
+                    0,
+                    None,
+                    None
+                )
+                # Also mark errors resolved
+                await self.mark_errors_resolved(project_id, resolution="Successful deployment")
+                logger.info(f"[INTEL] ✅ Circuit breaker reset - successful deployment")
+            else:
+                # Increment failure count
+                current = await self.check_circuit_breaker(project_id)
+                new_count = current.failure_count + 1
+                
+                if new_count >= MAX_CONSECUTIVE_FAILURES:
+                    reason = (
+                        f"⚠️ DEPLOYMENT PAUSED: {new_count} consecutive failures.\n"
+                        f"Errors in last deployment: {error_count}\n"
+                        f"Review errors before retrying.\n"
+                        f"Cooldown: {CIRCUIT_COOLDOWN_MINUTES} minutes."
+                    )
+                    resume_at = datetime.now(timezone.utc) + timedelta(minutes=CIRCUIT_COOLDOWN_MINUTES)
+                    
+                    await self._update_circuit_state(
+                        project_id,
+                        CircuitState.OPEN,
+                        new_count,
+                        reason,
+                        resume_at
+                    )
+                    logger.warning(f"[INTEL] 🔴 Circuit breaker OPENED - {new_count} failures")
+                else:
+                    await self._update_circuit_state(
+                        project_id,
+                        CircuitState.CLOSED,
+                        new_count,
+                        f"{new_count} consecutive failures (opens at {MAX_CONSECUTIVE_FAILURES})",
+                        None
+                    )
+                    logger.info(f"[INTEL] 🟡 Failure recorded: {new_count}/{MAX_CONSECUTIVE_FAILURES}")
+        except Exception as e:
+            logger.warning(f"[INTEL] Failed to update circuit breaker: {e}")
     
     async def mark_errors_resolved(
         self,

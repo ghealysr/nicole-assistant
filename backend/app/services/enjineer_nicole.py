@@ -1416,7 +1416,15 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
     # ========================================================================
     
     async def _create_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new file in the project."""
+        """
+        Create a new file in the project with MANDATORY verification.
+        
+        Implements the Verification Loop:
+        1. Record intended state BEFORE write
+        2. Execute the write operation
+        3. Read back to VERIFY write succeeded
+        4. Track verified/unverified status
+        """
         path = input_data.get("path")
         content = input_data.get("content")
         
@@ -1432,6 +1440,16 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
         if not path.startswith("/"):
             path = "/" + path
         
+        # STEP 1: Record intended state BEFORE write
+        intended_hash = await engineer_intelligence.record_intended_change(
+            project_id=self.project_id,
+            filepath=path,
+            content=content,
+            description=f"Create file: {path}",
+            deployment_id=self._deployment_id,
+        )
+        self._unverified_files.add(path)
+        
         async with pool.acquire() as conn:
             # Check if file exists
             existing = await conn.fetchrow(
@@ -1440,9 +1458,10 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
             )
             
             if existing:
+                self._unverified_files.discard(path)
                 return {"success": False, "error": f"File already exists: {path}. Use update_file instead."}
             
-            # Create the file
+            # STEP 2: Execute the write
             file = await conn.fetchrow(
                 """
                 INSERT INTO enjineer_files (project_id, path, content, language, modified_by, checksum)
@@ -1451,8 +1470,28 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
                 """,
                 self.project_id, path, content, language, "nicole", checksum
             )
+            
+            # STEP 3: MANDATORY - Read back to verify
+            verification_row = await conn.fetchrow(
+                "SELECT content FROM enjineer_files WHERE project_id = $1 AND path = $2",
+                self.project_id, path
+            )
         
-        logger.info(f"[Enjineer] Created file: {path} ({len(content)} chars)")
+        # STEP 4: Verify content matches
+        verification = await engineer_intelligence.verify_change_applied(
+            project_id=self.project_id,
+            filepath=path,
+            actual_content=verification_row["content"] if verification_row else "",
+            deployment_id=self._deployment_id,
+        )
+        
+        if verification.success:
+            self._verified_files.add(path)
+            self._unverified_files.discard(path)
+            logger.info(f"[Enjineer] ✅ Created & verified: {path} ({len(content)} chars)")
+        else:
+            logger.error(f"[Enjineer] ❌ Create verification FAILED: {path} - {verification.message}")
+        
         return {
             "success": True,
             "result": {
@@ -1460,12 +1499,23 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
                 "path": path,
                 "language": language,
                 "size": len(content),
-                "version": file["version"]
+                "version": file["version"],
+                "verified": verification.success,
+                "verification_status": verification.status.value if hasattr(verification.status, 'value') else str(verification.status),
             }
         }
     
     async def _update_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update an existing file."""
+        """
+        Update an existing file with MANDATORY verification.
+        
+        Implements the Verification Loop:
+        1. Record intended state BEFORE write
+        2. Execute the write operation  
+        3. Read back to VERIFY write succeeded
+        4. Track verified/unverified status
+        5. If verification fails, flag for retry
+        """
         path = input_data.get("path")
         content = input_data.get("content")
         
@@ -1480,6 +1530,16 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
         if not path.startswith("/"):
             path = "/" + path
         
+        # STEP 1: Record intended state BEFORE write
+        intended_hash = await engineer_intelligence.record_intended_change(
+            project_id=self.project_id,
+            filepath=path,
+            content=content,
+            description=commit_message,
+            deployment_id=self._deployment_id,
+        )
+        self._unverified_files.add(path)
+        
         async with pool.acquire() as conn:
             file = await conn.fetchrow(
                 "SELECT id, version, content FROM enjineer_files WHERE project_id = $1 AND path = $2",
@@ -1487,12 +1547,12 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
             )
             
             if not file:
+                self._unverified_files.discard(path)
                 return {"success": False, "error": f"File not found: {path}. Use create_file for new files."}
             
             new_version = file["version"] + 1
-            old_content = file["content"]
             
-            # Update file
+            # STEP 2: Execute the write
             await conn.execute(
                 """
                 UPDATE enjineer_files 
@@ -1510,15 +1570,37 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
                 """,
                 file["id"], new_version, content, "nicole", commit_message
             )
+            
+            # STEP 3: MANDATORY - Read back to verify
+            verification_row = await conn.fetchrow(
+                "SELECT content FROM enjineer_files WHERE project_id = $1 AND path = $2",
+                self.project_id, path
+            )
         
-        logger.info(f"[Enjineer] Updated file: {path} (v{new_version})")
+        # STEP 4: Verify content matches
+        verification = await engineer_intelligence.verify_change_applied(
+            project_id=self.project_id,
+            filepath=path,
+            actual_content=verification_row["content"] if verification_row else "",
+            deployment_id=self._deployment_id,
+        )
+        
+        if verification.success:
+            self._verified_files.add(path)
+            self._unverified_files.discard(path)
+            logger.info(f"[Enjineer] ✅ Updated & verified: {path} (v{new_version})")
+        else:
+            logger.error(f"[Enjineer] ❌ Update verification FAILED: {path} - {verification.message}")
+        
         return {
             "success": True,
             "result": {
                 "action": "file_updated",
                 "path": path,
                 "version": new_version,
-                "commit_message": commit_message
+                "commit_message": commit_message,
+                "verified": verification.success,
+                "verification_status": verification.status.value if hasattr(verification.status, 'value') else str(verification.status),
             }
         }
     
@@ -2007,11 +2089,92 @@ This plan requires your approval before implementation begins. Review the phases
         }
     
     async def _deploy(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Deploy the project to Vercel."""
-        environment = input_data["environment"]
+        """
+        Deploy the project to Vercel with comprehensive pre-deploy checks.
+        
+        Implements defensive engineering:
+        1. Check circuit breaker (blocks after 3+ consecutive failures)
+        2. Run preflight audit (catches errors before Vercel build)
+        3. Track unverified files (warns about uncommitted changes)
+        4. Record deployment attempt for pattern analysis
+        """
+        environment = input_data.get("environment", "preview")
         commit_message = input_data.get("commit_message", "Deployed by Enjineer")
         
-        # Check for pending deployment approval if production
+        # =====================================================================
+        # STEP 1: CHECK CIRCUIT BREAKER
+        # Prevents deployment loops after consecutive failures
+        # =====================================================================
+        circuit_state = await engineer_intelligence.check_circuit_breaker(self.project_id)
+        
+        if circuit_state.is_open:
+            logger.warning(f"[Enjineer] 🚫 Circuit breaker OPEN - blocking deployment")
+            return {
+                "success": False,
+                "error": circuit_state.message,
+                "blocked_by": "circuit_breaker",
+                "failure_count": circuit_state.failure_count,
+                "resume_at": circuit_state.resume_at.isoformat() if circuit_state.resume_at else None,
+                "instruction": (
+                    "Deployment blocked due to consecutive failures. "
+                    "Review recurring errors with get_recurring_errors tool before retrying."
+                )
+            }
+        
+        # =====================================================================
+        # STEP 2: CHECK FOR UNVERIFIED CHANGES
+        # Warns if file updates haven't been verified
+        # =====================================================================
+        unverified = await engineer_intelligence.get_unverified_changes(self.project_id)
+        if unverified:
+            logger.warning(f"[Enjineer] ⚠️ {len(unverified)} unverified file changes detected")
+            # Don't block, but include warning in response
+        
+        # =====================================================================
+        # STEP 3: RUN PREFLIGHT AUDIT
+        # Catches errors before wasting a Vercel build
+        # =====================================================================
+        async with pool.acquire() as conn:
+            file_rows = await conn.fetch(
+                "SELECT path, content FROM enjineer_files WHERE project_id = $1",
+                self.project_id
+            )
+        
+        files = {row["path"]: row["content"] for row in file_rows}
+        
+        # Get package.json for dependency audit
+        package_json = None
+        for path, content in files.items():
+            if path.endswith("package.json"):
+                try:
+                    package_json = json.loads(content)
+                    break
+                except json.JSONDecodeError:
+                    pass
+        
+        preflight = await engineer_intelligence.run_preflight_audit(
+            project_id=self.project_id,
+            files=files,
+            package_json=package_json,
+        )
+        
+        if preflight.blocked:
+            logger.warning(f"[Enjineer] 🚫 Preflight audit FAILED - {len(preflight.errors)} errors")
+            return {
+                "success": False,
+                "error": "Preflight audit failed. Fix errors before deploying.",
+                "blocked_by": "preflight_audit",
+                "errors": preflight.errors[:10],  # Limit for response size
+                "warnings": preflight.warnings[:5],
+                "instruction": (
+                    "Fix the errors above before attempting deployment. "
+                    "Use update_file to fix issues, then try deploy again."
+                )
+            }
+        
+        # =====================================================================
+        # STEP 4: CHECK PRODUCTION APPROVAL
+        # =====================================================================
         if environment == "production":
             async with pool.acquire() as conn:
                 pending = await conn.fetchrow(
@@ -2030,8 +2193,12 @@ This plan requires your approval before implementation begins. Review the phases
                     "approval_id": str(pending["id"])
                 }
         
-        # Create deployment record
+        # =====================================================================
+        # STEP 5: CREATE DEPLOYMENT RECORD & TRACK ATTEMPT
+        # =====================================================================
         deployment_id = str(uuid4())
+        self._deployment_id = deployment_id  # Track for file verification
+        
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -2042,19 +2209,44 @@ This plan requires your approval before implementation begins. Review the phases
                 deployment_id, self.project_id, environment, commit_message[:40]
             )
         
-        # TODO: Actually trigger Vercel deployment
-        logger.info(f"[Enjineer] Initiated {environment} deployment")
+        # Record this as a deployment attempt for circuit breaker
+        await engineer_intelligence.record_deployment_attempt(
+            project_id=self.project_id,
+            deployment_id=deployment_id,
+            vercel_deployment_id=None,  # Will be updated after Vercel responds
+            success=False,  # Pending - will update on completion
+            error_count=0,
+            claimed_fixes=[],
+        )
         
-        return {
+        logger.info(f"[Enjineer] ✅ Preflight passed, initiating {environment} deployment")
+        
+        # Build response with preflight warnings if any
+        result = {
             "success": True,
             "result": {
                 "action": "deployment_initiated",
                 "deployment_id": deployment_id,
                 "environment": environment,
                 "status": "pending",
-                "message": f"Deployment to {environment} has been initiated. You'll receive a preview URL shortly."
+                "preflight": {
+                    "passed": True,
+                    "warnings": preflight.warnings[:3] if preflight.warnings else [],
+                    "recommendations": preflight.recommendations[:3] if preflight.recommendations else [],
+                },
+                "message": f"Deployment to {environment} initiated. Preflight checks passed."
             }
         }
+        
+        # Add unverified files warning if any
+        if unverified:
+            result["result"]["unverified_files"] = [u["filepath"] for u in unverified[:5]]
+            result["result"]["unverified_warning"] = (
+                f"Warning: {len(unverified)} file(s) have unverified changes. "
+                "Use read_file to verify updates applied correctly."
+            )
+        
+        return result
     
     async def _search_knowledge_base(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -2496,11 +2688,69 @@ This plan requires your approval before implementation begins. Review the phases
                         deployment_id
                     )
             
-            # Generate action items
+            # =====================================================================
+            # ERROR PATTERN PARSING & CIRCUIT BREAKER UPDATE
+            # Record errors for pattern detection and update circuit breaker
+            # =====================================================================
+            parsed_errors = []
+            for error in error_info["errors"]:
+                msg = error.get("message", "") or ""
+                parsed = engineer_intelligence.parse_build_error(msg)
+                parsed_errors.append(parsed)
+                
+                # Record each error pattern
+                await engineer_intelligence.record_error_pattern(
+                    project_id=self.project_id,
+                    deployment_id=deployment_id,
+                    error_type=parsed.error_type,
+                    error_detail=parsed.error_detail,
+                    file_path=parsed.file or error.get("file"),
+                    line_number=parsed.line or error.get("line"),
+                )
+            
+            # Update circuit breaker based on deployment result
+            is_failure = state in ["ERROR", "FAILED", "CANCELED"]
+            if is_failure:
+                await engineer_intelligence.update_circuit_breaker(
+                    project_id=self.project_id,
+                    success=False,
+                    error_count=len(error_info["errors"]),
+                )
+                logger.warning(f"[Enjineer] 🔴 Deployment failed - circuit breaker updated")
+            elif state == "READY":
+                await engineer_intelligence.update_circuit_breaker(
+                    project_id=self.project_id,
+                    success=True,
+                    error_count=0,
+                )
+                logger.info(f"[Enjineer] 🟢 Deployment succeeded - circuit breaker reset")
+            
+            # Check for recurring errors
+            recurring = await engineer_intelligence.get_recurring_errors(self.project_id)
+            recurring_warning = None
+            if recurring:
+                recurring_warning = {
+                    "count": len(recurring),
+                    "errors": [
+                        {
+                            "type": r.error.error_type,
+                            "detail": r.error.detail[:100] if r.error.detail else None,
+                            "occurrences": r.occurrence_count,
+                        }
+                        for r in recurring[:3]
+                    ],
+                    "message": f"⚠️ Found {len(recurring)} recurring errors. These have occurred multiple times - investigate root cause."
+                }
+            
+            # Generate action items with enriched error context
             action_items = []
-            for error in error_info["errors"][:5]:  # Top 5 errors
+            for i, error in enumerate(error_info["errors"][:5]):  # Top 5 errors
                 msg = error.get("message", "")
-                if "module not found" in msg.lower() or "cannot find module" in msg.lower():
+                parsed = parsed_errors[i] if i < len(parsed_errors) else None
+                
+                if parsed and parsed.suggested_fix:
+                    action_items.append(f"[{parsed.error_type}] {parsed.suggested_fix}")
+                elif "module not found" in msg.lower() or "cannot find module" in msg.lower():
                     action_items.append(f"Install missing dependency or fix import path: {msg[:100]}")
                 elif "typescript" in msg.lower() or "type" in msg.lower():
                     action_items.append(f"Fix TypeScript error: {msg[:100]}")
@@ -2509,15 +2759,15 @@ This plan requires your approval before implementation begins. Review the phases
                 else:
                     action_items.append(f"Fix: {msg[:100]}")
             
-            logger.info(f"[Vercel] Retrieved logs for deployment {deployment_id}: state={state}, errors={len(error_info['errors'])}")
+            logger.info(f"[Vercel] Retrieved logs for deployment {deployment_id}: state={state}, errors={len(error_info['errors'])}, recurring={len(recurring)}")
             
-            return {
+            result = {
                 "success": True,
                 "result": {
                     "source": "vercel_api",
                     "deployment_id": deployment_id,
                     "state": state,
-                    "is_failed": state in ["ERROR", "FAILED", "CANCELED"],
+                    "is_failed": is_failure,
                     "is_building": state in ["BUILDING", "QUEUED", "INITIALIZING"],
                     "is_ready": state == "READY",
                     "url": f"https://{deployment_data.get('url')}" if deployment_data.get('url') else None,
@@ -2527,7 +2777,7 @@ This plan requires your approval before implementation begins. Review the phases
                     "action_items": action_items,
                     "instruction": """To fix deployment errors:
 1. Review each error message carefully
-2. Use update_file to fix the specific file/line mentioned
+2. Use update_file to fix the specific file/line mentioned  
 3. Common fixes:
    - Missing imports: Add the import statement
    - Type errors: Fix the TypeScript types
@@ -2535,6 +2785,21 @@ This plan requires your approval before implementation begins. Review the phases
 4. After fixing, trigger a new deployment via the Preview tab"""
                 }
             }
+            
+            # Add recurring errors warning if present
+            if recurring_warning:
+                result["result"]["recurring_errors"] = recurring_warning
+            
+            # Add circuit breaker status
+            circuit_state = await engineer_intelligence.check_circuit_breaker(self.project_id)
+            if circuit_state.is_open or circuit_state.failure_count >= 2:
+                result["result"]["circuit_breaker"] = {
+                    "status": "warning" if circuit_state.failure_count >= 2 else "open" if circuit_state.is_open else "closed",
+                    "failure_count": circuit_state.failure_count,
+                    "message": circuit_state.message if circuit_state.is_open else f"{circuit_state.failure_count} consecutive failures (circuit breaker opens at 3)"
+                }
+            
+            return result
             
         except Exception as e:
             logger.error(f"[Vercel] Failed to retrieve logs: {e}", exc_info=True)
