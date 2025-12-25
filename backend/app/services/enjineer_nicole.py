@@ -25,6 +25,8 @@ from app.config import settings
 from app.database import get_tiger_pool
 from app.services.knowledge_base_service import kb_service
 from app.services.enjineer_qa_service import qa_service
+from app.services.engineer_intelligence import engineer_intelligence, PreflightResult
+from app.services.npm_validator import npm_validator
 
 logger = logging.getLogger(__name__)
 
@@ -304,12 +306,65 @@ Every deliverable must be:
 
 ## Hallucination Prevention
 1. Never invent features not discussed
-2. Never assume dependencies exist without checking
+2. Never assume dependencies exist - USE npm_validator to verify
 3. Always use actual file paths from file tree
 4. If unsure, ASK rather than guess
 5. Verify before claiming ("I've created X" only after tool call)
 6. Check imports exist before using
 7. Use explicit types - no implicit any
+
+## Verification Protocol (MANDATORY)
+After EVERY file update:
+1. Record intended change (filepath, content hash, description)
+2. Apply the update via tool call
+3. Read back the file to VERIFY change applied
+4. Only then update state to "verified"
+5. If content mismatch: Log error, retry up to 2x, then escalate
+
+## Error Recovery Protocol
+When deployment fails:
+1. Parse error log for patterns (module_not_found, type_error, etc.)
+2. Check if this error has occurred before (recurring pattern)
+3. If recurring (2+ times): STOP and do comprehensive audit
+4. Fix ALL instances of pattern across ALL files, not just one
+5. Run preflight audit before next deploy attempt
+6. Track claimed fixes vs actual state
+
+## Communication Discipline (CRITICAL)
+
+### BANNED UNTIL BUILD VERIFICATION:
+You MUST NOT use these phrases until AFTER you see successful build logs:
+❌ "✅ COMPLETE" / "🎉 SUCCESS" / "100% CONFIDENCE"
+❌ "BUILD WILL SUCCEED" / "DEPLOYMENT READY"
+❌ "ALL ISSUES RESOLVED" / "SHOULD NOW WORK"
+❌ "FIXED" (as definitive claim)
+❌ "GUARANTEED" / "DONE"
+
+### REQUIRED Status Format (Unverified Changes):
+When you make file changes, use this format until verified:
+"**Status: PENDING VERIFICATION**
+- Changes applied: [list files]
+- Fix attempted: [description]
+- Next step: Deploy and check build logs
+- DO NOT claim success until build confirms resolution"
+
+### REQUIRED Status Format (After Build Success):
+Only after seeing "Build completed successfully" in logs:
+"**Status: VERIFIED ✓**
+- Build: Successful
+- Changes confirmed: [list files]
+- Errors resolved: [list fixes]"
+
+### Error Pattern Recognition:
+- If you see the SAME error 2+ times, STOP and analyze systematically
+- Do NOT fix errors one-by-one - audit ALL files for same pattern
+- Before claiming "fixed", verify with: read_file to confirm content
+
+### Preflight Requirements (Before Deploy):
+1. Check circuit breaker: If 3+ consecutive failures, pause and diagnose
+2. Audit all dependencies: Use npm_validator to check packages exist
+3. Track intended state: Record what changes SHOULD happen
+4. After deploy: Verify changes actually applied before claiming success
 
 ## Communication Style
 - Direct and technical, no hedging
@@ -317,6 +372,7 @@ Every deliverable must be:
 - Step-by-step with copy-pasteable commands
 - Cite knowledge base: "Per hero-sections.md, single CTA shows +266% conversion"
 - Answer to depth asked, no more
+- NEVER claim completion before verification
 
 ## Plan Structure Requirements
 Each phase MUST include:
@@ -656,6 +712,107 @@ Returns:
                 }
             }
         }
+    },
+    # =========================================================================
+    # ENGINEER INTELLIGENCE TOOLS - Verification, Preflight, Error Patterns
+    # =========================================================================
+    {
+        "name": "validate_packages",
+        "description": """Validate npm packages exist BEFORE adding to package.json.
+ALWAYS use this when adding dependencies to prevent "Module not found" errors.
+
+Checks:
+- Package exists in npm registry
+- Version is valid
+- Peer dependencies are listed
+- React 19 compatibility warnings
+- Deprecated package warnings""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "packages": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of packages to validate (e.g., ['framer-motion@11.0.0', 'lucide-react'])"
+                }
+            },
+            "required": ["packages"]
+        }
+    },
+    {
+        "name": "run_preflight_audit",
+        "description": """Run comprehensive audit BEFORE deployment.
+Use this to catch errors that would fail the Vercel build.
+
+Checks:
+- All packages in package.json exist
+- Import/export patterns are consistent
+- TypeScript compatibility
+- Known anti-patterns
+
+ALWAYS run this before deploy to catch issues early.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "check_circuit_breaker",
+        "description": """Check if deployments are blocked due to consecutive failures.
+The circuit breaker opens after 3+ consecutive deployment failures.
+
+Use this before deploy to check if you should:
+- Stop and fix recurring errors first
+- Wait for cooldown period
+- Review the failure patterns""",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "get_recurring_errors",
+        "description": """Get errors that have occurred 2+ times across deployments.
+CRITICAL: If the same error appears repeatedly, your fixes are NOT working.
+
+Use this when:
+- You see "same error again" pattern
+- Deployment keeps failing after "fixes"
+- You need to diagnose why fixes aren't applying
+
+If recurring errors found, do NOT fix one-by-one - do comprehensive audit.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "min_occurrences": {
+                    "type": "integer",
+                    "description": "Minimum times error must occur to be considered recurring (default: 2)",
+                    "default": 2
+                }
+            }
+        }
+    },
+    {
+        "name": "read_file",
+        "description": """Read file content to VERIFY changes applied correctly.
+MANDATORY after update_file to confirm the change took effect.
+
+Use this to:
+- Verify your update_file call actually changed the file
+- Check current state before making changes
+- Compare actual content vs intended content
+
+NEVER claim a fix is complete without reading the file back to verify.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to read (e.g., '/src/components/Button.tsx')"
+                }
+            },
+            "required": ["path"]
+        }
     }
 ]
 
@@ -687,9 +844,14 @@ class EnjineerNicole:
         self.project_id = int(project_id)
         self.user_id = int(user_id)
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self.model = "claude-sonnet-4-20250514"  # Claude Sonnet 4
+        self.model = "claude-opus-4-20250514"  # Claude Opus 4.5 for superior reasoning
         self.project_data: Optional[Dict[str, Any]] = None
         self.max_tool_iterations = 10  # Safety limit
+        
+        # Engineer Intelligence integration
+        self._deployment_id: Optional[str] = None
+        self._verified_files: set = set()
+        self._unverified_files: set = set()
         
         # Token usage tracking for this session
         self.session_input_tokens = 0
@@ -1230,6 +1392,17 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
                 return await self._get_qa_reports(pool, tool_input)
             elif tool_name == "get_deployment_logs":
                 return await self._get_deployment_logs(pool, tool_input)
+            # Engineer Intelligence tools
+            elif tool_name == "validate_packages":
+                return await self._validate_packages(tool_input)
+            elif tool_name == "run_preflight_audit":
+                return await self._run_preflight_audit(pool, tool_input)
+            elif tool_name == "check_circuit_breaker":
+                return await self._check_circuit_breaker(tool_input)
+            elif tool_name == "get_recurring_errors":
+                return await self._get_recurring_errors(tool_input)
+            elif tool_name == "read_file":
+                return await self._read_file(pool, tool_input)
             else:
                 result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                 logger.warning(f"[Enjineer] Tool result: {result}")
@@ -2370,6 +2543,232 @@ This plan requires your approval before implementation begins. Review the phases
                 "error": f"Failed to retrieve deployment logs: {str(e)}"
             }
     
+    # =========================================================================
+    # ENGINEER INTELLIGENCE TOOLS - Verification, Preflight, Error Patterns
+    # =========================================================================
+    
+    async def _validate_packages(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate npm packages exist before adding to package.json.
+        
+        Prevents "Module not found" deployment failures by checking
+        the npm registry BEFORE adding packages.
+        """
+        packages = input_data.get("packages", [])
+        
+        if not packages:
+            return {"success": False, "error": "No packages provided to validate"}
+        
+        results = []
+        for pkg in packages:
+            if isinstance(pkg, str):
+                name, version = pkg, "latest"
+                if "@" in pkg and not pkg.startswith("@"):
+                    parts = pkg.split("@")
+                    name, version = parts[0], parts[1] if len(parts) > 1 else "latest"
+                elif pkg.startswith("@") and pkg.count("@") > 1:
+                    # Scoped package with version
+                    last_at = pkg.rfind("@")
+                    name, version = pkg[:last_at], pkg[last_at+1:]
+            else:
+                name = pkg.get("name", "")
+                version = pkg.get("version", "latest")
+            
+            result = await npm_validator.validate_package(name, version)
+            results.append({
+                "package": name,
+                "version": version,
+                "valid": result.valid,
+                "resolved_version": result.resolved_version,
+                "error": result.error,
+                "warnings": result.warnings,
+                "deprecated": result.deprecated,
+            })
+        
+        valid_count = sum(1 for r in results if r["valid"])
+        invalid_count = len(results) - valid_count
+        
+        logger.info(f"[NPM] Validated {len(packages)} packages: {valid_count} valid, {invalid_count} invalid")
+        
+        return {
+            "success": True,
+            "result": {
+                "validated": len(packages),
+                "valid_count": valid_count,
+                "invalid_count": invalid_count,
+                "packages": results,
+                "can_proceed": invalid_count == 0,
+                "instruction": "Fix invalid packages before adding to package.json" if invalid_count > 0 else "All packages valid - safe to add"
+            }
+        }
+    
+    async def _run_preflight_audit(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Run comprehensive preflight audit before deployment.
+        
+        Checks:
+        - Package.json validity
+        - Import/export consistency
+        - TypeScript patterns
+        - Known anti-patterns
+        """
+        # Get all project files
+        async with pool.acquire() as conn:
+            file_rows = await conn.fetch(
+                "SELECT path, content FROM enjineer_files WHERE project_id = $1",
+                self.project_id
+            )
+        
+        files = {row["path"]: row["content"] for row in file_rows}
+        
+        # Get package.json if exists
+        package_json = None
+        for path, content in files.items():
+            if path.endswith("package.json"):
+                try:
+                    package_json = json.loads(content)
+                    break
+                except json.JSONDecodeError:
+                    pass
+        
+        # Run preflight audit
+        result = await engineer_intelligence.run_preflight_audit(
+            self.project_id,
+            files,
+            package_json
+        )
+        
+        logger.info(f"[PREFLIGHT] Audit complete: passed={result.passed}, errors={len(result.errors)}")
+        
+        return {
+            "success": True,
+            "result": {
+                "passed": result.passed,
+                "blocked": result.blocked,
+                "errors": result.errors,
+                "warnings": result.warnings,
+                "recommendations": result.recommendations,
+                "can_deploy": result.passed,
+                "instruction": (
+                    "Fix errors before deploying" if not result.passed 
+                    else "Preflight passed - safe to deploy"
+                )
+            }
+        }
+    
+    async def _check_circuit_breaker(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Check if deployment is blocked due to consecutive failures.
+        
+        Circuit breaker opens after 3+ consecutive failures to prevent
+        deployment loops.
+        """
+        state = await engineer_intelligence.check_circuit_breaker(self.project_id)
+        
+        return {
+            "success": True,
+            "result": {
+                "is_open": state.is_open,
+                "state": state.state.value,
+                "failure_count": state.failure_count,
+                "can_proceed": state.can_proceed,
+                "message": state.message,
+                "resume_at": state.resume_at.isoformat() if state.resume_at else None,
+                "instruction": (
+                    state.message if state.is_open
+                    else "Circuit closed - deployments allowed"
+                )
+            }
+        }
+    
+    async def _get_recurring_errors(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get errors that have occurred multiple times.
+        
+        Helps identify systemic issues vs one-off errors.
+        """
+        min_occurrences = input_data.get("min_occurrences", 2)
+        
+        recurring = await engineer_intelligence.get_recurring_errors(
+            self.project_id,
+            min_occurrences
+        )
+        
+        if not recurring:
+            return {
+                "success": True,
+                "result": {
+                    "found": False,
+                    "count": 0,
+                    "instruction": "No recurring errors found - each error is unique"
+                }
+            }
+        
+        error_list = []
+        for r in recurring:
+            error_list.append({
+                "type": r.error.error_type,
+                "detail": r.error.detail,
+                "occurrences": r.occurrence_count,
+                "first_seen": r.first_seen.isoformat(),
+                "last_seen": r.last_seen.isoformat(),
+                "diagnosis": r.diagnosis,
+            })
+        
+        logger.warning(f"[INTEL] Found {len(recurring)} recurring errors for project {self.project_id}")
+        
+        return {
+            "success": True,
+            "result": {
+                "found": True,
+                "count": len(recurring),
+                "errors": error_list,
+                "instruction": """RECURRING ERRORS DETECTED!
+These errors keep appearing after "fixes". Do NOT attempt one-by-one fixes.
+
+Required actions:
+1. Read the diagnosis for each recurring error
+2. Do a COMPREHENSIVE audit of ALL files for the same pattern
+3. Fix ALL instances before attempting another deployment
+4. Use read_file to verify your changes ACTUALLY applied"""
+            }
+        }
+    
+    async def _read_file(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Read file content for verification.
+        
+        Used to verify changes actually applied after update_file.
+        """
+        path = input_data.get("path")
+        
+        if not path:
+            return {"success": False, "error": "File path is required"}
+        
+        # Normalize path
+        if not path.startswith("/"):
+            path = "/" + path
+        
+        async with pool.acquire() as conn:
+            file = await conn.fetchrow(
+                "SELECT content, checksum, version FROM enjineer_files WHERE project_id = $1 AND path = $2",
+                self.project_id, path
+            )
+        
+        if not file:
+            return {"success": False, "error": f"File not found: {path}"}
+        
+        return {
+            "success": True,
+            "result": {
+                "path": path,
+                "content": file["content"],
+                "checksum": file["checksum"],
+                "version": file["version"],
+                "instruction": "Compare this content against your intended changes to verify the update applied correctly."
+            }
+        }
+    
     def _detect_language(self, path: str) -> str:
         """Detect language from file extension."""
         ext_map = {
@@ -2400,9 +2799,9 @@ This plan requires your approval before implementation begins. Review the phases
         """Save session token usage to database for project cost tracking."""
         pool = await get_tiger_pool()
         
-        # Claude Sonnet 4 pricing: $3/1M input, $15/1M output
-        input_cost = (self.session_input_tokens / 1_000_000) * 3.0
-        output_cost = (self.session_output_tokens / 1_000_000) * 15.0
+        # Claude Opus 4.5 pricing: $15/1M input, $75/1M output
+        input_cost = (self.session_input_tokens / 1_000_000) * 15.0
+        output_cost = (self.session_output_tokens / 1_000_000) * 75.0
         total_cost = input_cost + output_cost
         
         async with pool.acquire() as conn:
