@@ -137,6 +137,24 @@ export function NicoleChat() {
 
     // Process attached files - convert to base64 for sending
     const processedAttachments: Array<{ name: string; type: string; content: string }> = [];
+    
+    // Auto-attach long messages (>10,000 chars) as a text file for better context
+    const MESSAGE_AUTO_ATTACH_THRESHOLD = 10000;
+    let messageToSend = input.trim();
+    
+    if (messageToSend.length > MESSAGE_AUTO_ATTACH_THRESHOLD) {
+      // Convert the long message to a text file attachment
+      const longTextContent = btoa(unescape(encodeURIComponent(messageToSend)));
+      processedAttachments.push({
+        name: 'user-prompt.txt',
+        type: 'text/plain',
+        content: longTextContent,
+      });
+      // Truncate the visible message with a note
+      messageToSend = messageToSend.slice(0, 500) + 
+        `\n\n[Full message attached as user-prompt.txt - ${Math.round(input.length / 1000)}k characters]`;
+    }
+    
     for (const file of attachedFiles) {
       try {
         const content = await readFileAsBase64(file);
@@ -151,7 +169,7 @@ export function NicoleChat() {
     }
 
     // Build message content with file mentions
-    let messageContent = input.trim();
+    let messageContent = messageToSend;
     if (processedAttachments.length > 0) {
       const fileNames = processedAttachments.map(a => a.name).join(', ');
       messageContent += `\n\n[Attached files: ${fileNames}]`;
@@ -586,9 +604,9 @@ export function NicoleChat() {
                 onKeyDown={handleKeyDown}
                 placeholder={currentProject ? "Ask Nicole anything..." : "Select a project first..."}
                 disabled={!currentProject}
-                rows={3}
-                style={{ overflow: 'hidden' }}
-                className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 pr-12 text-sm text-white placeholder-[#64748B] resize-none focus:outline-none focus:border-[#8B5CF6] transition-colors disabled:opacity-50 min-h-[80px]"
+                rows={6}
+                maxLength={100000}
+                className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 pr-12 text-sm text-white placeholder-[#64748B] resize-none focus:outline-none focus:border-[#8B5CF6] transition-colors disabled:opacity-50 min-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#3E3E5E] scrollbar-track-transparent"
               />
               <button
                 onClick={handleSend}
