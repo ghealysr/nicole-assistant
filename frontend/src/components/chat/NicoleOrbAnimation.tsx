@@ -283,15 +283,15 @@ export const NicoleOrbAnimation = memo(function NicoleOrbAnimation({
   className = '',
   showParticles = true,
 }: NicoleOrbAnimationProps) {
-  // Size configurations - reduced to 75% of original
+  // Size configurations - reduced to ~25-35% of original (much smaller per user request)
   const sizeConfig = {
-    small: { container: 36, orbSize: 24 },    // Was 48/32
-    medium: { container: 60, orbSize: 36 },   // Was 80/48
-    large: { container: 90, orbSize: 48 },    // Was 120/64
+    small: { container: 16, orbSize: 10 },    // Was 48/32, now ~30%
+    medium: { container: 24, orbSize: 16 },   // Was 80/48, now ~30%
+    large: { container: 36, orbSize: 24 },    // Was 120/64, now ~30%
   };
   
   const config = sizeConfig[size];
-  const particleCount = size === 'small' ? 8 : size === 'medium' ? 12 : 20;
+  const particleCount = size === 'small' ? 4 : size === 'medium' ? 6 : 8; // Reduced for smaller icons
   
   // Memoize particles to prevent recreation
   const particles = useMemo(() => {
