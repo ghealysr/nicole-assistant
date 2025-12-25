@@ -1045,7 +1045,7 @@ function QATabContent({
   selectFile: (path: string) => void;
   openFile: (path: string) => void;
 }) {
-  const { selectedProject } = useEnjineerStore();
+  const { currentProject } = useEnjineerStore();
   
   const handleFileClick = useCallback((path: string, line?: number) => {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -1059,7 +1059,7 @@ function QATabContent({
   
   return (
     <QAReportPanel 
-      projectId={selectedProject?.id ?? null}
+      projectId={currentProject?.id ?? null}
       onFileClick={handleFileClick}
     />
   );

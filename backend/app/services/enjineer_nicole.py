@@ -108,9 +108,16 @@ You have access to 11 expert-level knowledge files (~35,000 words). Reference th
 ### Phase 1: Planning (REQUIRED FIRST - NO EXCEPTIONS)
 1. **Analyze request** - Understand all explicit and implicit requirements
 2. **Search knowledge base** - Identify relevant patterns/components
-3. **Incorporate design_analysis** - Use inspiration image analysis if provided
+3. **Incorporate Inspiration Images (CRITICAL)** - If user provided inspiration images:
+   - Extract EXACT color hex codes from the design_analysis color_palette
+   - Note typography style, weight, and font suggestions
+   - Identify layout patterns (bento, hero, sections) to replicate
+   - List visual effects (gradients, animations, shadows) to implement
+   - Reference user's caption text as design intent directives
+   - Note what to AVOID based on inspiration analysis
 4. **Call `create_plan`** with:
-   - Detailed phases with sub-steps
+   - Description that explicitly references: colors, typography, layouts from inspiration
+   - Detailed phases with sub-steps that implement inspiration elements
    - Knowledge base patterns to apply
    - requires_approval: true for Review/Preview/QA/Deploy phases
 5. **STOP AND WAIT** - "Plan created. Please review in the Plan tab and approve when ready."
@@ -410,7 +417,7 @@ ENJINEER_TOOLS = [
     },
     {
         "name": "create_plan",
-        "description": "Create an implementation plan with numbered phases. Each phase has detailed sub-steps. ALWAYS include Preview Checkpoint, Final QA, and Deploy phases.",
+        "description": "Create an implementation plan with numbered phases. Each phase has detailed sub-steps. ALWAYS include Preview Checkpoint, Final QA, and Deploy phases. The plan will automatically incorporate inspiration image analysis if provided.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -420,7 +427,7 @@ ENJINEER_TOOLS = [
                 },
                 "description": {
                     "type": "string",
-                    "description": "Overview of what this plan accomplishes"
+                    "description": "Overview of what this plan accomplishes. MUST reference design inspiration (color palette, typography, layout patterns) from inspiration image analysis if provided."
                 },
                 "phases": {
                     "type": "array",
@@ -688,6 +695,219 @@ class EnjineerNicole:
         self.session_input_tokens = 0
         self.session_output_tokens = 0
         
+        # Inspiration images analysis cache
+        self._inspiration_analysis: Optional[Dict[str, Any]] = None
+        
+    async def analyze_inspiration_images(
+        self,
+        attachments: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Analyze inspiration images using Claude Vision to extract design insights.
+        
+        This is a critical function for Nicole's design intelligence. It:
+        1. Filters inspiration images from regular attachments
+        2. Sends images to Claude Vision for analysis
+        3. Combines user annotations with AI analysis
+        4. Returns structured design insights for planning
+        
+        Args:
+            attachments: List of attachment dicts with name, type, content, annotation, isInspiration
+            
+        Returns:
+            Dict with:
+            - images_analyzed: count
+            - color_palette: extracted colors
+            - typography: font styles observed
+            - layout_patterns: detected layout approaches
+            - design_style: overall aesthetic (modern, minimal, etc)
+            - key_elements: important design features
+            - user_intentions: summarized from annotations
+            - combined_brief: synthesized design direction
+        """
+        # Filter for inspiration images only
+        inspiration_images = [
+            att for att in (attachments or [])
+            if att.get("isInspiration") or att.get("name", "").startswith("inspiration_")
+        ]
+        
+        if not inspiration_images:
+            return {"images_analyzed": 0, "combined_brief": "No inspiration images provided"}
+        
+        logger.info(f"[Vision] Analyzing {len(inspiration_images)} inspiration images")
+        
+        # Build vision request with all images
+        vision_content = []
+        user_annotations = []
+        
+        for idx, img in enumerate(inspiration_images[:5], 1):  # Max 5 images
+            # Add image to vision request
+            media_type = img.get("type", "image/png")
+            base64_data = img.get("content", "")
+            
+            if base64_data:
+                vision_content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64_data
+                    }
+                })
+            
+            # Collect user annotation
+            annotation = img.get("annotation", "").strip()
+            if annotation:
+                user_annotations.append(f"Image {idx}: {annotation}")
+        
+        if not vision_content:
+            return {
+                "images_analyzed": 0,
+                "combined_brief": "Could not process inspiration images (no valid image data)"
+            }
+        
+        # Build analysis prompt
+        annotations_context = "\n".join(user_annotations) if user_annotations else "No user annotations provided."
+        
+        analysis_prompt = f"""Analyze these inspiration images for a web design project. The user has provided the following context about what they want:
+
+**User's Notes on These Images:**
+{annotations_context}
+
+Please provide a comprehensive design analysis in the following JSON format:
+{{
+    "overall_impression": "Brief summary of the combined design direction",
+    "design_style": "Primary style (e.g., 'Modern Minimalist', 'Bold & Vibrant', 'Corporate Professional')",
+    "color_palette": {{
+        "primary": "#hexcode",
+        "secondary": "#hexcode",
+        "accent": "#hexcode",
+        "background": "#hexcode or description",
+        "text": "#hexcode"
+    }},
+    "typography": {{
+        "style": "Description of typography approach",
+        "heading_suggestion": "Font family recommendation",
+        "body_suggestion": "Font family recommendation",
+        "key_characteristics": ["bold", "clean", "elegant", etc.]
+    }},
+    "layout_patterns": [
+        "Layout pattern 1 (e.g., 'Hero with centered text overlay')",
+        "Layout pattern 2"
+    ],
+    "key_elements": [
+        "Important design element 1",
+        "Important design element 2"
+    ],
+    "visual_effects": [
+        "Effect 1 (e.g., 'Gradient backgrounds', 'Subtle shadows')"
+    ],
+    "mood_and_feeling": "Emotional tone the design should convey",
+    "recommended_components": [
+        "Component 1 (e.g., 'Floating cards with blur backdrop')",
+        "Component 2"
+    ],
+    "avoid": [
+        "Things to avoid based on the inspiration (e.g., 'Cluttered layouts')"
+    ]
+}}
+
+Be specific about colors (provide actual hex codes when visible), fonts, and patterns you observe. Focus on extractable, actionable design decisions."""
+
+        vision_content.append({
+            "type": "text",
+            "text": analysis_prompt
+        })
+        
+        try:
+            # Call Claude Vision
+            response = await self.client.messages.create(
+                model="claude-sonnet-4-20250514",  # Use Sonnet for vision
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": vision_content
+                }]
+            )
+            
+            # Track token usage
+            if hasattr(response, 'usage') and response.usage:
+                self.session_input_tokens += response.usage.input_tokens or 0
+                self.session_output_tokens += response.usage.output_tokens or 0
+            
+            # Extract response text
+            response_text = ""
+            for block in response.content:
+                if hasattr(block, 'text'):
+                    response_text += block.text
+            
+            # Parse JSON from response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    analysis = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    analysis = {"raw": response_text}
+            else:
+                analysis = {"raw": response_text}
+            
+            # Add metadata
+            analysis["images_analyzed"] = len(vision_content) - 1  # Exclude text prompt
+            analysis["user_annotations"] = user_annotations
+            analysis["combined_brief"] = self._build_design_brief(analysis, user_annotations)
+            
+            logger.info(f"[Vision] Analysis complete: {analysis.get('design_style', 'Unknown style')}")
+            
+            # Cache for this session
+            self._inspiration_analysis = analysis
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"[Vision] Analysis failed: {e}", exc_info=True)
+            return {
+                "images_analyzed": len(inspiration_images),
+                "error": str(e),
+                "user_annotations": user_annotations,
+                "combined_brief": f"Vision analysis failed. User notes: {annotations_context}"
+            }
+    
+    def _build_design_brief(
+        self,
+        analysis: Dict[str, Any],
+        user_annotations: List[str]
+    ) -> str:
+        """Build a concise design brief from vision analysis and user notes."""
+        parts = []
+        
+        if analysis.get("overall_impression"):
+            parts.append(f"**Direction:** {analysis['overall_impression']}")
+        
+        if analysis.get("design_style"):
+            parts.append(f"**Style:** {analysis['design_style']}")
+        
+        if analysis.get("mood_and_feeling"):
+            parts.append(f"**Mood:** {analysis['mood_and_feeling']}")
+        
+        if analysis.get("color_palette") and isinstance(analysis["color_palette"], dict):
+            cp = analysis["color_palette"]
+            colors = f"Primary: {cp.get('primary', 'TBD')}, Accent: {cp.get('accent', 'TBD')}, BG: {cp.get('background', 'TBD')}"
+            parts.append(f"**Colors:** {colors}")
+        
+        if analysis.get("typography") and isinstance(analysis["typography"], dict):
+            typo = analysis["typography"]
+            parts.append(f"**Typography:** {typo.get('style', 'Clean and modern')}")
+        
+        if analysis.get("key_elements"):
+            elements = ", ".join(analysis["key_elements"][:5])
+            parts.append(f"**Key Elements:** {elements}")
+        
+        if user_annotations:
+            parts.append(f"**User Intent:** {'; '.join(user_annotations)}")
+        
+        return "\n".join(parts) if parts else "Design direction to be determined from conversation."
+        
     async def load_project_context(self) -> Dict[str, Any]:
         """Load project data, files, and recent conversation for context."""
         pool = await get_tiger_pool()
@@ -778,35 +998,84 @@ class EnjineerNicole:
         
         # Build design analysis from inspiration images
         intake_data = self.project_data.get("intake_data") or {}
-        design_analysis = intake_data.get("design_analysis")
+        design_analysis = intake_data.get("design_analysis") or self._inspiration_analysis
         
-        if design_analysis and isinstance(design_analysis, dict) and "error" not in design_analysis:
-            if "raw" in design_analysis:
-                design_analysis_str = f"Inspiration Image Analysis:\n{design_analysis['raw']}"
+        if design_analysis and isinstance(design_analysis, dict) and design_analysis.get("images_analyzed", 0) > 0:
+            parts = [f"**Inspiration Analysis ({design_analysis.get('images_analyzed', 0)} images):**"]
+            
+            # Use combined_brief if available (most concise)
+            if design_analysis.get("combined_brief"):
+                parts.append(design_analysis["combined_brief"])
             else:
-                # Format structured design analysis
-                parts = ["**Inspiration Image Analysis:**"]
-                if design_analysis.get("summary"):
-                    parts.append(f"Summary: {design_analysis['summary']}")
+                # Fallback to structured data
+                if design_analysis.get("overall_impression"):
+                    parts.append(f"**Direction:** {design_analysis['overall_impression']}")
                 if design_analysis.get("design_style"):
-                    parts.append(f"Style: {design_analysis['design_style']}")
-                if design_analysis.get("color_palette"):
-                    colors = design_analysis['color_palette']
-                    parts.append(f"Colors: Primary {colors.get('primary', 'N/A')}, Secondary {colors.get('secondary', 'N/A')}, Accent {colors.get('accent', 'N/A')}, Background {colors.get('background', 'N/A')}, Text {colors.get('text', 'N/A')}")
-                if design_analysis.get("typography"):
-                    typo = design_analysis['typography']
-                    parts.append(f"Typography: {typo.get('style', '')} - Heading: {typo.get('heading_font', 'N/A')}, Body: {typo.get('body_font', 'N/A')}")
-                if design_analysis.get("layout"):
-                    parts.append(f"Layout: {design_analysis['layout']}")
-                if design_analysis.get("components"):
-                    parts.append(f"Key Components: {', '.join(design_analysis['components'][:10])}")
-                if design_analysis.get("visual_effects"):
-                    parts.append(f"Visual Effects: {', '.join(design_analysis['visual_effects'][:5])}")
-                if design_analysis.get("key_features"):
-                    parts.append(f"Key Features: {', '.join(design_analysis['key_features'][:5])}")
-                design_analysis_str = "\n".join(parts)
+                    parts.append(f"**Style:** {design_analysis['design_style']}")
+                if design_analysis.get("mood_and_feeling"):
+                    parts.append(f"**Mood:** {design_analysis['mood_and_feeling']}")
+            
+            # Color palette
+            if design_analysis.get("color_palette") and isinstance(design_analysis["color_palette"], dict):
+                cp = design_analysis["color_palette"]
+                colors = []
+                if cp.get("primary"): colors.append(f"Primary: {cp['primary']}")
+                if cp.get("secondary"): colors.append(f"Secondary: {cp['secondary']}")
+                if cp.get("accent"): colors.append(f"Accent: {cp['accent']}")
+                if cp.get("background"): colors.append(f"BG: {cp['background']}")
+                if cp.get("text"): colors.append(f"Text: {cp['text']}")
+                if colors:
+                    parts.append(f"**Colors:** {', '.join(colors)}")
+            
+            # Typography
+            if design_analysis.get("typography") and isinstance(design_analysis["typography"], dict):
+                typo = design_analysis["typography"]
+                typo_parts = []
+                if typo.get("style"): typo_parts.append(f"Style: {typo['style']}")
+                if typo.get("heading_suggestion"): typo_parts.append(f"Headings: {typo['heading_suggestion']}")
+                if typo.get("body_suggestion"): typo_parts.append(f"Body: {typo['body_suggestion']}")
+                if typo_parts:
+                    parts.append(f"**Typography:** {'; '.join(typo_parts)}")
+            
+            # Layout patterns
+            if design_analysis.get("layout_patterns"):
+                patterns = design_analysis["layout_patterns"][:5]
+                parts.append(f"**Layouts:** {', '.join(patterns)}")
+            
+            # Key elements
+            if design_analysis.get("key_elements"):
+                elements = design_analysis["key_elements"][:5]
+                parts.append(f"**Key Elements:** {', '.join(elements)}")
+            
+            # Recommended components
+            if design_analysis.get("recommended_components"):
+                components = design_analysis["recommended_components"][:5]
+                parts.append(f"**Components:** {', '.join(components)}")
+            
+            # Visual effects
+            if design_analysis.get("visual_effects"):
+                effects = design_analysis["visual_effects"][:3]
+                parts.append(f"**Effects:** {', '.join(effects)}")
+            
+            # Things to avoid
+            if design_analysis.get("avoid"):
+                avoid = design_analysis["avoid"][:3]
+                parts.append(f"**Avoid:** {', '.join(avoid)}")
+            
+            # User annotations
+            if design_analysis.get("user_annotations"):
+                annotations = design_analysis["user_annotations"]
+                parts.append(f"\n**User's Design Intent:**")
+                for ann in annotations[:5]:
+                    parts.append(f"  • {ann}")
+            
+            # Raw analysis if structured parsing failed
+            if "raw" in design_analysis and len(parts) < 3:
+                parts.append(f"\nRaw Analysis:\n{design_analysis['raw'][:2000]}")
+            
+            design_analysis_str = "\n".join(parts)
         else:
-            design_analysis_str = "(No inspiration images provided)"
+            design_analysis_str = "(No inspiration images provided - use design best practices from knowledge base)"
         
         # Get timezone
         try:
@@ -1111,7 +1380,7 @@ class EnjineerNicole:
         }
     
     async def _create_plan(self, pool, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create an implementation plan with phases."""
+        """Create an implementation plan with phases, incorporating inspiration analysis."""
         logger.warning(f"[Enjineer] create_plan called with input: {input_data}")
         
         name = input_data.get("name")
@@ -1128,12 +1397,95 @@ class EnjineerNicole:
             logger.warning("[Enjineer] create_plan failed: no phases provided")
             return {"success": False, "error": "At least one phase is required"}
         
+        # Extract design analysis from inspiration images
+        intake_data = self.project_data.get("intake_data") or {}
+        design_analysis = intake_data.get("design_analysis") or self._inspiration_analysis
+        
+        # Build inspiration section for plan.md
+        inspiration_section = ""
+        if design_analysis and isinstance(design_analysis, dict) and design_analysis.get("images_analyzed", 0) > 0:
+            inspiration_section = "\n## Design Inspiration\n\n"
+            inspiration_section += f"*Based on analysis of {design_analysis.get('images_analyzed', 1)} inspiration image(s)*\n\n"
+            
+            # Design direction
+            if design_analysis.get("overall_impression"):
+                inspiration_section += f"### Design Direction\n{design_analysis['overall_impression']}\n\n"
+            elif design_analysis.get("design_style"):
+                inspiration_section += f"### Design Style\n{design_analysis['design_style']}\n\n"
+            
+            # Color palette
+            if design_analysis.get("color_palette") and isinstance(design_analysis["color_palette"], dict):
+                cp = design_analysis["color_palette"]
+                inspiration_section += "### Color Palette\n"
+                if cp.get("primary"): inspiration_section += f"- **Primary:** {cp['primary']}\n"
+                if cp.get("secondary"): inspiration_section += f"- **Secondary:** {cp['secondary']}\n"
+                if cp.get("accent"): inspiration_section += f"- **Accent:** {cp['accent']}\n"
+                if cp.get("background"): inspiration_section += f"- **Background:** {cp['background']}\n"
+                if cp.get("text"): inspiration_section += f"- **Text:** {cp['text']}\n"
+                inspiration_section += "\n"
+            
+            # Typography
+            if design_analysis.get("typography") and isinstance(design_analysis["typography"], dict):
+                typo = design_analysis["typography"]
+                inspiration_section += "### Typography\n"
+                if typo.get("style"): inspiration_section += f"- **Style:** {typo['style']}\n"
+                if typo.get("heading_suggestion"): inspiration_section += f"- **Headings:** {typo['heading_suggestion']}\n"
+                if typo.get("body_suggestion"): inspiration_section += f"- **Body:** {typo['body_suggestion']}\n"
+                inspiration_section += "\n"
+            
+            # Layout patterns
+            if design_analysis.get("layout_patterns"):
+                patterns = design_analysis["layout_patterns"][:6]
+                inspiration_section += "### Layout Patterns\n"
+                for p in patterns:
+                    inspiration_section += f"- {p}\n"
+                inspiration_section += "\n"
+            
+            # Key elements to implement
+            if design_analysis.get("key_elements"):
+                elements = design_analysis["key_elements"][:8]
+                inspiration_section += "### Key Elements to Implement\n"
+                for e in elements:
+                    inspiration_section += f"- {e}\n"
+                inspiration_section += "\n"
+            
+            # Recommended components
+            if design_analysis.get("recommended_components"):
+                components = design_analysis["recommended_components"][:6]
+                inspiration_section += "### Recommended Components\n"
+                for c in components:
+                    inspiration_section += f"- {c}\n"
+                inspiration_section += "\n"
+            
+            # Visual effects
+            if design_analysis.get("visual_effects"):
+                effects = design_analysis["visual_effects"][:4]
+                inspiration_section += "### Visual Effects\n"
+                for e in effects:
+                    inspiration_section += f"- {e}\n"
+                inspiration_section += "\n"
+            
+            # Things to avoid
+            if design_analysis.get("avoid"):
+                avoid_items = design_analysis["avoid"][:4]
+                inspiration_section += "### Avoid\n"
+                for a in avoid_items:
+                    inspiration_section += f"- ❌ {a}\n"
+                inspiration_section += "\n"
+            
+            # User's design intent (from captions)
+            if design_analysis.get("user_annotations"):
+                inspiration_section += "### User's Design Intent\n"
+                for ann in design_analysis["user_annotations"][:5]:
+                    inspiration_section += f"- {ann}\n"
+                inspiration_section += "\n"
+        
         # Generate plan.md content with detailed sub-steps
         plan_md = f"""# {name}
 
 ## Overview
 {description}
-
+{inspiration_section}
 ## Phases
 
 """
@@ -2110,6 +2462,38 @@ This plan requires your approval before implementation begins. Review the phases
         
         # Load project context
         await self.load_project_context()
+        
+        # Analyze inspiration images if present
+        if attachments:
+            inspiration_analysis = await self.analyze_inspiration_images(attachments)
+            if inspiration_analysis.get("images_analyzed", 0) > 0:
+                # Store analysis in project data for system prompt
+                if "intake_data" not in self.project_data:
+                    self.project_data["intake_data"] = {}
+                self.project_data["intake_data"]["design_analysis"] = inspiration_analysis
+                self.project_data["intake_data"]["inspiration_images"] = attachments
+                
+                # Persist to database for future reference
+                try:
+                    pool = await get_tiger_pool()
+                    async with pool.acquire() as conn:
+                        await conn.execute(
+                            """
+                            UPDATE enjineer_projects 
+                            SET metadata = jsonb_set(
+                                COALESCE(metadata, '{}'::jsonb),
+                                '{inspiration_analysis}',
+                                $2::jsonb
+                            ),
+                            updated_at = NOW()
+                            WHERE id = $1
+                            """,
+                            self.project_id,
+                            json.dumps(inspiration_analysis)
+                        )
+                    logger.info(f"[Vision] Saved inspiration analysis for project {self.project_id}")
+                except Exception as e:
+                    logger.warning(f"[Vision] Failed to persist analysis: {e}")
         
         # Build initial request
         system_prompt = self.build_system_prompt()

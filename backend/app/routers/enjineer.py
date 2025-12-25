@@ -751,6 +751,54 @@ async def delete_file(
 # Chat Endpoints
 # ============================================================================
 
+@router.get("/projects/{project_id}/messages")
+async def get_messages(
+    project_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user = Depends(get_current_user)
+):
+    """Get chat messages for a project."""
+    user_id = get_user_id_from_context(user)
+    await verify_project_access(await get_tiger_pool(), project_id, user_id)
+    pool = await get_tiger_pool()
+    
+    async with pool.acquire() as conn:
+        messages = await conn.fetch(
+            """
+            SELECT id, project_id, role, content, attachments, metadata, created_at
+            FROM enjineer_messages
+            WHERE project_id = $1
+            ORDER BY created_at ASC
+            LIMIT $2 OFFSET $3
+            """,
+            project_id, limit, offset
+        )
+        
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM enjineer_messages WHERE project_id = $1",
+            project_id
+        )
+    
+    return {
+        "messages": [
+            MessageResponse(
+                id=m["id"],
+                project_id=m["project_id"],
+                role=m["role"],
+                content=m["content"] or "",
+                attachments=m["attachments"] or [],
+                metadata=m["metadata"] or {},
+                created_at=m["created_at"].isoformat()
+            )
+            for m in messages
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
 @router.post("/projects/{project_id}/chat")
 async def send_message(
     project_id: int,

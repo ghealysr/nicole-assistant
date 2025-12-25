@@ -26,6 +26,7 @@ import {
 import { useEnjineerStore, ChatMessage, ToolCall } from '@/lib/enjineer/store';
 import { NicoleOrbAnimation } from '@/components/chat/NicoleOrbAnimation';
 import { enjineerApi, ChatEvent } from '@/lib/enjineer/api';
+import { InspirationImageManager, prepareInspirationForAPI } from './InspirationImageManager';
 
 export function NicoleChat() {
   const {
@@ -41,6 +42,9 @@ export function NicoleChat() {
     openFile,
     setPlan,
     setPlanOverview,
+    inspirationImages,
+    setInspirationImages,
+    clearInspirationImages,
   } = useEnjineerStore();
 
   const [input, setInput] = React.useState('');
@@ -62,6 +66,35 @@ export function NicoleChat() {
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load chat history when project changes
+  React.useEffect(() => {
+    const loadChatHistory = async () => {
+      if (!currentProject?.id) return;
+      
+      try {
+        const history = await enjineerApi.getChatHistory(currentProject.id, 100);
+        
+        // Clear existing messages and load from backend
+        const { clearMessages, addMessage: addStoredMessage } = useEnjineerStore.getState();
+        clearMessages();
+        
+        // Add each message from history
+        for (const msg of history) {
+          addStoredMessage({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp,
+          });
+        }
+      } catch (error) {
+        console.error('[NicoleChat] Failed to load chat history:', error);
+      }
+    };
+    
+    loadChatHistory();
+  }, [currentProject?.id]);
 
   // Handle paste for files
   React.useEffect(() => {
@@ -136,7 +169,13 @@ export function NicoleChat() {
     }
 
     // Process attached files - convert to base64 for sending
-    const processedAttachments: Array<{ name: string; type: string; content: string }> = [];
+    const processedAttachments: Array<{ 
+      name: string; 
+      type: string; 
+      content: string;
+      annotation?: string;
+      isInspiration?: boolean;
+    }> = [];
     
     // Auto-attach long messages (>10,000 chars) as a text file for better context
     const MESSAGE_AUTO_ATTACH_THRESHOLD = 10000;
@@ -155,6 +194,27 @@ export function NicoleChat() {
         `\n\n[Full message attached as user-prompt.txt - ${Math.round(input.length / 1000)}k characters]`;
     }
     
+    // Process inspiration images (only locked ones)
+    const lockedInspirations = inspirationImages.filter(img => img.isLocked);
+    if (lockedInspirations.length > 0) {
+      try {
+        const inspirationAttachments = await prepareInspirationForAPI(lockedInspirations);
+        for (const insp of inspirationAttachments) {
+          processedAttachments.push({
+            name: `inspiration_${insp.name}`,
+            type: insp.type,
+            content: insp.content,
+            annotation: insp.annotation,
+            isInspiration: true,
+          });
+        }
+        // Clear inspiration images after successfully processing them
+        clearInspirationImages();
+      } catch (err) {
+        console.error('Failed to process inspiration images:', err);
+      }
+    }
+    
     for (const file of attachedFiles) {
       try {
         const content = await readFileAsBase64(file);
@@ -170,8 +230,20 @@ export function NicoleChat() {
 
     // Build message content with file mentions
     let messageContent = messageToSend;
-    if (processedAttachments.length > 0) {
-      const fileNames = processedAttachments.map(a => a.name).join(', ');
+    
+    // Add inspiration context to the message if present
+    const inspirationAttachments = processedAttachments.filter(a => a.isInspiration);
+    const regularAttachments = processedAttachments.filter(a => !a.isInspiration);
+    
+    if (inspirationAttachments.length > 0) {
+      const inspirationContext = inspirationAttachments
+        .map((a, i) => `${i + 1}. ${a.name.replace('inspiration_', '')}: "${a.annotation || 'No annotation'}"`)
+        .join('\n');
+      messageContent += `\n\n[INSPIRATION IMAGES (${inspirationAttachments.length}):\n${inspirationContext}]`;
+    }
+    
+    if (regularAttachments.length > 0) {
+      const fileNames = regularAttachments.map(a => a.name).join(', ');
       messageContent += `\n\n[Attached files: ${fileNames}]`;
     }
 
@@ -546,6 +618,13 @@ export function NicoleChat() {
           </div>
         </div>
       )}
+
+      {/* Inspiration Images Manager */}
+      <InspirationImageManager
+        images={inspirationImages}
+        onImagesChange={setInspirationImages}
+        disabled={isNicoleThinking || !currentProject}
+      />
 
       {/* Attached Files Preview */}
       {attachedFiles.length > 0 && (

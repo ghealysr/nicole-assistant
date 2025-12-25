@@ -46,6 +46,24 @@ export interface AgentTask {
   result?: string;
 }
 
+export interface InspirationAnalysis {
+  colorPalette: string[];
+  typography: string[];
+  layoutPatterns: string[];
+  designStyle: string;
+  keyElements: string[];
+  mood: string;
+}
+
+export interface InspirationImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  annotation: string;
+  isLocked: boolean;
+  analysisResult?: InspirationAnalysis;
+}
+
 export interface PlanStep {
   id: string;
   phaseNumber: number;
@@ -161,6 +179,50 @@ interface EnjineerStore {
   // Preview refresh trigger - increment to force preview refresh
   previewRefreshTrigger: number;
   triggerPreviewRefresh: () => void;
+  
+  // Inspiration Images (for project planning)
+  inspirationImages: InspirationImage[];
+  setInspirationImages: (images: InspirationImage[]) => void;
+  addInspirationImage: (image: InspirationImage) => void;
+  updateInspirationImage: (id: string, updates: Partial<InspirationImage>) => void;
+  removeInspirationImage: (id: string) => void;
+  clearInspirationImages: () => void;
+  
+  // QA Reports
+  qaReports: QAReport[];
+  setQAReports: (reports: QAReport[]) => void;
+}
+
+// QA Report interface for the QA panel
+export interface QAReport {
+  id: string;
+  project_id: number;
+  plan_id?: string;
+  phase_number?: number;
+  trigger_type: string;
+  qa_depth: string;
+  overall_status: 'pass' | 'fail' | 'partial';
+  summary?: string;
+  blocking_issues_count: number;
+  warnings_count: number;
+  passed_count: number;
+  checks: QACheck[];
+  duration_seconds?: number;
+  estimated_cost_usd?: number;
+  model_used?: string;
+  tokens_used?: Record<string, number>;
+  created_at: string;
+}
+
+export interface QACheck {
+  category: string;
+  severity: 'critical' | 'warning' | 'info';
+  message: string;
+  file?: string;
+  line?: number;
+  column?: number;
+  suggestion?: string;
+  code_snippet?: string;
 }
 
 export const useEnjineerStore = create<EnjineerStore>((set) => ({
@@ -323,5 +385,34 @@ export const useEnjineerStore = create<EnjineerStore>((set) => ({
   triggerPreviewRefresh: () => set((state) => ({ 
     previewRefreshTrigger: state.previewRefreshTrigger + 1 
   })),
+  
+  // Inspiration Images
+  inspirationImages: [],
+  setInspirationImages: (images) => set({ inspirationImages: images }),
+  addInspirationImage: (image) => set((state) => ({
+    inspirationImages: [...state.inspirationImages, image]
+  })),
+  updateInspirationImage: (id, updates) => set((state) => ({
+    inspirationImages: state.inspirationImages.map(img =>
+      img.id === id ? { ...img, ...updates } : img
+    )
+  })),
+  removeInspirationImage: (id) => set((state) => {
+    // Clean up object URL to prevent memory leaks
+    const toRemove = state.inspirationImages.find(img => img.id === id);
+    if (toRemove) {
+      URL.revokeObjectURL(toRemove.previewUrl);
+    }
+    return { inspirationImages: state.inspirationImages.filter(img => img.id !== id) };
+  }),
+  clearInspirationImages: () => set((state) => {
+    // Clean up all object URLs
+    state.inspirationImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+    return { inspirationImages: [] };
+  }),
+  
+  // QA Reports
+  qaReports: [],
+  setQAReports: (reports) => set({ qaReports: reports }),
 }));
 

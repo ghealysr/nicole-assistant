@@ -252,7 +252,13 @@ export const enjineerApi = {
     projectId: number, 
     message: string, 
     onEvent: (event: ChatEvent) => void,
-    attachments?: Array<{ name: string; type: string; content: string }>
+    attachments?: Array<{ 
+      name: string; 
+      type: string; 
+      content: string;
+      annotation?: string;  // User annotation for inspiration images
+      isInspiration?: boolean;  // Flag to identify inspiration images
+    }>
   ): Promise<void> {
     const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/chat`, {
       method: 'POST',
@@ -332,17 +338,23 @@ export const enjineerApi = {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
+    attachments: Array<{ name: string; type: string; content: string }>;
+    metadata: Record<string, unknown>;
     timestamp: Date;
   }>> {
-    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/chat/history?limit=${limit}`, {
+    const res = await fetch(`${API_BASE}/enjineer/projects/${projectId}/messages?limit=${limit}`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.map((m: Record<string, unknown>) => ({
-      id: m.id as string,
+    // Backend returns { messages: [...], total, limit, offset }
+    const messages = Array.isArray(data) ? data : (data.messages || []);
+    return messages.map((m: Record<string, unknown>) => ({
+      id: String(m.id),
       role: m.role as 'user' | 'assistant' | 'system',
-      content: m.content as string,
+      content: (m.content as string) || '',
+      attachments: (m.attachments as Array<{ name: string; type: string; content: string }>) || [],
+      metadata: (m.metadata as Record<string, unknown>) || {},
       timestamp: new Date(m.created_at as string),
     }));
   },
