@@ -72,6 +72,7 @@ PUBLIC_PATHS = {
     "/redoc",
     "/openapi.json",
     "/chat/stream-test",  # Debug endpoint for SSE testing
+    "/muse/health",  # Muse health check endpoint
 }
 
 # Paths that require admin role
