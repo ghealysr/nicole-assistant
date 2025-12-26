@@ -44,7 +44,7 @@ class CreateSessionResponse(BaseModel):
 
 class AddInspirationRequest(BaseModel):
     """Request to add inspiration input."""
-    input_type: str = Field(..., regex="^(image|url)$")
+    input_type: str = Field(..., pattern="^(image|url)$")
     data: str  # Base64 image or URL
     user_notes: Optional[str] = None
     focus_elements: Optional[List[str]] = None
@@ -1160,7 +1160,7 @@ class ExportStyleGuideRequest(BaseModel):
     """Request to export a style guide."""
     format: str = Field(
         ..., 
-        regex="^(figma_tokens|css_variables|tailwind_config|design_tokens_json)$",
+        pattern="^(figma_tokens|css_variables|tailwind_config|design_tokens_json)$",
         description="Export format: figma_tokens, css_variables, tailwind_config, or design_tokens_json"
     )
 
