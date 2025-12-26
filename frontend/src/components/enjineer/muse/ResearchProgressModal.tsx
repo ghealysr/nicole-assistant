@@ -12,31 +12,29 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FileSearch, 
   Palette, 
-  Type, 
   Layout, 
   Sparkles,
   CheckCircle2,
   Circle,
   Loader2,
-  Image,
-  Link2,
-  Globe,
+  Image as ImageIcon,
   BookOpen
 } from 'lucide-react';
-import { useMuseStore, useMuseProgress } from '@/lib/muse';
+import { useMuseStore } from '@/lib/muse';
 import type { MuseEvent } from '@/lib/muse/api';
 
 interface ResearchProgressModalProps {
   onComplete?: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps) {
-  const { progress, events, phase } = useMuseStore();
+  const { progress, events } = useMuseStore();
 
   const phases = [
     { id: 'brief_analysis', name: 'Analyzing Brief', icon: FileSearch },
     { id: 'deep_research', name: 'Deep Research', icon: BookOpen },
-    { id: 'inspiration_gathering', name: 'Gathering Inspiration', icon: Image },
+    { id: 'inspiration_gathering', name: 'Gathering Inspiration', icon: ImageIcon },
     { id: 'mood_board_generation', name: 'Generating Moodboards', icon: Palette },
     { id: 'style_guide_generation', name: 'Creating Style Guide', icon: Layout },
     { id: 'style_guide_revision', name: 'Revising Design', icon: Sparkles },
@@ -73,7 +71,7 @@ export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps
             {phases.map((phaseItem, index) => {
               const isComplete = index < currentPhaseIndex;
               const isCurrent = phaseItem.id === progress?.phase;
-              const isPending = index > currentPhaseIndex;
+              const _isPending = index > currentPhaseIndex; // eslint-disable-line @typescript-eslint/no-unused-vars
               const Icon = phaseItem.icon;
 
               return (
@@ -171,7 +169,7 @@ export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'inspiration_found':
-      return <Image className="w-4 h-4 text-pink-400 flex-shrink-0" />;
+      return <ImageIcon className="w-4 h-4 text-pink-400 flex-shrink-0" />;
     case 'finding_found':
       return <BookOpen className="w-4 h-4 text-purple-400 flex-shrink-0" />;
     case 'moodboard_generated':

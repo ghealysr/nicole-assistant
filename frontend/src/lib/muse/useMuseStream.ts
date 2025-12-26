@@ -7,7 +7,6 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders } from '@/lib/alphawave_utils';
 import { useMuseStore } from './store';
-import type { MuseEvent } from './api';
 
 // Use environment variable for API base URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';

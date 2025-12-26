@@ -102,7 +102,7 @@ const initialState = {
 export const useMuseStore = create<MuseState>((set) => ({
   ...initialState,
   
-  setSession: (session) => set((state) => {
+  setSession: (session) => set(() => {
     // Derive phase from session status
     let phase: ResearchPhase = 'idle';
     if (session) {

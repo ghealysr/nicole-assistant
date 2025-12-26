@@ -10,20 +10,18 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, 
   Upload, 
   Link2, 
   Plus, 
   Trash2, 
   Sparkles, 
   ArrowRight,
-  Image as ImageIcon,
   ExternalLink,
   FileText,
   Wand2,
   Zap
 } from 'lucide-react';
-import { useMuseStore, useMusePhase } from '@/lib/muse';
+import { useMuseStore } from '@/lib/muse';
 import type { InspirationInput } from '@/lib/muse/api';
 
 interface ResearchInputFormProps {
