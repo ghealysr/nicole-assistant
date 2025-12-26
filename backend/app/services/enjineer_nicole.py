@@ -1333,6 +1333,87 @@ Be specific about colors (provide actual hex codes when visible), fonts, and pat
             messages.append({"role": "user", "content": f"[CONTEXT: Current Plan]\n{plan_text}"})
             messages.append({"role": "assistant", "content": "I see the current plan. I'll continue from where we left off."})
         
+        # =========================================================================
+        # INJECT MUSE STYLE GUIDE IF AVAILABLE
+        # =========================================================================
+        # If this project went through Muse design research, inject the style guide
+        try:
+            style_guide_id = self.project_data.get("active_style_guide_id")
+            if style_guide_id:
+                pool = await get_tiger_pool()
+                async with pool.acquire() as conn:
+                    style_guide = await conn.fetchrow(
+                        """
+                        SELECT 
+                            nicole_context_summary, 
+                            anti_patterns,
+                            colors,
+                            typography,
+                            tailwind_config
+                        FROM muse_style_guides 
+                        WHERE id = $1
+                        """,
+                        style_guide_id
+                    )
+                
+                if style_guide and style_guide.get("nicole_context_summary"):
+                    # Parse anti-patterns
+                    anti_patterns = json.loads(style_guide["anti_patterns"]) if style_guide.get("anti_patterns") else []
+                    anti_patterns_str = "\n".join(f"- {ap}" for ap in anti_patterns[:10])
+                    
+                    # Parse colors for quick reference
+                    colors = json.loads(style_guide["colors"]) if style_guide.get("colors") else {}
+                    color_palette_str = ""
+                    if colors:
+                        color_entries = []
+                        for name, value in colors.items():
+                            if isinstance(value, str):
+                                color_entries.append(f"  - {name}: {value}")
+                            elif isinstance(value, dict):
+                                for shade, hex_val in value.items():
+                                    color_entries.append(f"  - {name}-{shade}: {hex_val}")
+                        color_palette_str = "\n".join(color_entries[:20])  # Top 20 colors
+                    
+                    # Parse typography for reference
+                    typography = json.loads(style_guide["typography"]) if style_guide.get("typography") else {}
+                    typography_str = ""
+                    if typography:
+                        typo_parts = []
+                        if typography.get("font_family"):
+                            typo_parts.append(f"Fonts: {typography['font_family']}")
+                        if typography.get("base_size"):
+                            typo_parts.append(f"Base: {typography['base_size']}")
+                        if typography.get("scale"):
+                            typo_parts.append(f"Scale: {typography['scale']}")
+                        typography_str = " | ".join(typo_parts)
+                    
+                    style_context = f"""[DESIGN SPECIFICATION - FROM MUSE RESEARCH]
+
+{style_guide['nicole_context_summary']}
+
+### COLOR PALETTE (USE EXACTLY)
+{color_palette_str if color_palette_str else '(See Tailwind config below)'}
+
+### TYPOGRAPHY
+{typography_str if typography_str else '(See context above)'}
+
+### ANTI-PATTERNS (DO NOT DO)
+{anti_patterns_str}
+
+**CRITICAL**: You MUST follow this design specification exactly. Do not deviate from the colors, typography, or component styles defined above. These were specifically chosen through design research for this project.
+
+When creating files:
+- Apply these exact color values in Tailwind classes
+- Use the specified fonts and type scale
+- Follow the component styles and spacing
+- Reference this design spec when making any visual decisions"""
+                    
+                    messages.append({"role": "user", "content": style_context})
+                    messages.append({"role": "assistant", "content": "I've reviewed the Muse design specification. I will follow these exact colors, typography, and component styles throughout my implementation. Every visual decision will reference this spec."})
+                    logger.info(f"[MUSE] Injected style guide {style_guide_id} context into Nicole's messages")
+        except Exception as e:
+            logger.warning(f"[MUSE] Failed to inject style guide context: {e}")
+        
         # Add conversation history (limit to prevent token overflow)
         # Filter out messages with empty content to avoid API errors
         history = self.project_data.get("messages", [])[-8:]

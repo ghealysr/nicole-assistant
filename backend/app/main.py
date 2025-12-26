@@ -49,6 +49,7 @@ from app.routers import (
     faz_projects,
     faz_chat,
     enjineer,
+    muse,
 )
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,7 @@ class ConditionalGZipMiddleware:
         "/vibe/",                             # Vibe dashboard streaming
         "/faz/",                              # Faz code streaming
         "/enjineer/",                         # Enjineer dashboard streaming
+        "/muse/",                             # Muse design research streaming
         "/images/generate/stream",            # Image generation progress streaming
         "/images/analyze-references/stream",  # Vision analysis streaming
         "/images/prompt-suggestions/stream",  # Nicole prompt suggestions streaming
@@ -282,6 +284,9 @@ app.include_router(faz_chat.router, tags=["Faz Code Chat"])
 
 # Enjineer Dashboard (Cursor-like AI coding environment)
 app.include_router(enjineer.router, tags=["Enjineer"])
+
+# Muse Design Research Agent
+app.include_router(muse.router, tags=["Muse Design Research"])
 
 
 @app.get("/healthz")

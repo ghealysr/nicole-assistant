@@ -238,29 +238,25 @@ async def verify_jwt(request: Request, call_next: Callable):
             logger.debug(f"[{correlation_id}] Public path accessed: {request.method} {request.url.path}")
             return await call_next(request)
 
-        # Extract and validate authorization header
+        # Extract token from Authorization header or query params (for SSE)
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            logger.warning(f"[{correlation_id}] Missing authorization header for: {request.method} {request.url.path}")
+        token = None
+        
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        else:
+            # Check query params for SSE endpoints (EventSource doesn't support headers)
+            token = request.query_params.get("token")
+        
+        if not token:
+            logger.warning(f"[{correlation_id}] Missing authorization for: {request.method} {request.url.path}")
             return add_cors_headers(JSONResponse(
                 status_code=401,
                 content={
-                    "error": "Authorization header required",
+                    "error": "Authorization required (header or token query param)",
                     "correlation_id": correlation_id
                 }
             ), request)
-
-        if not auth_header.startswith("Bearer "):
-            logger.warning(f"[{correlation_id}] Invalid auth header format for: {request.method} {request.url.path}")
-            return add_cors_headers(JSONResponse(
-                status_code=401,
-                content={
-                    "error": "Invalid authorization header format",
-                    "correlation_id": correlation_id
-                }
-            ), request)
-
-        token = auth_header.split(" ")[1]
 
         # Verify Google ID token
         try:

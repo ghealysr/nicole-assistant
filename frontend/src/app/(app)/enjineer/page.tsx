@@ -21,7 +21,7 @@ import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, PanelLeftClose, PanelLeft, MessageSquare, X,
   Sparkles, Image as ImageIcon, Loader2, Rocket, FolderOpen,
-  Plus, Clock, ChevronRight, Grid3X3
+  Plus, Clock, ChevronRight, Grid3X3, Palette, Zap
 } from 'lucide-react';
 import { Sidebar } from '@/components/enjineer/Sidebar';
 import { MainArea } from '@/components/enjineer/MainArea';
@@ -39,6 +39,9 @@ interface ProjectListItem {
   status: string;
   createdAt: Date;
   updatedAt: Date;
+  designMode?: 'quick' | 'research';
+  activeStyleGuideId?: number;
+  researchSessionId?: number;
 }
 
 export default function EnjineerPage() {
@@ -71,6 +74,7 @@ export default function EnjineerPage() {
   const [referenceImage, setReferenceImage] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState<string | null>(null);
   const [isCreating, setIsCreating] = React.useState(false);
+  const [useDesignResearch, setUseDesignResearch] = React.useState(false);
 
   /**
    * Load all projects from backend.
@@ -88,6 +92,9 @@ export default function EnjineerPage() {
         status: p.status,
         createdAt: new Date(p.createdAt),
         updatedAt: new Date(p.updatedAt),
+        designMode: p.designMode || 'quick',
+        activeStyleGuideId: p.activeStyleGuideId,
+        researchSessionId: p.researchSessionId,
       })));
       
       return projectList;
@@ -105,7 +112,7 @@ export default function EnjineerPage() {
       setLoading(true);
       const { enjineerApi } = await import('@/lib/enjineer/api');
       
-      // Set current project
+      // Set current project with design mode info
       setCurrentProject({
         id: project.id,
         name: project.name,
@@ -113,6 +120,9 @@ export default function EnjineerPage() {
         status: project.status,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
+        designMode: project.designMode,
+        activeStyleGuideId: project.activeStyleGuideId,
+        researchSessionId: project.researchSessionId,
       });
       
       // Clear previous chat messages
@@ -174,6 +184,7 @@ export default function EnjineerPage() {
     setProjectDescription('');
     setReferenceImage(null);
     setImagePreview(null);
+    setUseDesignResearch(false);
     setViewState('intake');
   };
 
@@ -196,7 +207,8 @@ export default function EnjineerPage() {
       const newProject = await enjineerApi.createProject(
         name, 
         projectDescription,
-        inspirationImages.length > 0 ? inspirationImages : undefined
+        inspirationImages.length > 0 ? inspirationImages : undefined,
+        useDesignResearch ? 'research' : 'quick'
       );
       
       // Clear messages for fresh start
@@ -213,6 +225,12 @@ export default function EnjineerPage() {
       
       // Refresh project list
       await loadProjectList();
+      
+      // If using design research, go directly to design tab
+      if (useDesignResearch) {
+        const { useEnjineerStore } = await import('@/lib/enjineer/store');
+        useEnjineerStore.getState().setMainTab('design');
+      }
       
       setViewState('workspace');
     } catch (error) {
@@ -420,10 +438,69 @@ export default function EnjineerPage() {
                 />
               </div>
 
+              {/* Design Mode Selection */}
+              <div>
+                <label className="block text-sm font-medium text-[#94A3B8] mb-3">
+                  Build Mode
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Quick Build */}
+                  <button
+                    type="button"
+                    onClick={() => setUseDesignResearch(false)}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      !useDesignResearch
+                        ? 'border-[#8B5CF6] bg-[#8B5CF6]/10'
+                        : 'border-[#1E1E2E] bg-[#12121A] hover:border-[#2E2E3E]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        !useDesignResearch ? 'bg-[#8B5CF6]' : 'bg-[#1E1E2E]'
+                      }`}>
+                        <Zap size={16} className={!useDesignResearch ? 'text-white' : 'text-[#64748B]'} />
+                      </div>
+                      <span className={`font-medium ${!useDesignResearch ? 'text-white' : 'text-[#94A3B8]'}`}>
+                        Quick Build
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#64748B]">
+                      Nicole builds immediately using best practices
+                    </p>
+                  </button>
+                  
+                  {/* Design Research */}
+                  <button
+                    type="button"
+                    onClick={() => setUseDesignResearch(true)}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      useDesignResearch
+                        ? 'border-[#EC4899] bg-[#EC4899]/10'
+                        : 'border-[#1E1E2E] bg-[#12121A] hover:border-[#2E2E3E]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        useDesignResearch ? 'bg-gradient-to-r from-[#EC4899] to-[#8B5CF6]' : 'bg-[#1E1E2E]'
+                      }`}>
+                        <Palette size={16} className={useDesignResearch ? 'text-white' : 'text-[#64748B]'} />
+                      </div>
+                      <span className={`font-medium ${useDesignResearch ? 'text-white' : 'text-[#94A3B8]'}`}>
+                        Design Research
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#64748B]">
+                      Muse creates mood boards &amp; style guides first
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               {/* Reference Image Upload */}
               <div>
                 <label className="block text-sm font-medium text-[#94A3B8] mb-2">
-                  Reference Image <span className="text-[#64748B]">(optional)</span>
+                  {useDesignResearch ? 'Inspiration Image' : 'Reference Image'}{' '}
+                  <span className="text-[#64748B]">(optional)</span>
                 </label>
                 <div className="relative">
                   {imagePreview ? (
@@ -472,12 +549,21 @@ export default function EnjineerPage() {
               <button
                 onClick={handleCreateProject}
                 disabled={!projectDescription.trim() || isCreating}
-                className="w-full py-4 bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] hover:from-[#7C3AED] hover:to-[#5558DD] disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-semibold text-lg flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#8B5CF6]/25"
+                className={`w-full py-4 rounded-xl text-white font-semibold text-lg flex items-center justify-center gap-3 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                  useDesignResearch
+                    ? 'bg-gradient-to-r from-[#EC4899] to-[#8B5CF6] hover:from-[#DB2777] hover:to-[#7C3AED] shadow-[#EC4899]/25'
+                    : 'bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] hover:from-[#7C3AED] hover:to-[#5558DD] shadow-[#8B5CF6]/25'
+                }`}
               >
                 {isCreating ? (
                   <>
                     <Loader2 size={20} className="animate-spin" />
                     Creating Project...
+                  </>
+                ) : useDesignResearch ? (
+                  <>
+                    <Palette size={20} />
+                    Start Design Research
                   </>
                 ) : (
                   <>
@@ -489,7 +575,10 @@ export default function EnjineerPage() {
 
               {/* Hint */}
               <p className="text-center text-xs text-[#64748B]">
-                Nicole will help you plan and build your project step by step
+                {useDesignResearch 
+                  ? 'Muse will research, create mood boards, and define your design system'
+                  : 'Nicole will help you plan and build your project step by step'
+                }
               </p>
             </div>
           </div>

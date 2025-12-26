@@ -21,7 +21,8 @@ import {
   FolderOpen, Folder, File, FileJson, FileType, FileText,
   CheckCircle2, Circle, Loader2, Plus, Trash2, Edit3,
   Image as ImageIcon, Settings, Package, Globe, Database,
-  Layout, Layers, Terminal, X, Clock, Code, Shield
+  Layout, Layers, Terminal, X, Clock, Code, Shield,
+  Palette, Sparkles
 } from 'lucide-react';
 import { useEnjineerStore, PlanStep, EnjineerFile } from '@/lib/enjineer/store';
 import { enjineerApi } from '@/lib/enjineer/api';
@@ -37,14 +38,54 @@ export function Sidebar() {
     openFile,
     plan,
     isSidebarCollapsed,
+    currentProject,
   } = useEnjineerStore();
 
   if (isSidebarCollapsed) {
     return null;
   }
 
+  // Check if project has an active Muse design system
+  const hasActiveDesignSystem = currentProject?.activeStyleGuideId != null;
+  const isResearchMode = currentProject?.designMode === 'research';
+
   return (
     <div className="w-64 bg-[#0D0D12] border-r border-[#1E1E2E] flex flex-col h-full">
+      {/* Muse Design System Indicator */}
+      {(hasActiveDesignSystem || isResearchMode) && (
+        <div className={cn(
+          "px-3 py-2 border-b flex items-center gap-2",
+          hasActiveDesignSystem 
+            ? "bg-gradient-to-r from-pink-500/10 to-purple-500/10 border-pink-500/20"
+            : "bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20"
+        )}>
+          <div className={cn(
+            "p-1.5 rounded-lg",
+            hasActiveDesignSystem ? "bg-pink-500/20" : "bg-amber-500/20"
+          )}>
+            {hasActiveDesignSystem ? (
+              <Sparkles size={12} className="text-pink-400" />
+            ) : (
+              <Palette size={12} className="text-amber-400" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className={cn(
+              "text-[10px] font-medium",
+              hasActiveDesignSystem ? "text-pink-300" : "text-amber-300"
+            )}>
+              {hasActiveDesignSystem ? "Muse Design Active" : "Research Mode"}
+            </div>
+            <div className="text-[9px] text-[#64748B] truncate">
+              {hasActiveDesignSystem 
+                ? "Style guide applied" 
+                : "Complete design research first"
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab Headers */}
       <div className="flex border-b border-[#1E1E2E]">
         <button

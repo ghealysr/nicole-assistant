@@ -41,6 +41,7 @@ class CreateProjectRequest(BaseModel):
     tech_stack: Optional[dict] = Field(default_factory=dict)
     intake_data: Optional[dict] = Field(default_factory=dict)
     inspiration_images: Optional[List[str]] = Field(default_factory=list)  # Base64 data URLs
+    design_mode: Optional[str] = Field(default="quick")  # 'quick' or 'research'
 
 
 class UpdateProjectRequest(BaseModel):
@@ -82,6 +83,9 @@ class ProjectResponse(BaseModel):
     settings: dict
     created_at: str
     updated_at: str
+    design_mode: str = "quick"
+    research_session_id: Optional[int] = None
+    active_style_guide_id: Optional[int] = None
 
 
 class FileResponse(BaseModel):
@@ -266,11 +270,16 @@ Format your response as JSON with these exact keys:
             logger.error(f"[Enjineer] Failed to analyze inspiration images: {e}")
             intake_data["design_analysis"] = {"error": str(e)}
     
+    # Determine design mode
+    design_mode = request.design_mode or "quick"
+    if design_mode not in ("quick", "research"):
+        design_mode = "quick"
+    
     async with pool.acquire() as conn:
         project = await conn.fetchrow(
             """
-            INSERT INTO enjineer_projects (user_id, name, description, tech_stack, intake_data, settings)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO enjineer_projects (user_id, name, description, tech_stack, intake_data, settings, design_mode)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
             user_id,
@@ -278,7 +287,8 @@ Format your response as JSON with these exact keys:
             request.description,
             request.tech_stack or {},
             intake_data,
-            {"budget_limit": 50.0, "total_spent": 0.0, "theme": "dark"}
+            {"budget_limit": 50.0, "total_spent": 0.0, "theme": "dark"},
+            design_mode
         )
     
     logger.info(f"Created Enjineer project: {project['id']}")
@@ -293,7 +303,10 @@ Format your response as JSON with these exact keys:
         intake_data=project["intake_data"] or {},
         settings=project["settings"] or {},
         created_at=project["created_at"].isoformat(),
-        updated_at=project["updated_at"].isoformat()
+        updated_at=project["updated_at"].isoformat(),
+        design_mode=project.get("design_mode") or "quick",
+        research_session_id=project.get("research_session_id"),
+        active_style_guide_id=project.get("active_style_guide_id")
     )
 
 
@@ -341,7 +354,10 @@ async def list_projects(
             intake_data=p["intake_data"] or {},
             settings=p["settings"] or {},
             created_at=p["created_at"].isoformat(),
-            updated_at=p["updated_at"].isoformat()
+            updated_at=p["updated_at"].isoformat(),
+            design_mode=p.get("design_mode") or "quick",
+            research_session_id=p.get("research_session_id"),
+            active_style_guide_id=p.get("active_style_guide_id")
         )
         for p in projects
     ]
@@ -391,7 +407,10 @@ async def get_project(
             intake_data=project["intake_data"] or {},
             settings=project["settings"] or {},
             created_at=project["created_at"].isoformat(),
-            updated_at=project["updated_at"].isoformat()
+            updated_at=project["updated_at"].isoformat(),
+            design_mode=project.get("design_mode") or "quick",
+            research_session_id=project.get("research_session_id"),
+            active_style_guide_id=project.get("active_style_guide_id")
         ),
         "files": [
             FileResponse(
@@ -488,7 +507,10 @@ async def update_project(
         intake_data=project["intake_data"] or {},
         settings=project["settings"] or {},
         created_at=project["created_at"].isoformat(),
-        updated_at=project["updated_at"].isoformat()
+        updated_at=project["updated_at"].isoformat(),
+        design_mode=project.get("design_mode") or "quick",
+        research_session_id=project.get("research_session_id"),
+        active_style_guide_id=project.get("active_style_guide_id")
     )
 
 

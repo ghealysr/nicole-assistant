@@ -104,11 +104,14 @@ export const enjineerApi = {
   /**
    * Create a new project with optional inspiration images.
    * Images are sent as base64 data URLs for Claude Vision analysis.
+   * 
+   * @param designMode - 'quick' for immediate build, 'research' for Muse design research
    */
   async createProject(
     name: string, 
     description: string,
-    inspirationImages?: string[]  // Array of base64 data URLs
+    inspirationImages?: string[],  // Array of base64 data URLs
+    designMode: 'quick' | 'research' = 'quick'
   ): Promise<Project> {
     const res = await fetch(`${API_BASE}/enjineer/projects`, {
       method: 'POST',
@@ -116,7 +119,8 @@ export const enjineerApi = {
       body: JSON.stringify({ 
         name, 
         description,
-        inspiration_images: inspirationImages || []
+        inspiration_images: inspirationImages || [],
+        design_mode: designMode
       }),
     });
     if (!res.ok) {
@@ -176,6 +180,9 @@ export const enjineerApi = {
       status: p.status as string,
       createdAt: new Date(p.created_at as string),
       updatedAt: new Date(p.updated_at as string),
+      designMode: (p.design_mode as 'quick' | 'research') || 'quick',
+      researchSessionId: p.research_session_id as number | undefined,
+      activeStyleGuideId: p.active_style_guide_id as number | undefined,
     }));
   },
 

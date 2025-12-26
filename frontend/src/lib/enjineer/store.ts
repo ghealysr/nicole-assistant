@@ -105,9 +105,12 @@ export interface Project {
   status: string;
   createdAt: Date;
   updatedAt: Date;
+  designMode?: 'quick' | 'research';
+  activeStyleGuideId?: number;
+  researchSessionId?: number;
 }
 
-export type MainTab = 'code' | 'preview' | 'terminal';
+export type MainTab = 'code' | 'preview' | 'terminal' | 'design';
 export type SidebarTab = 'files' | 'plan' | 'qa';
 export type PreviewMode = 'mobile' | 'tablet' | 'desktop';
 

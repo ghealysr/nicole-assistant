@@ -6,13 +6,14 @@
  * Center panel containing:
  * - File tabs at top
  * - Code editor (Monaco) / Preview / Terminal tabs
+ * - Design tab for Muse design research
  * - Sandpack-powered preview for React projects
  * - Static HTML preview for simple sites
  */
 
 import React, { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { X, Code, Eye, Terminal, RefreshCw } from 'lucide-react';
+import { X, Code, Eye, Terminal, RefreshCw, Palette } from 'lucide-react';
 import { useEnjineerStore } from '@/lib/enjineer/store';
 import dynamic from 'next/dynamic';
 
@@ -37,6 +38,19 @@ const PreviewPane = dynamic(
     loading: () => (
       <div className="flex items-center justify-center h-full bg-[#0D0D12] text-[#64748B]">
         Loading preview...
+      </div>
+    )
+  }
+);
+
+// Dynamic import for DesignDashboard (Muse)
+const DesignDashboard = dynamic(
+  () => import('./muse/DesignDashboard').then(mod => mod.DesignDashboard),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full bg-[#0D0D12] text-[#64748B]">
+        Loading design studio...
       </div>
     )
   }
@@ -117,6 +131,19 @@ export function MainArea() {
             <Terminal size={14} />
             Terminal
           </button>
+          <div className="w-px h-4 bg-[#1E1E2E] mx-1" />
+          <button
+            onClick={() => setMainTab('design')}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded transition-colors flex items-center gap-1.5",
+              mainTab === 'design'
+                ? "bg-gradient-to-r from-[#EC4899] to-[#8B5CF6] text-white"
+                : "text-[#94A3B8] hover:text-white hover:bg-[#1E1E2E]"
+            )}
+          >
+            <Palette size={14} />
+            Design
+          </button>
         </div>
 
         {/* Right: Preview refresh (only in preview mode - other controls are in PreviewPane) */}
@@ -189,6 +216,16 @@ export function MainArea() {
         )}
         {mainTab === 'terminal' && (
           <TerminalPanel output={terminalOutput} />
+        )}
+        {mainTab === 'design' && currentProject && (
+          <DesignDashboard projectId={currentProject.id} />
+        )}
+        {mainTab === 'design' && !currentProject && (
+          <div className="flex flex-col items-center justify-center h-full bg-[#0A0A0F] text-[#64748B]">
+            <Palette size={48} className="mb-4 opacity-30" />
+            <p className="text-sm">Select a project to access design tools</p>
+            <p className="text-xs mt-1">Muse will help you research and define your visual language</p>
+          </div>
         )}
       </div>
     </div>
