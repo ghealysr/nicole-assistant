@@ -24,12 +24,13 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-# Model identifiers - Using Gemini 2.5 Pro (latest stable multimodal model)
-GEMINI_PRO = "gemini-2.5-pro-preview-06-05"  # Latest Gemini 2.5 Pro with advanced reasoning
-GEMINI_PRO_LATEST = "gemini-2.5-pro-preview-06-05"  # Alias for clarity
-GEMINI_FLASH = "gemini-2.5-flash-preview-05-20"  # Latest flash model for cost-efficient tasks
-# Fallback if 2.5 not available
-GEMINI_PRO_STABLE = "gemini-1.5-pro-latest"  # Stable fallback
+# Model identifiers - Using Gemini 3 Pro Preview (latest multimodal model)
+GEMINI_PRO = "gemini-3-pro-preview"  # Gemini 3 Pro Preview - 1M context, advanced reasoning
+GEMINI_PRO_LATEST = "gemini-3-pro-preview"  # Alias for clarity
+GEMINI_FLASH = "gemini-3-flash-preview"  # Gemini 3 Flash - Pro intelligence at Flash speed
+GEMINI_IMAGE = "gemini-3-pro-image-preview"  # For image generation
+# Fallback
+GEMINI_PRO_STABLE = "gemini-3-pro-preview"  # Same as primary (Gemini 3 is stable)
 
 # Pricing (per 1M tokens)
 GEMINI_PRO_INPUT_COST = 2.50    # $2.50 per 1M input tokens
