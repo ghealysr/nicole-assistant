@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   useMuseStore, 
@@ -58,36 +58,54 @@ export function DesignDashboard({
   
   // Track active session ID for analytics and API calls
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  
+  // Track if initial session check has run (prevents infinite loops)
+  const hasCheckedSession = useRef(false);
+
+  // Memoized callbacks for SSE stream (prevents infinite re-render loops)
+  const handleMoodboardsReady = useCallback(async () => {
+    try {
+      const mbs = await museApi.getMoodBoards(projectId);
+      setMoodboards(mbs);
+    } catch (err) {
+      console.error('Failed to fetch moodboards:', err);
+    }
+  }, [projectId, setMoodboards]);
+
+  const handleStyleGuideReady = useCallback(async () => {
+    try {
+      const sg = await museApi.getProjectStyleGuide(projectId);
+      if (sg) setStyleGuide(sg);
+    } catch (err) {
+      console.error('Failed to fetch style guide:', err);
+    }
+  }, [projectId, setStyleGuide]);
+
+  const handleStreamError = useCallback((err: string) => {
+    setError(err);
+    setLoading(false);
+  }, [setError, setLoading]);
 
   // SSE stream for real-time updates
   const { connect: connectStream, disconnect: disconnectStream } = useMuseStream({
     projectId,
-    onMoodboardsReady: async () => {
-      // Fetch full moodboard data
-      try {
-        const mbs = await museApi.getMoodBoards(projectId);
-        setMoodboards(mbs);
-      } catch (err) {
-        console.error('Failed to fetch moodboards:', err);
-      }
-    },
-    onStyleGuideReady: async () => {
-      // Fetch full style guide data using project-aware method
-      try {
-        const sg = await museApi.getProjectStyleGuide(projectId);
-        if (sg) setStyleGuide(sg);
-      } catch (err) {
-        console.error('Failed to fetch style guide:', err);
-      }
-    },
-    onError: (err) => {
-      setError(err);
-      setLoading(false);
-    }
+    onMoodboardsReady: handleMoodboardsReady,
+    onStyleGuideReady: handleStyleGuideReady,
+    onError: handleStreamError
   });
 
   // Check for existing session on mount
+  // Reset session check when projectId changes
   useEffect(() => {
+    hasCheckedSession.current = false;
+  }, [projectId]);
+
+  // Check for existing session on mount (runs ONCE per projectId)
+  useEffect(() => {
+    // Prevent multiple runs for same project
+    if (hasCheckedSession.current) return;
+    hasCheckedSession.current = true;
+
     const checkExistingSession = async () => {
       try {
         const session = await museApi.getSessionByProject(projectId);
@@ -129,7 +147,8 @@ export function DesignDashboard({
     return () => {
       disconnectStream();
     };
-  }, [projectId, connectStream, disconnectStream, setMoodboards, setStyleGuide, setPhase, handleComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]); // Only re-run if projectId changes
 
   // Handle start research
   const handleStartResearch = useCallback(async (
