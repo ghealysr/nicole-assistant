@@ -2925,7 +2925,7 @@ export default config;
         except Exception as e:
             logger.error(f"[MUSE] Pipeline error for session {session_id}: {e}")
             await self.update_session_status(
-                session_id, "failed", error_message=str(e)
+                session_id, "failed", message=str(e)
             )
             return {
                 "success": False,
@@ -3038,7 +3038,7 @@ export default config;
         except Exception as e:
             logger.error(f"[MUSE] Streaming pipeline error for session {session_id}: {e}")
             await self.update_session_status(
-                session_id, "failed", error_message=str(e)
+                session_id, "failed", message=str(e)
             )
             yield {
                 "type": "error",
