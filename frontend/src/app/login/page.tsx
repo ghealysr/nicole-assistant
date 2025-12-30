@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useGoogleAuth } from '@/lib/google_auth';
 import { useRouter } from 'next/navigation';
 
@@ -17,6 +17,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [buttonRendered, setButtonRendered] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -34,9 +35,12 @@ export default function LoginPage() {
         if (container) {
           renderSignInButton('google-signin-button');
           setButtonRendered(true);
+          setLoadFailed(false);
         } else if (retryCount < 5) {
           // Retry if container not found
           setRetryCount(r => r + 1);
+        } else {
+          setLoadFailed(true);
         }
       }, 200);
       return () => clearTimeout(timer);
@@ -52,6 +56,56 @@ export default function LoginPage() {
       return () => clearTimeout(timer);
     }
   }, [retryCount, buttonRendered]);
+
+  // Mark as failed if Google script doesn't load after 10 seconds
+  useEffect(() => {
+    if (!isGoogleReady && !isLoading) {
+      const timer = setTimeout(() => {
+        if (!isGoogleReady) {
+          setLoadFailed(true);
+        }
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [isGoogleReady, isLoading]);
+
+  // Manual retry handler
+  const handleRetry = useCallback(() => {
+    // Clear any cached Google state
+    localStorage.removeItem('nicole_google_token');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('nicole_token');
+    
+    // Force a full page reload to re-initialize Google
+    window.location.reload();
+  }, []);
+
+  // Clear and switch account
+  const handleSwitchAccount = useCallback(() => {
+    // Clear stored tokens
+    localStorage.removeItem('nicole_google_token');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('nicole_token');
+    
+    // Clear Google's stored credential by opening Google's account chooser
+    // This forces the account picker to show
+    const width = 500;
+    const height = 600;
+    const left = (window.innerWidth - width) / 2;
+    const top = (window.innerHeight - height) / 2;
+    
+    // Open Google's OAuth directly with prompt=select_account
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const redirectUri = window.location.origin + '/auth/callback';
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${clientId}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&response_type=token` +
+      `&scope=openid email profile` +
+      `&prompt=select_account`;
+    
+    window.open(googleAuthUrl, 'google-auth', `width=${width},height=${height},left=${left},top=${top}`);
+  }, []);
 
   // Show loading while checking auth
   if (isLoading) {
@@ -110,20 +164,52 @@ export default function LoginPage() {
           </div>
 
           {/* Google Sign-In Button Container */}
-          <div className="flex justify-center mb-8 min-h-[44px]">
-            {!buttonRendered ? (
-              <div className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-md bg-white">
-                <svg className="w-5 h-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span className="text-gray-500 text-sm">Loading Google Sign-In...</span>
-              </div>
-            ) : null}
-            <div 
-              id="google-signin-button" 
-              className={buttonRendered ? '' : 'hidden'}
-            />
+          <div className="flex flex-col items-center gap-4 mb-8">
+            <div className="min-h-[44px] flex items-center justify-center">
+              {loadFailed ? (
+                <div className="text-center">
+                  <p className="text-red-500 text-sm mb-3">Sign-in failed to load</p>
+                  <button
+                    onClick={handleRetry}
+                    className="px-4 py-2 bg-lavender/20 hover:bg-lavender/30 text-lavender-text rounded-md text-sm transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : !buttonRendered ? (
+                <div className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-md bg-white">
+                  <svg className="w-5 h-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-gray-500 text-sm">Loading Google Sign-In...</span>
+                </div>
+              ) : null}
+              <div 
+                id="google-signin-button" 
+                className={buttonRendered ? '' : 'hidden'}
+              />
+            </div>
+            
+            {/* Use different account link */}
+            {buttonRendered && (
+              <button
+                onClick={handleSwitchAccount}
+                className="text-sm text-lavender-text/70 hover:text-lavender-text underline transition-colors"
+              >
+                Use a different account
+              </button>
+            )}
+            
+            {/* Trouble signing in link */}
+            {!loadFailed && (
+              <button
+                onClick={handleRetry}
+                className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+              >
+                Trouble signing in? Click to refresh
+              </button>
+            )}
           </div>
 
           {/* Access info */}

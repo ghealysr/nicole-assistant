@@ -231,6 +231,8 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
       callback: handleCredentialResponse,
       auto_select: false,
       cancel_on_tap_outside: true,
+      itp_support: true, // Support for Intelligent Tracking Prevention (Safari)
+      use_fedcm_for_prompt: false, // Disable FedCM to ensure button always shows
     });
   }, [isGsiLoaded, clientId, handleCredentialResponse]);
 
@@ -327,7 +329,12 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
 
   // Render Google Sign-In button
   const renderSignInButton = useCallback((elementId: string) => {
-    if (!isGsiLoaded || !window.google) return;
+    console.log('[GoogleAuth] Attempting to render button...', { isGsiLoaded, hasGoogle: !!window.google, clientId: clientId ? 'set' : 'missing' });
+    
+    if (!isGsiLoaded || !window.google) {
+      console.warn('[GoogleAuth] Google not ready yet');
+      return;
+    }
     
     // Don't render if clientId is missing
     if (!clientId) {
@@ -337,14 +344,27 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     
     const element = document.getElementById(elementId);
     if (element) {
-      window.google.accounts.id.renderButton(element, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'rectangular',
-        width: 300,
-      });
+      try {
+        // Clear any previous button content
+        element.innerHTML = '';
+        
+        window.google.accounts.id.renderButton(element, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'signin_with',
+          shape: 'rectangular',
+          width: 300,
+          click_listener: () => {
+            console.log('[GoogleAuth] Button clicked');
+          },
+        });
+        console.log('[GoogleAuth] Button rendered successfully');
+      } catch (err) {
+        console.error('[GoogleAuth] Failed to render button:', err);
+      }
+    } else {
+      console.warn('[GoogleAuth] Element not found:', elementId);
     }
   }, [isGsiLoaded, clientId]);
 
