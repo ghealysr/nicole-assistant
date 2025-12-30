@@ -393,8 +393,9 @@ export default function EnjineerPage() {
         </header>
 
         {/* Intake Form */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="max-w-2xl w-full">
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="min-h-full flex items-center justify-center p-8">
+            <div className="max-w-2xl w-full py-8">
             {/* Logo & Title */}
             <div className="text-center mb-10">
               <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6366F1] flex items-center justify-center shadow-lg shadow-[#8B5CF6]/25">
@@ -582,6 +583,7 @@ export default function EnjineerPage() {
               </p>
             </div>
           </div>
+        </div>
         </div>
       </div>
     );
