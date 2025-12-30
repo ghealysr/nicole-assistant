@@ -6,8 +6,10 @@
  */
 
 import { getAuthHeaders } from '@/lib/alphawave_utils';
+import { API_URL } from '@/lib/alphawave_config';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+// Use hardcoded config for reliability (env vars can be stale in Vercel)
+const API_BASE = API_URL;
 
 // ============================================================================
 // TYPES

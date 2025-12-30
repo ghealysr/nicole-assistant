@@ -7,9 +7,10 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders } from '@/lib/alphawave_utils';
 import { useMuseStore } from './store';
+import { API_URL } from '@/lib/alphawave_config';
 
-// Use environment variable for API base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+// Use hardcoded config for reliability (env vars can be stale in Vercel)
+const API_BASE_URL = API_URL;
 
 interface UseMuseStreamOptions {
   projectId: number;
