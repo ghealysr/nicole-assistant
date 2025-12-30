@@ -34,9 +34,14 @@ export function DesignDashboard({
   onComplete,
   onSkip 
 }: DesignDashboardProps) {
-  // Provide no-op defaults when used standalone
-  const handleComplete = onComplete ?? (() => {});
-  const handleSkip = onSkip ?? (() => {});
+  // Provide stable no-op defaults when used standalone (prevents infinite re-renders)
+  const handleComplete = useCallback(() => {
+    onComplete?.();
+  }, [onComplete]);
+  
+  const handleSkip = useCallback(() => {
+    onSkip?.();
+  }, [onSkip]);
   const phase = useMusePhase();
   const { 
     moodboards,
