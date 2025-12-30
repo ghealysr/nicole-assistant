@@ -655,7 +655,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
       setPreviewLoading(true);
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com'}/vibe/projects/${project.project_id}/preview`,
+          `https://api.nicole.alphawavetech.com/vibe/projects/${project.project_id}/preview`,
           {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -1168,7 +1168,7 @@ export function AlphawaveVibeWorkspace({ isOpen, onClose, onExpandChange }: Alph
                   try {
                     // Fetch design tokens from backend
                     const response = await fetch(
-                      `${process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com'}/vibe/projects/${project.project_id}/stackblitz`,
+                      `https://api.nicole.alphawavetech.com/vibe/projects/${project.project_id}/stackblitz`,
                       {
                         headers: {
                           'Authorization': `Bearer ${localStorage.getItem('token')}`,

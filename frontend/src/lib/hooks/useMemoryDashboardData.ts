@@ -207,7 +207,9 @@ export interface DashboardData {
   error: string | null;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+// Use hardcoded API URL to avoid Vercel env var caching issues
+import { API_URL } from '@/lib/alphawave_config';
+const API_BASE = API_URL;
 
 /**
  * Helper to get auth headers

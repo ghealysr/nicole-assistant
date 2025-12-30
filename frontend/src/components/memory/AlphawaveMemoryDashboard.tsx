@@ -104,8 +104,8 @@ export function AlphawaveMemoryDashboard({ isOpen, onClose, authToken }: Alphawa
     return { label: 'No Data', class: 'mem-badge-info' };
   };
   
-  // API base URL
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.nicole.alphawavetech.com';
+  // API base URL - hardcoded to avoid Vercel env var caching issues
+  const API_BASE = 'https://api.nicole.alphawavetech.com';
 
   // Memory management handlers
   const handleCorrectMemory = useCallback((memory: Memory) => {

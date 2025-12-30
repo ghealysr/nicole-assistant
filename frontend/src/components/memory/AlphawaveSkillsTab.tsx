@@ -73,8 +73,8 @@ interface SkillsSummary {
   }>;
 }
 
-// API configuration
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API configuration - hardcoded to avoid Vercel env var caching issues
+const API_BASE = 'https://api.nicole.alphawavetech.com';
 
 // Sample data for development
 const sampleSkills: Skill[] = [

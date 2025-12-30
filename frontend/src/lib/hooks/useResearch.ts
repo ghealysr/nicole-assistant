@@ -16,8 +16,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { API_URL as CONFIG_API_URL } from '@/lib/alphawave_config';
 
-// API base URL
-const API_URL = CONFIG_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API base URL - use hardcoded config to avoid Vercel env var issues
+const API_URL = CONFIG_API_URL;
 
 // Research types
 export type ResearchType = 'general' | 'vibe_inspiration' | 'competitor' | 'technical';
