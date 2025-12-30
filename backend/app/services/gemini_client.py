@@ -24,10 +24,12 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-# Model identifiers - Using Gemini 3 Pro Preview (latest multimodal model)
-GEMINI_PRO = "gemini-3-pro-preview"  # Gemini 3 Pro Preview - latest with advanced reasoning
-GEMINI_PRO_LATEST = "gemini-3-pro-preview"  # Alias for clarity
+# Model identifiers - Using Gemini 2.5 Pro (latest stable multimodal model)
+GEMINI_PRO = "gemini-2.5-pro-preview-06-05"  # Latest Gemini 2.5 Pro with advanced reasoning
+GEMINI_PRO_LATEST = "gemini-2.5-pro-preview-06-05"  # Alias for clarity
 GEMINI_FLASH = "gemini-2.5-flash-preview-05-20"  # Latest flash model for cost-efficient tasks
+# Fallback if 2.5 not available
+GEMINI_PRO_STABLE = "gemini-1.5-pro-latest"  # Stable fallback
 
 # Pricing (per 1M tokens)
 GEMINI_PRO_INPUT_COST = 2.50    # $2.50 per 1M input tokens
@@ -173,46 +175,69 @@ class GeminiClient:
         if response_format == "json":
             body["generationConfig"]["responseMimeType"] = "application/json"
         
-        try:
-            response = await self.client.post(
-                url,
-                params={"key": self.api_key},
-                json=body
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            # Extract response
-            candidates = data.get("candidates", [])
-            if not candidates:
-                logger.warning("[GEMINI] No candidates in response")
-                return GeminiResponse(text="", model=model, finish_reason="no_candidates")
-            
-            candidate = candidates[0]
-            content = candidate.get("content", {})
-            parts = content.get("parts", [])
-            text = parts[0].get("text", "") if parts else ""
-            
-            # Extract usage
-            usage = data.get("usageMetadata", {})
-            input_tokens = usage.get("promptTokenCount", 0)
-            output_tokens = usage.get("candidatesTokenCount", 0)
-            
-            return GeminiResponse(
-                text=text,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=input_tokens + output_tokens,
-                model=model,
-                finish_reason=candidate.get("finishReason", "STOP")
-            )
-            
-        except httpx.HTTPStatusError as e:
-            logger.error(f"[GEMINI] HTTP error: {e.response.status_code} - {e.response.text}")
-            raise
-        except Exception as e:
-            logger.error(f"[GEMINI] Error: {e}")
-            raise
+        # Models to try in order (fallback chain)
+        models_to_try = [model]
+        if model == GEMINI_PRO and model != GEMINI_PRO_STABLE:
+            models_to_try.append(GEMINI_PRO_STABLE)
+        
+        last_error = None
+        for try_model in models_to_try:
+            current_url = f"{GEMINI_API_BASE}/models/{try_model}:generateContent"
+            try:
+                response = await self.client.post(
+                    current_url,
+                    params={"key": self.api_key},
+                    json=body
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                # Extract response
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    logger.warning(f"[GEMINI] No candidates in response from {try_model}")
+                    return GeminiResponse(text="", model=try_model, finish_reason="no_candidates")
+                
+                candidate = candidates[0]
+                content = candidate.get("content", {})
+                parts = content.get("parts", [])
+                text = parts[0].get("text", "") if parts else ""
+                
+                # Extract usage
+                usage = data.get("usageMetadata", {})
+                input_tokens = usage.get("promptTokenCount", 0)
+                output_tokens = usage.get("candidatesTokenCount", 0)
+                
+                if try_model != model:
+                    logger.info(f"[GEMINI] Used fallback model {try_model} instead of {model}")
+                
+                return GeminiResponse(
+                    text=text,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=input_tokens + output_tokens,
+                    model=try_model,
+                    finish_reason=candidate.get("finishReason", "STOP")
+                )
+                
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                if e.response.status_code == 404:
+                    logger.warning(f"[GEMINI] Model {try_model} not found (404), trying fallback...")
+                    continue
+                logger.error(f"[GEMINI] HTTP error: {e.response.status_code} - {e.response.text}")
+                raise
+            except Exception as e:
+                last_error = e
+                logger.error(f"[GEMINI] Error with {try_model}: {e}")
+                if len(models_to_try) > 1:
+                    continue
+                raise
+        
+        # If all models failed
+        if last_error:
+            raise last_error
+        raise ValueError("No Gemini models available")
     
     async def generate_json(
         self,
