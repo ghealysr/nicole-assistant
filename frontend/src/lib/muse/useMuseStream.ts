@@ -26,6 +26,8 @@ export function useMuseStream({
   onError 
 }: UseMuseStreamOptions) {
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 3;
   const { 
     setProgress, 
     addEvent, 
@@ -37,6 +39,14 @@ export function useMuseStream({
   } = useMuseStore();
 
   const connect = useCallback(async () => {
+    // Prevent reconnection storm
+    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      console.warn('[MuseStream] Max reconnection attempts reached, stopping');
+      setError('Connection failed after multiple attempts. Please refresh the page.');
+      onError?.('Max reconnection attempts reached');
+      return;
+    }
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -52,12 +62,23 @@ export function useMuseStream({
 
       eventSource.onopen = () => {
         console.log('[MuseStream] Connected');
+        reconnectAttemptsRef.current = 0; // Reset on successful connection
       };
 
       eventSource.onerror = (error) => {
         console.error('[MuseStream] Connection error:', error);
-        setError('Connection to research stream lost. Please refresh.');
-        onError?.('Stream connection error');
+        reconnectAttemptsRef.current++;
+        
+        // Close the connection to prevent auto-reconnect storm
+        eventSource.close();
+        eventSourceRef.current = null;
+        
+        if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          setError('Connection to research stream lost. Please refresh.');
+          onError?.('Stream connection error');
+        } else {
+          console.log(`[MuseStream] Will retry (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+        }
       };
 
       // Phase updates
@@ -246,6 +267,7 @@ export function useMuseStream({
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+    reconnectAttemptsRef.current = 0; // Reset on explicit disconnect
   }, []);
 
   // Cleanup on unmount
