@@ -42,6 +42,8 @@ interface GoogleInitConfig {
   callback: (response: GoogleCredentialResponse) => void;
   auto_select?: boolean;
   cancel_on_tap_outside?: boolean;
+  itp_support?: boolean;
+  use_fedcm_for_prompt?: boolean;
 }
 
 interface GoogleButtonConfig {
@@ -52,6 +54,7 @@ interface GoogleButtonConfig {
   shape?: 'rectangular' | 'pill' | 'circle' | 'square';
   logo_alignment?: 'left' | 'center';
   width?: number;
+  click_listener?: () => void;
 }
 
 interface GoogleCredentialResponse {
