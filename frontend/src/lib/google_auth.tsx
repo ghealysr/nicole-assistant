@@ -31,6 +31,8 @@ declare global {
           renderButton: (element: HTMLElement, config: GoogleButtonConfig) => void;
           prompt: () => void;
           revoke: (email: string, callback: () => void) => void;
+          disableAutoSelect: () => void;
+          cancel: () => void;
         };
       };
     };

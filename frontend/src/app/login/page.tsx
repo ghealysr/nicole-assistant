@@ -108,31 +108,43 @@ export default function LoginPage() {
     window.location.reload();
   }, []);
 
-  // Clear and switch account
+  // Clear and switch account - force account picker to show
   const handleSwitchAccount = useCallback(() => {
-    // Clear stored tokens
+    // Clear ALL stored tokens and Google state
     localStorage.removeItem('nicole_google_token');
     localStorage.removeItem('auth_token');
     localStorage.removeItem('nicole_token');
     
-    // Clear Google's stored credential by opening Google's account chooser
-    // This forces the account picker to show
-    const width = 500;
-    const height = 600;
-    const left = (window.innerWidth - width) / 2;
-    const top = (window.innerHeight - height) / 2;
+    // Clear sessionStorage too
+    sessionStorage.clear();
     
-    // Open Google's OAuth directly with prompt=select_account
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const redirectUri = window.location.origin + '/auth/callback';
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${clientId}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=token` +
-      `&scope=openid email profile` +
-      `&prompt=select_account`;
+    // Tell Google to disable auto-select and revoke credential
+    if (window.google?.accounts?.id) {
+      // Disable auto-select so user must choose
+      window.google.accounts.id.disableAutoSelect();
+      
+      // Cancel any pending prompts
+      window.google.accounts.id.cancel();
+    }
     
-    window.open(googleAuthUrl, 'google-auth', `width=${width},height=${height},left=${left},top=${top}`);
+    // Clear IndexedDB Google state
+    if (window.indexedDB) {
+      try {
+        window.indexedDB.deleteDatabase('googleApiKey');
+        window.indexedDB.deleteDatabase('gsi_client');
+      } catch (e) {
+        console.log('IndexedDB clear failed:', e);
+      }
+    }
+    
+    // Reset button state so it re-renders
+    setButtonRendered(false);
+    setRetryCount(0);
+    setLoadFailed(false);
+    
+    // Force reload to get fresh Google Sign-In with account picker
+    // Add a cache buster to ensure fresh load
+    window.location.href = '/login?switch=' + Date.now();
   }, []);
 
   // Show loading while checking auth
