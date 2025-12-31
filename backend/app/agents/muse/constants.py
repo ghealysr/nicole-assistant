@@ -15,7 +15,7 @@ from typing import Final
 # ============================================================================
 
 # Primary model for complex reasoning (research, analysis, style guides)
-MUSE_PRIMARY_MODEL: Final[str] = "gemini-1.5-pro-latest"
+MUSE_PRIMARY_MODEL: Final[str] = "gemini-3-pro-preview"
 
 # Fast model for simpler tasks (JSON extraction, quick analysis)
 MUSE_FAST_MODEL: Final[str] = "gemini-2.0-flash-exp"

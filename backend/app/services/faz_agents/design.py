@@ -29,7 +29,7 @@ class DesignAgent(BaseAgent):
     agent_name = "Design Agent"
     agent_role = "Designer - Creates color palettes, typography, and design systems"
     model_provider = "google"
-    model_name = "gemini-1.5-pro-latest"
+    model_name = "gemini-3-pro-preview"
     temperature = 0.8  # Higher for creativity
     max_tokens = 4096
     
