@@ -43,6 +43,7 @@ const nextConfig = {
   // (these are set in Vercel dashboard)
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
   },
   
   // Output as standalone for Docker/server deployment if needed
