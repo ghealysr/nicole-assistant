@@ -32,7 +32,7 @@ class ResearchAgent(BaseAgent):
     agent_name = "Research Agent"
     agent_role = "Analyst - Gathers design inspiration and competitor insights"
     model_provider = "google"
-    model_name = "gemini-3-pro-preview"
+    model_name = "gemini-1.5-pro-latest"
     temperature = 0.7
     max_tokens = 4096
     
