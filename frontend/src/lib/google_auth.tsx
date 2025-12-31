@@ -250,20 +250,37 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     try {
       const storedToken = localStorage.getItem(STORAGE_KEY);
       
-      if (storedToken && !isTokenExpired(storedToken)) {
-        const userInfo = getUserFromToken(storedToken);
-        if (userInfo) {
-          setToken(storedToken);
-          setUser(userInfo);
+      if (storedToken) {
+        // Validate token structure first
+        const parts = storedToken.split('.');
+        if (parts.length !== 3) {
+          console.warn('[GoogleAuth] Invalid token format, clearing');
+          localStorage.removeItem(STORAGE_KEY);
+          setIsLoading(false);
+          return;
+        }
+        
+        if (!isTokenExpired(storedToken)) {
+          const userInfo = getUserFromToken(storedToken);
+          if (userInfo && userInfo.email) {
+            setToken(storedToken);
+            setUser(userInfo);
+          } else {
+            console.warn('[GoogleAuth] Could not extract user info, clearing token');
+            localStorage.removeItem(STORAGE_KEY);
+          }
         } else {
+          // Token expired, remove it
+          console.log('[GoogleAuth] Token expired, clearing');
           localStorage.removeItem(STORAGE_KEY);
         }
-      } else if (storedToken) {
-        // Token expired, remove it
-        localStorage.removeItem(STORAGE_KEY);
       }
     } catch (e) {
-      console.error('[GoogleAuth] Error checking stored token:', e);
+      console.error('[GoogleAuth] Error checking stored token, clearing all auth state:', e);
+      // Clear all possible auth tokens on error
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('nicole_token');
     }
     
     setIsLoading(false);

@@ -55,16 +55,44 @@ export default function LoginPage() {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [retryCount, buttonRendered]);
+    
+    // If we've exhausted retries and button still not rendered, auto-clear state
+    if (retryCount >= 5 && !buttonRendered && isGoogleReady) {
+      console.warn('[Login] Button failed to render after retries, clearing state');
+      localStorage.removeItem('nicole_google_token');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('nicole_token');
+    }
+  }, [retryCount, buttonRendered, isGoogleReady]);
 
-  // Mark as failed if Google script doesn't load after 10 seconds
+  // Clear any stale auth state on login page load
+  useEffect(() => {
+    // If we're on the login page and not authenticated, clear any stale tokens
+    // This helps recover from corrupted state
+    if (!isAuthenticated && !isLoading) {
+      const storedToken = localStorage.getItem('nicole_google_token');
+      if (storedToken) {
+        // Check if token is valid JWT format
+        const parts = storedToken.split('.');
+        if (parts.length !== 3) {
+          console.log('[Login] Clearing invalid token format');
+          localStorage.removeItem('nicole_google_token');
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('nicole_token');
+        }
+      }
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Mark as failed if Google script doesn't load after 8 seconds (reduced from 10)
   useEffect(() => {
     if (!isGoogleReady && !isLoading) {
       const timer = setTimeout(() => {
         if (!isGoogleReady) {
+          console.warn('[Login] Google not ready after timeout, marking as failed');
           setLoadFailed(true);
         }
-      }, 10000);
+      }, 8000);
       return () => clearTimeout(timer);
     }
   }, [isGoogleReady, isLoading]);
