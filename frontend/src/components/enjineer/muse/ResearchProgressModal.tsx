@@ -29,7 +29,7 @@ interface ResearchProgressModalProps {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps) {
-  const { progress, events } = useMuseStore();
+  const { progress, events, isLoading } = useMuseStore();
 
   const phases = [
     { id: 'brief_analysis', name: 'Analyzing Brief', icon: FileSearch },
@@ -40,7 +40,11 @@ export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps
     { id: 'style_guide_revision', name: 'Revising Design', icon: Sparkles },
   ];
 
-  const currentPhaseIndex = phases.findIndex(p => p.id === progress?.phase);
+  // If no progress yet but loading, show first phase as current
+  const isInitializing = isLoading && !progress?.phase;
+  const currentPhaseIndex = isInitializing 
+    ? 0 
+    : phases.findIndex(p => p.id === progress?.phase);
 
   return (
     <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
@@ -70,7 +74,7 @@ export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps
           <div className="space-y-3">
             {phases.map((phaseItem, index) => {
               const isComplete = index < currentPhaseIndex;
-              const isCurrent = phaseItem.id === progress?.phase;
+              const isCurrent = isInitializing ? index === 0 : phaseItem.id === progress?.phase;
               const _isPending = index > currentPhaseIndex; // eslint-disable-line @typescript-eslint/no-unused-vars
               const Icon = phaseItem.icon;
 
@@ -148,9 +152,14 @@ export function ResearchProgressModal({ onComplete }: ResearchProgressModalProps
               ))}
             </AnimatePresence>
             {events.length === 0 && (
-              <p className="text-gray-500 text-sm text-center py-4">
-                Waiting for research findings...
-              </p>
+              <div className="flex flex-col items-center justify-center py-4 gap-2">
+                <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                <p className="text-gray-500 text-sm text-center">
+                  {isInitializing 
+                    ? 'Initializing research pipeline...' 
+                    : 'Waiting for research findings...'}
+                </p>
+              </div>
             )}
           </div>
         </div>

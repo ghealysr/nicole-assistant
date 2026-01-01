@@ -161,8 +161,10 @@ export function DesignDashboard({
       return;
     }
 
+    // IMMEDIATELY show the research modal with loading state
     setLoading(true);
     setError(null);
+    setPhase('researching'); // Show modal right away for better UX
 
     try {
       const result = await museApi.startResearchWithInspirations(projectId, {
@@ -181,10 +183,11 @@ export function DesignDashboard({
         setActiveSessionId(result.session_id);
       }
 
-      setPhase('researching');
+      // Connect to SSE stream for real-time updates
       connectStream();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start research');
+      setPhase('intake'); // Go back to intake on error
     } finally {
       setLoading(false);
     }
