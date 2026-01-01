@@ -961,18 +961,20 @@ professional mockup aesthetic, clean composition, soft shadows, modern web desig
         # Analyze based on input type
         if input_data["input_type"] == "image":
             # Ensure we have a valid MIME type - fallback to image/jpeg if empty or None
-            mime_type = input_data.get("image_mime_type") or input_data.get("mime_type")
+            mime_type = input_data.get("image_mime_type") or input_data.get("mime_type") or ""
             if not mime_type:
                 # Try to detect from filename or default to jpeg
-                filename = input_data.get("image_filename", "")
-                if filename.lower().endswith(".png"):
+                filename = (input_data.get("image_filename") or "").lower()
+                if filename.endswith(".png"):
                     mime_type = "image/png"
-                elif filename.lower().endswith(".gif"):
+                elif filename.endswith(".gif"):
                     mime_type = "image/gif"
-                elif filename.lower().endswith(".webp"):
+                elif filename.endswith(".webp"):
                     mime_type = "image/webp"
                 else:
                     mime_type = "image/jpeg"
+            
+            logger.info(f"[MUSE] Analyzing image with MIME type: {mime_type}")
             
             images = [ImagePart(
                 data=input_data["image_data"],
