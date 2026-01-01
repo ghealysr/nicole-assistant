@@ -655,7 +655,7 @@ TECHNICAL RESEARCH MODE:
     async def generate_image(
         self,
         prompt: str,
-        model: str = "imagen-3.0-generate-001",
+        model: str = "gemini-3-pro-image-preview",
         aspect_ratio: str = "1:1",
         style: Optional[str] = None,
         reference_image: Optional[bytes] = None,

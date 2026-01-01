@@ -20,9 +20,9 @@ MUSE_PRIMARY_MODEL: Final[str] = "gemini-3-pro-preview"
 # Fast model for simpler tasks (JSON extraction, quick analysis)
 MUSE_FAST_MODEL: Final[str] = "gemini-2.0-flash-exp"
 
-# Image generation model (Imagen 3)
-IMAGEN_MODEL: Final[str] = "imagen-3.0-generate-001"
-IMAGEN_FAST_MODEL: Final[str] = "imagen-3.0-fast-generate-001"
+# Image generation model (Gemini 3 Pro Image Preview - released Dec 2025)
+IMAGEN_MODEL: Final[str] = "gemini-3-pro-image-preview"
+IMAGEN_FAST_MODEL: Final[str] = "gemini-3-pro-image-preview"  # Same model, no fast variant
 
 # ============================================================================
 # GENERATION PARAMETERS

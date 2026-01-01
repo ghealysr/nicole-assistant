@@ -448,7 +448,7 @@ professional mockup aesthetic, clean composition, soft shadows, modern web desig
                 
                 result = await self.imagen.generate_image(
                     prompt=prompt,
-                    model="imagen-3.0-generate-001",  # Imagen 3 standard for quality
+                    model="gemini-3-pro-image-preview",  # Gemini 3 Pro Image generation
                     aspect_ratio=aspect_ratio,
                     style="design mockup",
                     num_images=1
