@@ -78,6 +78,20 @@ export function MainArea() {
   
   // Local refresh key combined with store trigger for full control
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
+  
+  // Handler for when Muse design research is complete
+  const handleDesignComplete = useCallback(() => {
+    // Switch to code tab so user can work with Nicole
+    setMainTab('code');
+    // Could also trigger a Nicole message here in the future
+    console.log('[MainArea] Design approved, switching to code tab');
+  }, [setMainTab]);
+  
+  // Handler for when user skips design research
+  const handleDesignSkip = useCallback(() => {
+    setMainTab('code');
+    console.log('[MainArea] Design skipped, switching to code tab');
+  }, [setMainTab]);
   const combinedRefreshKey = previewRefreshTrigger + localRefreshKey;
   
   // Refresh preview when switching to preview tab or when explicitly requested
@@ -218,7 +232,11 @@ export function MainArea() {
           <TerminalPanel output={terminalOutput} />
         )}
         {mainTab === 'design' && currentProject && (
-          <DesignDashboard projectId={currentProject.id} />
+          <DesignDashboard 
+            projectId={currentProject.id} 
+            onComplete={handleDesignComplete}
+            onSkip={handleDesignSkip}
+          />
         )}
         {mainTab === 'design' && !currentProject && (
           <div className="flex flex-col items-center justify-center h-full bg-[#0A0A0F] text-[#64748B]">
