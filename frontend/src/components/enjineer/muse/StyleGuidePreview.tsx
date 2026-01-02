@@ -357,6 +357,25 @@ interface ColorSectionProps {
   colors: Array<{ name: string; hex: string; oklch?: string }> | Record<string, string> | null | undefined;
 }
 
+// Helper to extract hex from various formats
+function extractHex(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    // Try common keys for nested color objects
+    if (typeof obj.default === 'string') return obj.default;
+    if (typeof obj.base === 'string') return obj.base;
+    if (typeof obj['500'] === 'string') return obj['500'];
+    if (typeof obj.hex === 'string') return obj.hex;
+    if (typeof obj.value === 'string') return obj.value;
+    // Return first string value found
+    for (const v of Object.values(obj)) {
+      if (typeof v === 'string' && v.startsWith('#')) return v;
+    }
+  }
+  return '#888888'; // Fallback gray
+}
+
 function ColorSection({ title, colors }: ColorSectionProps) {
   if (!colors) return null;
   
@@ -364,12 +383,15 @@ function ColorSection({ title, colors }: ColorSectionProps) {
   let colorArray: Array<{ name: string; hex: string }> = [];
   
   if (Array.isArray(colors)) {
-    colorArray = colors;
+    colorArray = colors.map(c => ({
+      name: c.name || 'color',
+      hex: extractHex(c.hex || c),
+    }));
   } else if (typeof colors === 'object') {
     // Design token scale format - convert to array
-    colorArray = Object.entries(colors).map(([shade, hex]) => ({
+    colorArray = Object.entries(colors).map(([shade, value]) => ({
       name: shade,
-      hex: typeof hex === 'string' ? hex : String(hex),
+      hex: extractHex(value),
     }));
   }
   
@@ -398,6 +420,42 @@ function ColorSection({ title, colors }: ColorSectionProps) {
 
 interface TypographySectionProps {
   typography: StyleGuide['typography'];
+}
+
+// Helper to extract font name from various formats
+function extractFontName(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.name === 'string') return obj.name;
+    if (typeof obj.family === 'string') return obj.family;
+    if (typeof obj.fontFamily === 'string') return obj.fontFamily;
+    // Return first string value
+    for (const v of Object.values(obj)) {
+      if (typeof v === 'string' && !v.startsWith('#') && !v.startsWith('http')) return v;
+    }
+  }
+  return 'sans-serif';
+}
+
+// Helper to extract size from various formats
+function extractSize(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return `${value}px`;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.size === 'string') return obj.size;
+    if (typeof obj.fontSize === 'string') return obj.fontSize;
+    if (typeof obj.value === 'string') return obj.value;
+    if (typeof obj.size === 'number') return `${obj.size}px`;
+    // Try to find a size-like value
+    for (const [k, v] of Object.entries(obj)) {
+      if (k.toLowerCase().includes('size') && (typeof v === 'string' || typeof v === 'number')) {
+        return typeof v === 'number' ? `${v}px` : v;
+      }
+    }
+  }
+  return '16px';
 }
 
 function TypographySection({ typography }: TypographySectionProps) {
@@ -433,14 +491,17 @@ function TypographySection({ typography }: TypographySectionProps) {
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-gray-300">Font Families</h3>
           <div className="grid grid-cols-2 gap-4">
-            {Object.entries(families).map(([key, value]) => (
-              <div key={key} className="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{key}</p>
-                <p className="text-2xl text-white" style={{ fontFamily: String(value) }}>
-                  {String(value)}
-                </p>
-              </div>
-            ))}
+            {Object.entries(families).map(([key, value]) => {
+              const fontName = extractFontName(value);
+              return (
+                <div key={key} className="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{key}</p>
+                  <p className="text-2xl text-white" style={{ fontFamily: fontName }}>
+                    {fontName}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -450,18 +511,21 @@ function TypographySection({ typography }: TypographySectionProps) {
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-gray-300">Type Scale</h3>
           <div className="space-y-3">
-            {Object.entries(scales).map(([key, value]) => (
-              <div key={key} className="flex items-baseline gap-4 p-3 rounded-xl bg-gray-800/30">
-                <span className="text-xs text-gray-500 w-16 font-mono">{key}</span>
-                <span 
-                  className="text-white flex-1"
-                  style={{ fontSize: String(value) }}
-                >
-                  The quick brown fox
-                </span>
-                <span className="text-xs text-gray-500 font-mono">{String(value)}</span>
-              </div>
-            ))}
+            {Object.entries(scales).map(([key, value]) => {
+              const fontSize = extractSize(value);
+              return (
+                <div key={key} className="flex items-baseline gap-4 p-3 rounded-xl bg-gray-800/30">
+                  <span className="text-xs text-gray-500 w-16 font-mono">{key}</span>
+                  <span 
+                    className="text-white flex-1"
+                    style={{ fontSize }}
+                  >
+                    The quick brown fox
+                  </span>
+                  <span className="text-xs text-gray-500 font-mono">{fontSize}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
