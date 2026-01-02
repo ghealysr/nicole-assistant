@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useGoogleAuth } from '@/lib/google_auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -12,7 +12,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
  * - Clean, elegant design with Nicole branding
  * - Restricted to @alphawavetech.com and allowed personal emails
  */
-export default function LoginPage() {
+
+// Inner component that uses useSearchParams (must be wrapped in Suspense)
+function LoginPageContent() {
   const { isAuthenticated, isLoading, isGoogleReady, renderSignInButton } = useGoogleAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -284,5 +286,23 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Main export wrapped in Suspense (required for useSearchParams)
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-cream">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-lavender/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-lavender-text text-3xl font-serif">N</span>
+          </div>
+          <p className="text-text-secondary">Loading...</p>
+        </div>
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }
