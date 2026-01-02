@@ -353,26 +353,42 @@ export function StyleGuidePreview({
 
 interface ColorSectionProps {
   title: string;
-  colors: Array<{ name: string; hex: string; oklch?: string }>;
+  // Support both array format and design token scale format
+  colors: Array<{ name: string; hex: string; oklch?: string }> | Record<string, string> | null | undefined;
 }
 
 function ColorSection({ title, colors }: ColorSectionProps) {
-  if (!colors.length) return null;
+  if (!colors) return null;
+  
+  // Convert design token scale format { "50": "#hex", "100": "#hex" } to array
+  let colorArray: Array<{ name: string; hex: string }> = [];
+  
+  if (Array.isArray(colors)) {
+    colorArray = colors;
+  } else if (typeof colors === 'object') {
+    // Design token scale format - convert to array
+    colorArray = Object.entries(colors).map(([shade, hex]) => ({
+      name: shade,
+      hex: typeof hex === 'string' ? hex : String(hex),
+    }));
+  }
+  
+  if (!colorArray.length) return null;
 
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-gray-300">{title}</h3>
-      <div className="grid grid-cols-4 gap-3">
-        {colors.map((color, i) => (
+      <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-11 gap-2">
+        {colorArray.map((color, i) => (
           <div key={i} className="group">
             <div 
-              className="aspect-square rounded-xl border border-gray-700 mb-2 
-                       group-hover:scale-105 transition-transform cursor-pointer"
+              className="aspect-square rounded-lg border border-gray-700 mb-1.5 
+                       group-hover:scale-105 transition-transform cursor-pointer shadow-sm"
               style={{ backgroundColor: color.hex }}
-              title={color.oklch || color.hex}
+              title={color.hex}
             />
-            <p className="text-sm font-medium text-white truncate">{color.name}</p>
-            <p className="text-xs text-gray-500 font-mono">{color.hex}</p>
+            <p className="text-xs font-medium text-white truncate text-center">{color.name}</p>
+            <p className="text-[10px] text-gray-500 font-mono truncate text-center">{color.hex}</p>
           </div>
         ))}
       </div>
@@ -385,46 +401,70 @@ interface TypographySectionProps {
 }
 
 function TypographySection({ typography }: TypographySectionProps) {
-  if (!typography) return null;
+  if (!typography || typeof typography !== 'object') {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <Type className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p>Typography data not available</p>
+      </div>
+    );
+  }
 
-  const scales = typography.scale || {};
-  const families = typography.families || {};
+  // Safely extract nested objects
+  const scales = (typography.scale && typeof typography.scale === 'object') ? typography.scale : {};
+  const families = (typography.families && typeof typography.families === 'object') ? typography.families : {};
+  
+  const hasScales = Object.keys(scales).length > 0;
+  const hasFamilies = Object.keys(families).length > 0;
+
+  if (!hasScales && !hasFamilies) {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <Type className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p>Typography configuration pending</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       {/* Font Families */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-gray-300">Font Families</h3>
-        <div className="grid grid-cols-2 gap-4">
-          {Object.entries(families).map(([key, value]) => (
-            <div key={key} className="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{key}</p>
-              <p className="text-2xl text-white" style={{ fontFamily: value as string }}>
-                {value as string}
-              </p>
-            </div>
-          ))}
+      {hasFamilies && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-300">Font Families</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {Object.entries(families).map(([key, value]) => (
+              <div key={key} className="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{key}</p>
+                <p className="text-2xl text-white" style={{ fontFamily: String(value) }}>
+                  {String(value)}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Type Scale */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-gray-300">Type Scale</h3>
-        <div className="space-y-3">
-          {Object.entries(scales).map(([key, value]) => (
-            <div key={key} className="flex items-baseline gap-4 p-3 rounded-xl bg-gray-800/30">
-              <span className="text-xs text-gray-500 w-16 font-mono">{key}</span>
-              <span 
-                className="text-white flex-1"
-                style={{ fontSize: value as string }}
-              >
-                The quick brown fox
-              </span>
-              <span className="text-xs text-gray-500 font-mono">{value as string}</span>
-            </div>
-          ))}
+      {hasScales && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-300">Type Scale</h3>
+          <div className="space-y-3">
+            {Object.entries(scales).map(([key, value]) => (
+              <div key={key} className="flex items-baseline gap-4 p-3 rounded-xl bg-gray-800/30">
+                <span className="text-xs text-gray-500 w-16 font-mono">{key}</span>
+                <span 
+                  className="text-white flex-1"
+                  style={{ fontSize: String(value) }}
+                >
+                  The quick brown fox
+                </span>
+                <span className="text-xs text-gray-500 font-mono">{String(value)}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -434,10 +474,17 @@ interface SpacingSectionProps {
 }
 
 function SpacingSection({ spacing }: SpacingSectionProps) {
-  if (!spacing) return null;
+  if (!spacing || typeof spacing !== 'object') {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <Ruler className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p>Spacing data not available</p>
+      </div>
+    );
+  }
 
-  const scale = spacing.scale || {};
-  const base = spacing.base || 8;
+  const scale = (spacing.scale && typeof spacing.scale === 'object') ? spacing.scale : {};
+  const base = typeof spacing.base === 'number' ? spacing.base : 8;
 
   return (
     <div className="space-y-6">
@@ -470,7 +517,8 @@ interface ComponentsSectionProps {
 function ComponentsSection({ components }: ComponentsSectionProps) {
   const [expandedComponent, setExpandedComponent] = useState<string | null>(null);
 
-  if (!Object.keys(components).length) {
+  // Safely handle null/undefined components
+  if (!components || typeof components !== 'object' || !Object.keys(components).length) {
     return (
       <div className="text-center py-12 text-gray-400">
         <Box className="w-12 h-12 mx-auto mb-3 opacity-50" />
