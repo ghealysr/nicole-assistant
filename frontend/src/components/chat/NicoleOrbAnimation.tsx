@@ -95,6 +95,7 @@ interface OrbProps {
   isPrimary?: boolean;
   index?: number;
   totalOrbs?: number;
+  orbSize?: number; // Allow parent to control size
 }
 
 const GlowingOrb = memo(function GlowingOrb({ 
@@ -102,9 +103,11 @@ const GlowingOrb = memo(function GlowingOrb({
   isPrimary = false,
   index = 0,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  totalOrbs = 1
+  totalOrbs = 1,
+  orbSize
 }: OrbProps) {
-  const size = isPrimary ? 48 : 30; // Reduced to 75% (was 64:40)
+  // Use provided orbSize, or fall back to legacy sizes
+  const size = orbSize ?? (isPrimary ? 48 : 30);
   const glowIntensity = isPrimary ? 20 : 12;
   const animationDelay = isPrimary ? 0 : (index * 0.15);
   
@@ -384,14 +387,14 @@ export const NicoleOrbAnimation = memo(function NicoleOrbAnimation({
       
       {/* Orbs based on variant */}
       {variant === 'single' && (
-        <GlowingOrb isActive={isActive} isPrimary />
+        <GlowingOrb isActive={isActive} isPrimary orbSize={config.orbSize} />
       )}
       
       {variant === 'triple' && (
         <div className="flex items-center gap-1">
-          <GlowingOrb isActive={isActive} index={0} totalOrbs={3} />
-          <GlowingOrb isActive={isActive} isPrimary index={1} totalOrbs={3} />
-          <GlowingOrb isActive={isActive} index={2} totalOrbs={3} />
+          <GlowingOrb isActive={isActive} index={0} totalOrbs={3} orbSize={config.orbSize * 0.7} />
+          <GlowingOrb isActive={isActive} isPrimary index={1} totalOrbs={3} orbSize={config.orbSize} />
+          <GlowingOrb isActive={isActive} index={2} totalOrbs={3} orbSize={config.orbSize * 0.7} />
         </div>
       )}
       
@@ -409,6 +412,7 @@ export const NicoleOrbAnimation = memo(function NicoleOrbAnimation({
                 isPrimary={i === 2}
                 index={i}
                 totalOrbs={5}
+                orbSize={i === 2 ? config.orbSize : config.orbSize * 0.7}
               />
             </div>
           ))}
