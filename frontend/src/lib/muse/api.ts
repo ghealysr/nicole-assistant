@@ -510,18 +510,15 @@ class MuseAPI {
   }
 
   /**
-   * Select mood board by index
+   * Select mood board by ID (direct selection)
    */
-  async selectMoodBoard(
+  async selectMoodBoardById(
     projectId: number,
-    request: { selected_index: number }
+    moodboardId: number
   ): Promise<void> {
     const session = await this.getSessionByProject(projectId);
     if (!session) throw new Error('No active session');
-    const moodboards = await this.listMoodboards(session.session_id);
-    const selectedMoodboard = moodboards.moodboards[request.selected_index];
-    if (!selectedMoodboard) throw new Error('Invalid moodboard index');
-    await this.selectMoodboard(session.session_id, selectedMoodboard.id);
+    await this.selectMoodboard(session.session_id, moodboardId);
   }
 
   /**

@@ -199,7 +199,8 @@ export function DesignDashboard({
     setError(null);
 
     try {
-      await museApi.selectMoodBoard(projectId, { selected_index: moodboards.indexOf(moodboard) });
+      // Use the moodboard ID directly - more reliable than index
+      await museApi.selectMoodBoardById(projectId, moodboard.id);
       setPhase('generating');
       // Stream will notify when style guide is ready
     } catch (err) {
@@ -207,7 +208,7 @@ export function DesignDashboard({
     } finally {
       setLoading(false);
     }
-  }, [projectId, moodboards, setLoading, setError, setPhase]);
+  }, [projectId, setLoading, setError, setPhase]);
 
   // Handle request more moodboards
   const handleRequestMore = useCallback(async () => {
