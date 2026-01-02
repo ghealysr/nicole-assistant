@@ -2414,14 +2414,19 @@ async def deploy_preview(
         raise HTTPException(status_code=400, detail="No files to deploy")
     
     # Build file map, skipping binary files
+    # IMPORTANT: Normalize paths to NOT have leading slash to avoid duplicates
     file_map = {}
     for f in files:
         path = f["path"]
-        ext = os.path.splitext(path)[1].lower()
-        if ext in BINARY_EXTENSIONS:
-            logger.info(f"[PREVIEW] Skipping binary file: {path}")
+        # Normalize: strip leading slash for consistent keys
+        normalized_path = path.lstrip('/')
+        if not normalized_path:
             continue
-        file_map[path] = f["content"] or ""
+        ext = os.path.splitext(normalized_path)[1].lower()
+        if ext in BINARY_EXTENSIONS:
+            logger.info(f"[PREVIEW] Skipping binary file: {normalized_path}")
+            continue
+        file_map[normalized_path] = f["content"] or ""
     
     if not file_map:
         raise HTTPException(status_code=400, detail="No deployable files (all files were binary)")
@@ -2445,7 +2450,7 @@ async def deploy_preview(
             }
         ]
     }
-    # Merge with existing vercel.json if present
+    # Merge with existing vercel.json if present (now paths are normalized without leading slash)
     if "vercel.json" in file_map:
         try:
             existing = json.loads(file_map["vercel.json"])
@@ -2609,14 +2614,17 @@ async def deploy_production(
     if not files:
         raise HTTPException(status_code=400, detail="No files to deploy")
     
-    # Build file map
+    # Build file map with normalized paths (no leading slash)
     file_map = {}
     for f in files:
         path = f["path"]
-        ext = os.path.splitext(path)[1].lower()
+        normalized_path = path.lstrip('/')
+        if not normalized_path:
+            continue
+        ext = os.path.splitext(normalized_path)[1].lower()
         if ext in BINARY_EXTENSIONS:
             continue
-        file_map[path] = f["content"] or ""
+        file_map[normalized_path] = f["content"] or ""
     
     if not file_map:
         raise HTTPException(status_code=400, detail="No deployable files")
