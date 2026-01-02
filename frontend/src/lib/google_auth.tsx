@@ -112,13 +112,13 @@ function isTokenExpired(token: string): boolean {
   return Date.now() >= exp * 1000;
 }
 
-// Check if token expires soon (within 5 minutes)
+// Check if token expires soon (within 15 minutes - more aggressive refresh)
 function isTokenExpiringSoon(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return true;
   const exp = payload.exp as number;
-  const fiveMinutes = 5 * 60 * 1000;
-  return Date.now() >= (exp * 1000) - fiveMinutes;
+  const fifteenMinutes = 15 * 60 * 1000;
+  return Date.now() >= (exp * 1000) - fifteenMinutes;
 }
 
 // Get time until token expires (in minutes)
@@ -288,39 +288,76 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
     setIsLoading(false);
   }, []);
 
-  // Periodic token expiration check - warn user before expiry
+  // Periodic token expiration check - try to silently refresh before expiry
   useEffect(() => {
     if (!token) return;
     
+    let refreshAttempted = false;
+    
+    const attemptSilentRefresh = () => {
+      if (!window.google || !isGsiLoaded) return;
+      
+      console.log('[GoogleAuth] Attempting silent token refresh...');
+      
+      // Try Google One Tap with auto_select for silent refresh
+      try {
+        window.google.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed()) {
+            console.log('[GoogleAuth] One Tap not displayed - may need manual refresh');
+          } else if (notification.isSkippedMoment()) {
+            console.log('[GoogleAuth] One Tap skipped');
+          } else {
+            console.log('[GoogleAuth] One Tap shown for refresh');
+          }
+        });
+      } catch (e) {
+        console.error('[GoogleAuth] Silent refresh error:', e);
+      }
+    };
+    
     const checkTokenExpiry = () => {
+      const minutes = getTokenExpiryMinutes(token);
+      
       if (isTokenExpired(token)) {
-        console.warn('[GoogleAuth] Token expired, signing out');
-        localStorage.removeItem(STORAGE_KEY);
-        setToken(null);
-        setUser(null);
-        // Show alert and redirect
-        alert('Your session has expired. Please sign in again.');
-        window.location.href = '/login';
-      } else if (isTokenExpiringSoon(token)) {
-        const minutes = getTokenExpiryMinutes(token);
-        console.warn(`[GoogleAuth] Token expires in ${minutes} minutes`);
-        // Trigger Google One Tap to silently refresh if possible
-        if (window.google && isGsiLoaded) {
-          // Cast to any to use the callback overload which isn't in our type definitions
-          (window.google.accounts.id.prompt as (callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void)((notification) => {
-            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-              console.log('[GoogleAuth] Could not auto-refresh token, user may need to re-login');
+        console.warn('[GoogleAuth] Token expired');
+        
+        // Don't immediately redirect - try one more refresh attempt
+        if (!refreshAttempted && window.google && isGsiLoaded) {
+          refreshAttempted = true;
+          attemptSilentRefresh();
+          // Give it 3 seconds, then check again
+          setTimeout(() => {
+            const currentToken = localStorage.getItem(STORAGE_KEY);
+            if (!currentToken || isTokenExpired(currentToken)) {
+              console.warn('[GoogleAuth] Still expired after refresh attempt, redirecting');
+              localStorage.removeItem(STORAGE_KEY);
+              setToken(null);
+              setUser(null);
+              // Softer redirect without alert
+              window.location.href = '/login?expired=true';
             }
-          });
+          }, 3000);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+          setToken(null);
+          setUser(null);
+          window.location.href = '/login?expired=true';
         }
+      } else if (isTokenExpiringSoon(token)) {
+        console.log(`[GoogleAuth] Token expires in ${minutes} minutes, attempting refresh`);
+        attemptSilentRefresh();
+      } else if (minutes < 30) {
+        // Also try refresh when less than 30 minutes remaining (more aggressive)
+        console.log(`[GoogleAuth] Token has ${minutes} minutes left, preemptive refresh`);
+        attemptSilentRefresh();
       }
     };
     
     // Check immediately
     checkTokenExpiry();
     
-    // Check every minute
-    const interval = setInterval(checkTokenExpiry, 60000);
+    // Check every 5 minutes (less frequent, less intrusive)
+    const interval = setInterval(checkTokenExpiry, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
   }, [token, isGsiLoaded]);

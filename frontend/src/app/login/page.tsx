@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useGoogleAuth } from '@/lib/google_auth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 /**
  * Login page component for Nicole V7.
@@ -15,9 +15,13 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const { isAuthenticated, isLoading, isGoogleReady, renderSignInButton } = useGoogleAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [buttonRendered, setButtonRendered] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
+  
+  // Check if session expired
+  const sessionExpired = searchParams.get('expired') === 'true';
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -193,6 +197,15 @@ export default function LoginPage() {
             </div>
             <h1 className="text-2xl font-serif text-lavender-text">Nicole</h1>
           </div>
+
+          {/* Session expired message */}
+          {sessionExpired && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
+              <p className="text-amber-800 text-sm">
+                Your session has expired. Please sign in again to continue.
+              </p>
+            </div>
+          )}
 
           <div className="text-center mb-8">
             <h2 className="text-2xl font-serif text-text-primary">
