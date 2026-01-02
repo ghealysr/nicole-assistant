@@ -301,7 +301,11 @@ export function GoogleAuthProvider({ clientId, children }: GoogleAuthProviderPro
       
       // Try Google One Tap with auto_select for silent refresh
       try {
-        window.google.accounts.id.prompt((notification) => {
+        // Cast to callback overload which isn't in our type definitions
+        (window.google.accounts.id.prompt as (callback?: (notification: { 
+          isNotDisplayed: () => boolean; 
+          isSkippedMoment: () => boolean 
+        }) => void) => void)((notification) => {
           if (notification.isNotDisplayed()) {
             console.log('[GoogleAuth] One Tap not displayed - may need manual refresh');
           } else if (notification.isSkippedMoment()) {
