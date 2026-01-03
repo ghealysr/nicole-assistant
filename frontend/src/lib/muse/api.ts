@@ -197,6 +197,59 @@ export interface StyleGuideExport {
 
 export type ExportFormat = 'figma_tokens' | 'css_variables' | 'tailwind_config' | 'design_tokens_json';
 
+// Design Report & Export Types
+export interface GeneratedReport {
+  report_type: string;
+  title: string;
+  content_markdown: string;
+  word_count: number;
+  generation_model: string;
+}
+
+export interface ReportListResponse {
+  session_id: number;
+  reports: Array<{
+    id: number;
+    report_type: string;
+    version: number;
+    title: string;
+    word_count: number;
+    generation_model: string;
+    download_count: number;
+    created_at: string | null;
+  }>;
+}
+
+export interface ReportContent extends GeneratedReport {
+  id: number;
+  session_id: number;
+  version: number;
+  is_latest: boolean;
+  content_html?: string;
+  generation_tokens?: number;
+  download_count: number;
+  created_at: string | null;
+}
+
+export interface ExportPackageResponse {
+  success: boolean;
+  package_name: string;
+  format: string;
+  size_bytes: number;
+  files: string[];
+  zip_base64: string;
+  content_type: string;
+  filename: string;
+}
+
+export interface CursorPromptResponse {
+  session_id: number;
+  title: string;
+  content: string;
+  word_count: number;
+  ready_for_implementation: boolean;
+}
+
 // ============================================================================
 // API CLIENT
 // ============================================================================
@@ -636,6 +689,102 @@ class MuseAPI {
     const a = document.createElement('a');
     a.href = url;
     a.download = result.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  // ==========================================================================
+  // DESIGN REPORT & EXPORT PACKAGE GENERATION
+  // ==========================================================================
+
+  /**
+   * Generate a design report from a completed research session.
+   */
+  async generateDesignReport(
+    sessionId: number,
+    reportType: 'design_report' | 'cursor_prompt' | 'executive_summary' | 'technical_spec' = 'design_report'
+  ): Promise<GeneratedReport> {
+    return this.request(`/sessions/${sessionId}/reports/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ report_type: reportType }),
+    });
+  }
+
+  /**
+   * List all generated reports for a session.
+   */
+  async listReports(sessionId: number): Promise<ReportListResponse> {
+    return this.request(`/sessions/${sessionId}/reports`);
+  }
+
+  /**
+   * Get the full content of a specific report.
+   */
+  async getReportContent(sessionId: number, reportId: number): Promise<ReportContent> {
+    return this.request(`/sessions/${sessionId}/reports/${reportId}`);
+  }
+
+  /**
+   * Generate a ZIP package with all design documentation.
+   */
+  async generateExportPackage(
+    sessionId: number,
+    formatType: 'full' | 'cursor_ready' | 'tokens_only' = 'cursor_ready'
+  ): Promise<ExportPackageResponse> {
+    return this.request(`/sessions/${sessionId}/export-package`, {
+      method: 'POST',
+      body: JSON.stringify({ format_type: formatType }),
+    });
+  }
+
+  /**
+   * Quick endpoint to get the cursor/implementation prompt.
+   * This is the primary integration point for AI coding assistants.
+   */
+  async getCursorPrompt(sessionId: number): Promise<CursorPromptResponse> {
+    return this.request(`/sessions/${sessionId}/cursor-prompt`);
+  }
+
+  /**
+   * Download the export package as a ZIP file.
+   */
+  async downloadExportPackage(
+    sessionId: number,
+    formatType: 'full' | 'cursor_ready' | 'tokens_only' = 'cursor_ready'
+  ): Promise<void> {
+    const result = await this.generateExportPackage(sessionId, formatType);
+    
+    // Decode base64 and create blob
+    const binaryString = atob(result.zip_base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    const blob = new Blob([bytes], { type: 'application/zip' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = result.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Generate and download the cursor prompt as a markdown file.
+   */
+  async downloadCursorPrompt(sessionId: number): Promise<void> {
+    const result = await this.getCursorPrompt(sessionId);
+    
+    const blob = new Blob([result.content], { type: 'text/markdown' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cursor-prompt.md';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

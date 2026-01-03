@@ -1,0 +1,213 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Curated color palettes for web design, organized by mood and industry",
+    "last_updated": "2026-01-02"
+  },
+  "palettes": {
+    "modern_minimal": {
+      "name": "Modern Minimal",
+      "mood": ["clean", "professional", "contemporary"],
+      "industries": ["saas", "tech", "agency"],
+      "colors": {
+        "primary": "#0F172A",
+        "secondary": "#1E293B",
+        "accent": "#3B82F6",
+        "background": "#FFFFFF",
+        "surface": "#F8FAFC",
+        "text": {
+          "primary": "#0F172A",
+          "secondary": "#475569",
+          "muted": "#94A3B8"
+        },
+        "semantic": {
+          "success": "#10B981",
+          "warning": "#F59E0B",
+          "error": "#EF4444",
+          "info": "#3B82F6"
+        }
+      },
+      "darkMode": {
+        "background": "#0F172A",
+        "surface": "#1E293B",
+        "text": {
+          "primary": "#F8FAFC",
+          "secondary": "#CBD5E1",
+          "muted": "#64748B"
+        }
+      }
+    },
+    "bold_creative": {
+      "name": "Bold Creative",
+      "mood": ["energetic", "innovative", "playful"],
+      "industries": ["startup", "creative", "media"],
+      "colors": {
+        "primary": "#6366F1",
+        "secondary": "#8B5CF6",
+        "accent": "#EC4899",
+        "background": "#FAFAFA",
+        "surface": "#FFFFFF",
+        "text": {
+          "primary": "#18181B",
+          "secondary": "#52525B",
+          "muted": "#A1A1AA"
+        },
+        "semantic": {
+          "success": "#22C55E",
+          "warning": "#EAB308",
+          "error": "#EF4444",
+          "info": "#6366F1"
+        }
+      },
+      "gradient": "linear-gradient(135deg, #6366F1 0%, #EC4899 100%)"
+    },
+    "nature_wellness": {
+      "name": "Nature & Wellness",
+      "mood": ["calm", "organic", "trustworthy"],
+      "industries": ["wellness", "health", "eco", "beauty"],
+      "colors": {
+        "primary": "#059669",
+        "secondary": "#0D9488",
+        "accent": "#F59E0B",
+        "background": "#FEFEFE",
+        "surface": "#F0FDF4",
+        "text": {
+          "primary": "#1E3A2F",
+          "secondary": "#3D5A4C",
+          "muted": "#6B8B7D"
+        },
+        "semantic": {
+          "success": "#059669",
+          "warning": "#D97706",
+          "error": "#DC2626",
+          "info": "#0891B2"
+        }
+      }
+    },
+    "luxury_dark": {
+      "name": "Luxury Dark",
+      "mood": ["sophisticated", "premium", "elegant"],
+      "industries": ["luxury", "fashion", "jewelry", "automotive"],
+      "colors": {
+        "primary": "#1A1A1A",
+        "secondary": "#2D2D2D",
+        "accent": "#D4AF37",
+        "background": "#0A0A0A",
+        "surface": "#171717",
+        "text": {
+          "primary": "#FAFAFA",
+          "secondary": "#D4D4D4",
+          "muted": "#737373"
+        },
+        "semantic": {
+          "success": "#34D399",
+          "warning": "#FBBF24",
+          "error": "#F87171",
+          "info": "#60A5FA"
+        }
+      }
+    },
+    "corporate_trust": {
+      "name": "Corporate Trust",
+      "mood": ["reliable", "professional", "established"],
+      "industries": ["finance", "enterprise", "legal", "consulting"],
+      "colors": {
+        "primary": "#1E3A5F",
+        "secondary": "#2C5282",
+        "accent": "#0EA5E9",
+        "background": "#FFFFFF",
+        "surface": "#F1F5F9",
+        "text": {
+          "primary": "#1E293B",
+          "secondary": "#475569",
+          "muted": "#94A3B8"
+        },
+        "semantic": {
+          "success": "#059669",
+          "warning": "#D97706",
+          "error": "#DC2626",
+          "info": "#0EA5E9"
+        }
+      }
+    },
+    "warm_friendly": {
+      "name": "Warm & Friendly",
+      "mood": ["approachable", "welcoming", "cheerful"],
+      "industries": ["food", "hospitality", "community", "education"],
+      "colors": {
+        "primary": "#EA580C",
+        "secondary": "#DC2626",
+        "accent": "#FBBF24",
+        "background": "#FFFBEB",
+        "surface": "#FEF3C7",
+        "text": {
+          "primary": "#451A03",
+          "secondary": "#78350F",
+          "muted": "#A16207"
+        },
+        "semantic": {
+          "success": "#16A34A",
+          "warning": "#CA8A04",
+          "error": "#DC2626",
+          "info": "#0284C7"
+        }
+      }
+    },
+    "tech_dark": {
+      "name": "Tech Dark Mode",
+      "mood": ["futuristic", "technical", "developer-friendly"],
+      "industries": ["devtools", "crypto", "gaming", "ai"],
+      "colors": {
+        "primary": "#A855F7",
+        "secondary": "#22D3EE",
+        "accent": "#F97316",
+        "background": "#09090B",
+        "surface": "#18181B",
+        "text": {
+          "primary": "#FAFAFA",
+          "secondary": "#A1A1AA",
+          "muted": "#71717A"
+        },
+        "semantic": {
+          "success": "#4ADE80",
+          "warning": "#FACC15",
+          "error": "#F87171",
+          "info": "#38BDF8"
+        }
+      },
+      "gradient": "linear-gradient(135deg, #A855F7 0%, #22D3EE 50%, #F97316 100%)"
+    },
+    "serene_professional": {
+      "name": "Serene Professional",
+      "mood": ["calm", "competent", "trustworthy"],
+      "industries": ["healthcare", "insurance", "hr", "saas"],
+      "colors": {
+        "primary": "#0891B2",
+        "secondary": "#0E7490",
+        "accent": "#6366F1",
+        "background": "#FFFFFF",
+        "surface": "#F0F9FF",
+        "text": {
+          "primary": "#164E63",
+          "secondary": "#0E7490",
+          "muted": "#67E8F9"
+        },
+        "semantic": {
+          "success": "#059669",
+          "warning": "#D97706",
+          "error": "#DC2626",
+          "info": "#0891B2"
+        }
+      }
+    }
+  },
+  "industry_recommendations": {
+    "saas": ["modern_minimal", "bold_creative", "serene_professional"],
+    "ecommerce": ["warm_friendly", "luxury_dark", "bold_creative"],
+    "fintech": ["corporate_trust", "modern_minimal", "tech_dark"],
+    "portfolio": ["luxury_dark", "modern_minimal", "bold_creative"],
+    "wellness": ["nature_wellness", "serene_professional", "warm_friendly"],
+    "startup": ["bold_creative", "tech_dark", "modern_minimal"]
+  }
+}
+

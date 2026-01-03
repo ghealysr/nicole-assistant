@@ -28,7 +28,7 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_PRO = "gemini-3-pro-preview"  # Gemini 3 Pro Preview - 1M context, advanced reasoning
 GEMINI_PRO_LATEST = "gemini-3-pro-preview"  # Alias for clarity
 GEMINI_FLASH = "gemini-3-flash-preview"  # Gemini 3 Flash - Pro intelligence at Flash speed
-GEMINI_IMAGE = "imagen-3.0-generate-001"  # Imagen 3 for image generation
+GEMINI_IMAGE = "gemini-3-pro-image-preview"  # User confirmed model for image generation
 # Fallback
 GEMINI_PRO_STABLE = "gemini-2.0-flash-exp"  # Fallback to 2.0 flash if 3.0 unavailable
 

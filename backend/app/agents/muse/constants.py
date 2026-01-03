@@ -39,6 +39,14 @@ MOODBOARD_MAX_TOKENS: Final[int] = 3000
 STYLEGUIDE_TEMPERATURE: Final[float] = 0.7
 STYLEGUIDE_MAX_TOKENS: Final[int] = 8000
 
+# Design Report generation
+DESIGN_REPORT_TEMPERATURE: Final[float] = 0.7
+DESIGN_REPORT_MAX_TOKENS: Final[int] = 8000
+
+# Cursor Prompt generation
+CURSOR_PROMPT_TEMPERATURE: Final[float] = 0.5  # Lower for precision
+CURSOR_PROMPT_MAX_TOKENS: Final[int] = 4000
+
 # Brief analysis
 BRIEF_ANALYSIS_MAX_TOKENS: Final[int] = 2000
 
@@ -175,4 +183,3 @@ TERMINAL_SESSION_STATUSES: Final[tuple] = (
     SESSION_STATUS_FAILED,
     SESSION_STATUS_CANCELLED,
 )
-

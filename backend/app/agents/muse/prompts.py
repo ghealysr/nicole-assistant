@@ -1086,3 +1086,137 @@ Generate a complete page design specification as JSON:
   ]
 }}
 """
+
+# ============================================================================
+# DESIGN REPORT GENERATION PROMPT
+# ============================================================================
+
+DESIGN_REPORT_GENERATION_PROMPT = """
+You are a Senior Design Strategist preparing a comprehensive design report for a client.
+
+Based on the research session data provided, generate a professional, markdown-formatted report that tells the complete design story.
+
+The report must be persuasive, clear, and professional. It should explain the "why" behind every design decision.
+
+## REPORT STRUCTURE:
+
+# [Project Name] - Design Strategy Report
+
+## 1. Executive Summary
+- Brief overview of the design direction and key strategic decisions.
+
+## 2. Research Findings
+- **Brand Analysis:** What we understood about the brand.
+- **Audience Insights:** Key takeaways about the target audience.
+- **Competitive Landscape:** How this design differentiates from competitors.
+- **Visual Trends:** Relevant trends incorporated (and why).
+
+## 3. Creative Direction: [Mood Board Title]
+- **Philosophy:** The core concept behind this direction.
+- **Emotional Resonance:** How we want the user to feel.
+- **Visual Metaphor:** The underlying visual idea.
+
+## 4. Design System Breakdown
+### Color Strategy
+- Explanation of the palette (Primary, Secondary, Accent).
+- Psychology behind the color choices.
+- Accessibility considerations.
+
+### Typography System
+- Font selection rationale (Heading & Body).
+- How the type combination supports the brand voice.
+
+### Layout & Composition
+- Approach to space, grid, and structure.
+- How the layout guides the user's eye.
+
+### Imagery & Iconography
+- Style guidelines for photos and illustrations.
+- Iconography style (e.g., stroke weight, fill).
+
+## 5. Implementation Guidelines
+- Key principles for the development team.
+- Motion/interaction behaviors to implement.
+- Accessibility standards to maintain.
+
+## 6. Strategic Recommendations
+- Future considerations or scalability notes.
+- Potential A/B testing ideas.
+
+---
+
+**Tone:** Professional, authoritative, yet collaborative and inspiring.
+**Format:** Clean Markdown with appropriate headers, lists, and emphasis.
+"""
+
+# ============================================================================
+# CURSOR IDE IMPLEMENTATION PROMPT
+# ============================================================================
+
+CURSOR_PROMPT_GENERATION_PROMPT = """
+You are a Lead Frontend Architect creating a Master Implementation Plan for an AI coding assistant (Nicole).
+
+Your goal is to translate the approved design system into a highly detailed, actionable prompt that ensures the code is written to "Anthropic Quality Standards".
+
+## PROMPT STRUCTURE:
+
+# Project Implementation Master Plan
+
+## 1. Project Context
+- **Name:** [Project Name]
+- **Description:** [Brief Description]
+- **Key Goals:** [List of primary goals]
+
+## 2. Tech Stack Requirements (Non-Negotiable)
+- **Framework:** Next.js 14 (App Router)
+- **Styling:** Tailwind CSS + class-variance-authority (CVA) + clsx + tailwind-merge
+- **Animation:** Framer Motion (use AnimatePresence for exits)
+- **Icons:** Lucide React
+- **Fonts:** [Google Fonts Imports]
+- **State Management:** Zustand (if complex state needed)
+
+## 3. Design System Implementation (Tailwind Config)
+- **Colors:**
+  - Define `tailwind.config.ts` extension.
+  - Map design tokens to semantic names (primary, secondary, accent, destructive, etc.).
+- **Typography:**
+  - Define font families in config.
+  - Set default font-sans.
+- **Border Radius:**
+  - Set radius variables.
+
+## 4. Component Architecture
+- **UI Library:** Build a `components/ui` folder.
+- **Required Primitives:** Button, Card, Input, Badge, etc. (using CVA).
+- **Global Layout:** Header (sticky/fixed), Footer, Main.
+
+## 5. Page Structure & Layouts
+- **Home Page:**
+  - Hero Section: [Specific layout & content]
+  - Features Section: [Layout]
+  - [Other Sections]
+- **[Other Pages]:** [Brief specs]
+
+## 6. Interactive Behaviors
+- **Hover States:** [Specific effects]
+- **Page Transitions:** [If applicable]
+- **Scroll Animations:** [Fade-in up, etc.]
+
+## 7. Anti-Patterns (STRICTLY FORBIDDEN)
+- [List specific anti-patterns from research]
+- No hardcoded hex values in components (use Tailwind classes).
+- No massive files (break down into sub-components).
+- No ignoring mobile responsiveness.
+
+## 8. Implementation Step-by-Step
+1. **Setup:** Configure Tailwind, Fonts, Utils.
+2. **Primitives:** Build base UI components.
+3. **Layout:** Build global shell.
+4. **Sections:** Implement page sections one by one.
+5. **Polish:** Add animations and interactions.
+
+---
+
+**Tone:** Technical, precise, directive.
+**Goal:** Zero ambiguity for the coding agent.
+"""

@@ -7,4 +7,5 @@ export { ResearchInputForm } from './ResearchInputForm';
 export { ResearchProgressModal } from './ResearchProgressModal';
 export { MoodboardSelector } from './MoodboardSelector';
 export { StyleGuidePreview } from './StyleGuidePreview';
+export { ExportPanel } from './ExportPanel';
 

@@ -1,0 +1,259 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Curated font pairings for web design with usage guidelines",
+    "last_updated": "2026-01-02"
+  },
+  "pairings": {
+    "swiss_modern": {
+      "name": "Swiss Modern",
+      "mood": ["clean", "professional", "neutral"],
+      "fonts": {
+        "display": {
+          "family": "Inter",
+          "weight": "700",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, -apple-system, sans-serif"
+        },
+        "body": {
+          "family": "Inter",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, -apple-system, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(2.5rem, 5vw, 4rem)",
+        "h1": "clamp(2rem, 4vw, 3rem)",
+        "h2": "clamp(1.5rem, 3vw, 2rem)",
+        "h3": "1.25rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "Versatile pairing suitable for SaaS, corporate, and tech websites. Excellent for data-heavy interfaces."
+    },
+    "editorial_elegance": {
+      "name": "Editorial Elegance",
+      "mood": ["sophisticated", "literary", "refined"],
+      "fonts": {
+        "display": {
+          "family": "Playfair Display",
+          "weight": "700",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "Georgia, serif"
+        },
+        "body": {
+          "family": "Source Sans Pro",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(3rem, 6vw, 5rem)",
+        "h1": "clamp(2.5rem, 5vw, 4rem)",
+        "h2": "clamp(1.75rem, 3vw, 2.5rem)",
+        "h3": "1.5rem",
+        "body": "1.0625rem",
+        "small": "0.9375rem"
+      },
+      "usage": "Perfect for editorial, luxury brands, and portfolio sites. The contrast between serif headlines and sans body creates visual hierarchy."
+    },
+    "geometric_bold": {
+      "name": "Geometric Bold",
+      "mood": ["modern", "impactful", "confident"],
+      "fonts": {
+        "display": {
+          "family": "Space Grotesk",
+          "weight": "700",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        },
+        "body": {
+          "family": "DM Sans",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(2.5rem, 5vw, 4.5rem)",
+        "h1": "clamp(2rem, 4vw, 3.5rem)",
+        "h2": "clamp(1.5rem, 3vw, 2.25rem)",
+        "h3": "1.375rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "Great for tech startups, agencies, and innovative brands. The geometric forms convey modernity and precision."
+    },
+    "humanist_friendly": {
+      "name": "Humanist Friendly",
+      "mood": ["approachable", "warm", "trustworthy"],
+      "fonts": {
+        "display": {
+          "family": "Poppins",
+          "weight": "600",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        },
+        "body": {
+          "family": "Open Sans",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(2rem, 4vw, 3.5rem)",
+        "h1": "clamp(1.75rem, 3.5vw, 2.75rem)",
+        "h2": "clamp(1.375rem, 2.5vw, 2rem)",
+        "h3": "1.25rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "Ideal for community platforms, educational sites, and consumer-facing products. Highly readable at all sizes."
+    },
+    "technical_precision": {
+      "name": "Technical Precision",
+      "mood": ["developer-focused", "technical", "precise"],
+      "fonts": {
+        "display": {
+          "family": "JetBrains Mono",
+          "weight": "700",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "Consolas, monospace"
+        },
+        "body": {
+          "family": "IBM Plex Sans",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        },
+        "code": {
+          "family": "JetBrains Mono",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "Consolas, monospace"
+        }
+      },
+      "scale": {
+        "display": "clamp(2rem, 4vw, 3rem)",
+        "h1": "clamp(1.75rem, 3.5vw, 2.5rem)",
+        "h2": "clamp(1.5rem, 2.5vw, 2rem)",
+        "h3": "1.25rem",
+        "body": "1rem",
+        "small": "0.875rem",
+        "code": "0.9375rem"
+      },
+      "usage": "Perfect for developer tools, documentation sites, and technical products. Monospace headlines create distinctive character."
+    },
+    "contemporary_minimal": {
+      "name": "Contemporary Minimal",
+      "mood": ["sleek", "minimal", "current"],
+      "fonts": {
+        "display": {
+          "family": "Satoshi",
+          "weight": "700",
+          "style": "normal",
+          "source": "Fontshare",
+          "fallback": "system-ui, sans-serif"
+        },
+        "body": {
+          "family": "Satoshi",
+          "weight": "400",
+          "style": "normal",
+          "source": "Fontshare",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(2.5rem, 5vw, 4rem)",
+        "h1": "clamp(2rem, 4vw, 3rem)",
+        "h2": "clamp(1.5rem, 3vw, 2rem)",
+        "h3": "1.25rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "A fresh alternative to Inter for modern web applications. Works well for portfolios and creative tech brands."
+    },
+    "bold_statement": {
+      "name": "Bold Statement",
+      "mood": ["impactful", "creative", "attention-grabbing"],
+      "fonts": {
+        "display": {
+          "family": "Clash Display",
+          "weight": "600",
+          "style": "normal",
+          "source": "Fontshare",
+          "fallback": "system-ui, sans-serif"
+        },
+        "body": {
+          "family": "General Sans",
+          "weight": "400",
+          "style": "normal",
+          "source": "Fontshare",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(3rem, 8vw, 6rem)",
+        "h1": "clamp(2.5rem, 6vw, 4.5rem)",
+        "h2": "clamp(1.75rem, 4vw, 2.5rem)",
+        "h3": "1.5rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "For portfolios, agencies, and brands that want to make a strong first impression. Headlines can be extra large."
+    },
+    "classic_professional": {
+      "name": "Classic Professional",
+      "mood": ["established", "trustworthy", "corporate"],
+      "fonts": {
+        "display": {
+          "family": "Merriweather",
+          "weight": "700",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "Georgia, serif"
+        },
+        "body": {
+          "family": "Lato",
+          "weight": "400",
+          "style": "normal",
+          "source": "Google Fonts",
+          "fallback": "system-ui, sans-serif"
+        }
+      },
+      "scale": {
+        "display": "clamp(2rem, 4vw, 3rem)",
+        "h1": "clamp(1.75rem, 3.5vw, 2.5rem)",
+        "h2": "clamp(1.5rem, 2.5vw, 2rem)",
+        "h3": "1.25rem",
+        "body": "1rem",
+        "small": "0.875rem"
+      },
+      "usage": "Suitable for law firms, financial services, and established businesses. Conveys reliability and professionalism."
+    }
+  },
+  "industry_recommendations": {
+    "saas": ["swiss_modern", "geometric_bold", "contemporary_minimal"],
+    "ecommerce": ["humanist_friendly", "swiss_modern", "geometric_bold"],
+    "fintech": ["swiss_modern", "classic_professional", "technical_precision"],
+    "portfolio": ["bold_statement", "editorial_elegance", "contemporary_minimal"],
+    "wellness": ["humanist_friendly", "editorial_elegance", "contemporary_minimal"],
+    "startup": ["geometric_bold", "contemporary_minimal", "bold_statement"],
+    "devtools": ["technical_precision", "swiss_modern", "geometric_bold"]
+  }
+}
+

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from app.agents.muse import muse_agent
+from app.agents.muse.report_generator import report_generator
 from app.database import db
 from app.middleware.alphawave_auth import get_current_user
 
@@ -1413,4 +1414,159 @@ async def skip_research(
         "message": "Research skipped. Project set to quick build mode.",
         "design_mode": "quick"
     }
+
+
+# ============================================================================
+# DESIGN REPORT & EXPORT PACKAGE GENERATION
+# ============================================================================
+
+class GenerateReportRequest(BaseModel):
+    """Request to generate a report."""
+    report_type: str = Field(
+        default="design_report",
+        pattern="^(design_report|cursor_prompt|executive_summary|technical_spec)$"
+    )
+
+class ExportPackageRequest(BaseModel):
+    """Request to generate export package."""
+    format_type: str = Field(
+        default="cursor_ready",
+        pattern="^(full|cursor_ready|tokens_only)$"
+    )
+
+class GeneratedReportResponse(BaseModel):
+    """Response with generated report."""
+    report_type: str
+    title: str
+    content_markdown: str
+    word_count: int
+    generation_model: str
+    generation_tokens: int = 0
+    generation_duration_ms: int = 0
+
+class ExportPackageResponse(BaseModel):
+    """Response with export package info."""
+    success: bool
+    package_name: str
+    format: str
+    size_bytes: int
+    files: List[str]
+    zip_base64: str
+    content_type: str = "application/zip"
+    filename: str
+
+class CursorPromptResponse(BaseModel):
+    """Response for cursor prompt endpoint."""
+    session_id: int
+    title: str
+    content: str
+    word_count: int
+    ready_for_implementation: bool = True
+
+
+@router.post("/sessions/{session_id}/reports/generate", response_model=GeneratedReportResponse)
+async def generate_report(
+    session_id: int,
+    request: GenerateReportRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Generate a design report from a completed research session.
+    """
+    try:
+        # Get project ID from session
+        session = await muse_agent.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        if request.report_type == "cursor_prompt":
+            report = await report_generator.generate_cursor_prompt(
+                session_id=session_id,
+                project_id=session["project_id"]
+            )
+        else:
+            report = await report_generator.generate_design_report(
+                session_id=session_id,
+                project_id=session["project_id"]
+            )
+            
+        return GeneratedReportResponse(
+            report_type=report.report_type,
+            title=report.title,
+            content_markdown=report.content_markdown,
+            word_count=report.word_count,
+            generation_model=report.generation_model,
+            generation_tokens=report.generation_tokens,
+            generation_duration_ms=report.generation_duration_ms
+        )
+        
+    except Exception as e:
+        logger.error(f"[MUSE API] Failed to generate report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/cursor-prompt", response_model=CursorPromptResponse)
+async def get_cursor_prompt(
+    session_id: int,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Quick endpoint to get the cursor/implementation prompt.
+    """
+    try:
+        session = await muse_agent.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        report = await report_generator.generate_cursor_prompt(
+            session_id=session_id,
+            project_id=session["project_id"]
+        )
+        
+        return CursorPromptResponse(
+            session_id=session_id,
+            title=report.title,
+            content=report.content_markdown,
+            word_count=report.word_count
+        )
+        
+    except Exception as e:
+        logger.error(f"[MUSE API] Failed to get cursor prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sessions/{session_id}/export-package", response_model=ExportPackageResponse)
+async def generate_export_package(
+    session_id: int,
+    request: ExportPackageRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Generate a ZIP package with all design documentation.
+    """
+    try:
+        session = await muse_agent.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        package = await report_generator.generate_export_package(
+            session_id=session_id,
+            project_id=session["project_id"],
+            format_type=request.format_type
+        )
+        
+        import base64
+        return ExportPackageResponse(
+            success=True,
+            package_name=package.package_name,
+            format=package.package_format,
+            size_bytes=package.size_bytes,
+            files=package.contents_manifest.get("files", []),
+            zip_base64=base64.b64encode(package.zip_data).decode("utf-8"),
+            filename=f"{package.package_name}.zip"
+        )
+        
+    except Exception as e:
+        logger.error(f"[MUSE API] Failed to generate export package: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

@@ -19,6 +19,7 @@ import { ResearchInputForm } from './ResearchInputForm';
 import { ResearchProgressModal } from './ResearchProgressModal';
 import { MoodboardSelector } from './MoodboardSelector';
 import { StyleGuidePreview } from './StyleGuidePreview';
+import { ExportPanel } from './ExportPanel';
 import type { InspirationInput, MoodBoard } from '@/lib/muse/api';
 
 interface DesignDashboardProps {
@@ -355,22 +356,51 @@ export function DesignDashboard({
           </motion.div>
         )}
 
-        {phase === 'approved' && (
+        {phase === 'approved' && activeSessionId && (
           <motion.div
             key="approved"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="h-full flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="h-full overflow-y-auto"
           >
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-green-500/20 
-                            flex items-center justify-center">
-                <svg className="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+            <div className="max-w-3xl mx-auto p-6 space-y-6">
+              {/* Success Banner */}
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center shrink-0">
+                  <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Design Approved!</h2>
+                  <p className="text-sm text-gray-400">
+                    Export your design system documentation below, then send to Nicole for implementation.
+                  </p>
+                </div>
               </div>
-              <h2 className="text-2xl font-semibold text-white mb-2">Design Approved!</h2>
-              <p className="text-gray-400">Nicole is now building your project...</p>
+
+              {/* Export Panel */}
+              <ExportPanel 
+                sessionId={activeSessionId}
+                projectName={undefined}
+                onExportComplete={(type) => {
+                  console.log('[Muse] Export complete:', type);
+                }}
+              />
+
+              {/* Continue to Build Button */}
+              <div className="pt-4 border-t border-zinc-800/50">
+                <button
+                  onClick={() => onComplete?.()}
+                  className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors"
+                >
+                  Continue to Nicole &rarr;
+                </button>
+                <p className="text-xs text-center text-gray-500 mt-2">
+                  Nicole will use your approved design system to build the project.
+                </p>
+              </div>
             </div>
           </motion.div>
         )}
