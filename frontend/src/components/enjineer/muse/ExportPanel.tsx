@@ -19,11 +19,9 @@ import {
   CheckCircle2,
   FileJson,
   Palette,
-  Sparkles,
-  ExternalLink
+  Sparkles
 } from 'lucide-react';
 import { museApi } from '@/lib/muse/api';
-import type { GeneratedReport, CursorPromptResponse } from '@/lib/muse/api';
 
 interface ExportPanelProps {
   sessionId: number;
